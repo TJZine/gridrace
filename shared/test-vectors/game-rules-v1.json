@@ -1,0 +1,273 @@
+{
+  "formatVersion": 1,
+  "acceptedWordPackID": "development-en-US-v1",
+  "feedbackEncoding": {
+    "absent": 0,
+    "present": 1,
+    "correct": 2
+  },
+  "cases": [
+    {
+      "id": "all-correct",
+      "covers": [
+        "allLettersCorrect"
+      ],
+      "answer": "stone",
+      "input": "stone",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "stone",
+        "validationError": null,
+        "feedback": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "solved"
+      }
+    },
+    {
+      "id": "none-present",
+      "covers": [
+        "noLettersPresent"
+      ],
+      "answer": "flame",
+      "input": "civic",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "civic",
+        "validationError": null,
+        "feedback": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "repeated-answer",
+      "covers": [
+        "repeatedLetterInAnswer"
+      ],
+      "answer": "apple",
+      "input": "ample",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "ample",
+        "validationError": null,
+        "feedback": [
+          2,
+          0,
+          2,
+          2,
+          2
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "excess-guess-repeat",
+      "covers": [
+        "moreRepeatedLettersInGuessThanAnswer"
+      ],
+      "answer": "grape",
+      "input": "apple",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "apple",
+        "validationError": null,
+        "feedback": [
+          1,
+          1,
+          0,
+          0,
+          2
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "exact-consumes-repeat",
+      "covers": [
+        "exactMatchesConsumeDuplicateCounts"
+      ],
+      "answer": "civic",
+      "input": "vivid",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "vivid",
+        "validationError": null,
+        "feedback": [
+          0,
+          2,
+          2,
+          2,
+          0
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "multiple-duplicates",
+      "covers": [
+        "multipleDuplicateInteractions"
+      ],
+      "answer": "bloom",
+      "input": "cocoa",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "cocoa",
+        "validationError": null,
+        "feedback": [
+          0,
+          1,
+          0,
+          2,
+          0
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "uppercase-normalization",
+      "covers": [
+        "uppercaseNormalization"
+      ],
+      "answer": "stone",
+      "input": "STONE",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "stone",
+        "validationError": null,
+        "feedback": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "acceptedGuessCount": 1,
+        "roundState": "solved"
+      }
+    },
+    {
+      "id": "invalid-length",
+      "covers": [
+        "invalidLength"
+      ],
+      "answer": "stone",
+      "input": "four",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "four",
+        "validationError": "invalidLength",
+        "feedback": null,
+        "acceptedGuessCount": 0,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "non-ascii",
+      "covers": [
+        "nonAsciiInput"
+      ],
+      "answer": "stone",
+      "input": "stöne",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": null,
+        "validationError": "nonAscii",
+        "feedback": null,
+        "acceptedGuessCount": 0,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "invalid-character",
+      "covers": [
+        "invalidAsciiCharacter"
+      ],
+      "answer": "stone",
+      "input": "st0ne",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "st0ne",
+        "validationError": "invalidCharacter",
+        "feedback": null,
+        "acceptedGuessCount": 0,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "unknown-word",
+      "covers": [
+        "unknownAcceptedWord"
+      ],
+      "answer": "stone",
+      "input": "zzzzz",
+      "acceptedGuessesBefore": 0,
+      "expected": {
+        "normalizedGuess": "zzzzz",
+        "validationError": "notAccepted",
+        "feedback": null,
+        "acceptedGuessCount": 0,
+        "roundState": "playing"
+      }
+    },
+    {
+      "id": "sixth-guess-failure",
+      "covers": [
+        "sixthGuessFailure"
+      ],
+      "answer": "stone",
+      "input": "civic",
+      "acceptedGuessesBefore": 5,
+      "expected": {
+        "normalizedGuess": "civic",
+        "validationError": null,
+        "feedback": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "acceptedGuessCount": 6,
+        "roundState": "failed"
+      }
+    },
+    {
+      "id": "final-guess-solve",
+      "covers": [
+        "solveOnFinalGuess"
+      ],
+      "answer": "stone",
+      "input": "stone",
+      "acceptedGuessesBefore": 5,
+      "expected": {
+        "normalizedGuess": "stone",
+        "validationError": null,
+        "feedback": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "acceptedGuessCount": 6,
+        "roundState": "solved"
+      }
+    }
+  ]
+}
