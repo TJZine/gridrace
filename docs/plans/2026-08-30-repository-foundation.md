@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: GridRace repository agent instructions, workflow rules, and durable task tracking
 Owner: Primary Codex session
 Started: 2026-08-30
@@ -14,12 +14,12 @@ useful agent, workflow, review, verification, and handoff conventions from
 
 ## Current snapshot
 
-- Phase: final verification
-- State: in progress
-- Next action: run structural checks and create the authority-baseline content commit
+- Phase: complete
+- State: verified and committed
+- Next action: promote the Phase 0 product/architecture/game-rule/privacy authority-doc candidate from `docs/TODO.md` when implementation resumes
 - Blockers: none
 - Working branch: `main`
-- Latest integrated commit: `758caef docs: track repository foundation work`
+- Latest content commit: `f75934c docs: establish GridRace engineering workflow`
 
 ## Scope
 
@@ -61,7 +61,7 @@ useful agent, workflow, review, verification, and handoff conventions from
 | FND-03 | Audit tracking, PR, and commit conventions | `tracking_commit_audit` | Complete | Single-plan, conventional-commit, and evidence-ledger guidance delivered |
 | FND-04 | Implement repository authority files | Primary controller + bounded writer(s) | Complete | Entrypoint, shim, runbook, decisions, and backlog integrated |
 | FND-05 | Independent review and finding adjudication | Fresh read-only reviewer | Complete | FAR-01 through FAR-05 closed in the closure review |
-| FND-06 | Final verification and commits | Primary controller | In progress | Verification and commit records below |
+| FND-06 | Final verification and commits | Primary controller | Complete | Content committed as `f75934c`; tracker closes in this commit |
 
 ## Decision log
 
@@ -77,7 +77,7 @@ useful agent, workflow, review, verification, and handoff conventions from
 
 | Agent | Mode | Assignment | Write boundary | Status |
 | --- | --- | --- | --- | --- |
-| Primary Codex session | Controller | Scope, decisions, integration, verification, commits | Whole task scope | Active |
+| Primary Codex session | Controller | Scope, decisions, integration, verification, commits | Whole task scope | Complete |
 | `source_rules_audit` | Read-only explorer | Source instruction and orchestration audit | None | Complete |
 | `gridrace_adaptation` | Read-only explorer | GridRace-specific authority adaptation | None | Complete |
 | `tracking_commit_audit` | Read-only explorer | Tracking and commit convention audit | None | Complete |
@@ -120,7 +120,8 @@ Swift, Supabase, Deno, database, word-pack, or CI surface.
 | Commit | Purpose | Verification | Status |
 | --- | --- | --- | --- |
 | `758caef` | Track repository foundation work | `git diff --cached --check` | Complete |
-| This content commit | Repository instruction, workflow, and decision baseline | Structural checks + independent review | Ready to commit |
+| `f75934c` | Repository instruction, workflow, and decision baseline | Structural checks + independent review | Complete |
+| This commit | Mark the foundation plan historical | `git diff --cached --check` and direct plan inspection | Ready to commit; SHA reported in handoff |
 
 ## Stop conditions
 
@@ -135,5 +136,12 @@ authorized, adding a dependency, or expanding this foundation task into product 
 - [x] Tracking snapshot and ledgers updated.
 - [x] Independent review findings adjudicated.
 - [x] Risk-matched verification passes.
-- [ ] Task-owned files committed with conventional commit messages.
-- [ ] This plan marked `Historical`; closeout SHA reported in the final handoff.
+- [x] Task-owned files committed with conventional commit messages.
+- [x] This plan marked `Historical`; closeout SHA reported in the final handoff.
+
+## Closeout
+
+The repository now has one short agent entrypoint, one canonical engineering
+runbook, one thin rule shim, durable decision history, a non-authoritative backlog,
+and a completed evidence-bearing plan. Executable product and CI gates remain
+intentionally deferred until their real Swift and Supabase surfaces exist.
