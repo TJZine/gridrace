@@ -16,17 +16,25 @@ prototype.
 
 ## Current verified outcome
 
-- `main` is clean at `699dd14 docs: close repository foundation plan`.
+- `main` contains the clean starting baseline and the committed active tracker at
+  `4caf8f0 docs: track phase 0 and 1 foundation`.
 - The required repository authorities and Ponytail full-mode instructions have been
   read completely.
 - The repository has no other `Status: Active` plan.
 - The formal goal and live execution plan are active.
-- Phase 0 and Phase 1 implementation has not started.
+- Wave 1 completed with no authority contradiction. Xcode 26.6, Swift 6.3.3, and
+  Deno 2.9.5 are available; the authorized iOS 26.5 simulator runtime download is
+  in progress.
+- The product gaps and artifact contracts are frozen below.
+- All Phase 0 authority and artifact write units are integrated in the worktree.
+  Controller inspection and the deterministic word/manifest check pass. The shared
+  artifact checkpoint is committed; the authority checkpoint and independent
+  contract review remain.
 
 ## Next integration action
 
-Run and reconcile the three bounded Wave 1 discovery audits, then freeze file
-ownership and the shared-vector path and shape before delegating writes.
+Dispatch a fresh independent read-only contract review against the committed Phase 0
+authority and artifact checkpoints.
 
 ## Scope
 
@@ -78,12 +86,12 @@ ownership and the shared-vector path and shape before delegating writes.
 
 | Unit | Owner | Boundary | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| D-01 Rules/authority audit | Bounded read-only worker | Repository and supplied task; no writes | Required reads | In progress |
-| D-02 Local toolchain audit | Bounded read-only worker | Toolchain and simulator inspection; no writes | Required reads | In progress |
-| D-03 Word/vector audit | Bounded read-only worker | Artifact design; no writes | Required reads | In progress |
-| P0-01 Product/rules/flow authorities | To assign after contract freeze | Exact disjoint docs paths | D-01, D-03 | Pending |
-| P0-02 Architecture/privacy/ADR | To assign after contract freeze | Exact disjoint docs paths | D-01 | Pending |
-| P0-03 Word pack/vectors | Single bounded writer | Frozen artifact paths only | D-03 and controller approval | Pending |
+| D-01 Rules/authority audit | `rules_authority_audit` | Repository and supplied task; no writes | Required reads | Complete: four gaps reconciled |
+| D-02 Local toolchain audit | `local_toolchain_audit` | Toolchain and simulator inspection; no writes | Required reads | Complete: runtime installation needed |
+| D-03 Word/vector audit | `word_vector_audit` | Artifact design; no writes | Required reads | Complete: four-artifact layout frozen |
+| P0-01 Product/rules/flow authorities | `rules_authority_audit` | `docs/product-spec.md`, `docs/game-rules.md`, `docs/screen-flow.md` | D-01, D-03 | Complete; controller-read |
+| P0-02 Architecture/privacy/ADR | `local_toolchain_audit` | `docs/architecture.md`, `docs/privacy-data-map.md`, `docs/adr/0001-native-swiftui-authoritative-supabase.md` | D-01 | Complete; controller-read |
+| P0-03 Word pack/vectors | `word_vector_audit` | `shared/word-packs/**`, `shared/test-vectors/game-rules-v1.json`, `scripts/check_word_pack.py` | D-03 and frozen shapes | Complete; checker passed |
 | P0-04 Contract review and checkpoint | Controller + fresh read-only reviewer | Integrated Phase 0 diff | P0-01..03 | Pending |
 | P1-01 Native iOS implementation | Single bounded iOS writer | `ios/**` only | Phase 0 checkpoint | Pending |
 | P1-02 TypeScript evaluator | Separate bounded writer | Frozen TypeScript paths only | Phase 0 checkpoint | Pending |
@@ -100,10 +108,18 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 | ID | Decision or blocker | State | Evidence / resolution |
 | --- | --- | --- | --- |
 | DEC-01 | Use Ponytail full mode: standard library and native Apple frameworks first. | Accepted | User direction and skill contract |
-| DEC-02 | Use one canonical vector JSON file with typed runtime decoders; add no unused JSON Schema. | Provisional | Freeze after Wave 1 audit |
+| DEC-02 | Use `shared/test-vectors/game-rules-v1.json` as the sole vector source with typed runtime decoders; add no JSON Schema. | Accepted | Both runtimes consume the checked-in file directly |
 | DEC-03 | Use one iOS writer for the project and composition root. | Accepted | Shared-write serialization boundary |
-| BLK-01 | Installed Xcode, available simulator, and TypeScript runner are not yet proved. | Open | Wave 1 toolchain audit |
-| BLK-02 | Canonical vector path/shape and word artifact layout are not yet frozen. | Open | Wave 1 contract reconciliation |
+| DEC-04 | The match creator starts the first and later countdowns when 2–8 players are rostered; MVP has no readiness state. | Accepted | Smallest explicit server-owned advancement; reveal is not auto-dismissed |
+| DEC-05 | Submissions are eligible only while `serverNow < endsAt`; equality times out. | Accepted | Removes deadline ambiguity |
+| DEC-06 | Exact ties use competition placements (`1, 1, 3`); the supplied unsolved comparator remains literal. | Accepted | Makes shared placement numbering exact without changing ranking keys |
+| DEC-07 | Disconnect never forfeits; only an explicit authenticated action forfeits. Answers do not repeat within one match. | Accepted | Preserves recovery and prevents a known-answer replay |
+| DEC-08 | Reveal order is local player first, then stable roster order; accepted rows reveal top-to-bottom, one complete row at a time. Reduce Motion exposes the same complete state immediately. | Accepted | Deterministic and accessible |
+| DEC-09 | The word pack lives at `shared/word-packs/development-en-US-v1.json` with generated manifest beside it; Phase 1 accepted guesses equal the 100 answers. | Accepted | Minimal deterministic development resource |
+| DEC-10 | The original word compilation has no standalone license grant; repository copyright applies until the owner adopts a license. | Accepted | Records actual licensing status without inferring permission |
+| DEC-11 | Validation precedence is non-ASCII, ASCII lowercase mapping, invalid length, invalid character, then unknown word; invalid input consumes no row and solve beats sixth-guess failure. | Accepted | Stable cross-runtime error contract |
+| BLK-01 | No simulator runtime was installed at discovery time. | Resolved | `xcodebuild -downloadPlatform iOS` installed iOS 26.5 and standard devices |
+| BLK-02 | Canonical vector and word layouts were unfrozen. | Resolved | DEC-02, DEC-09, and DEC-11 |
 
 ## Review findings and dispositions
 
@@ -119,17 +135,26 @@ location and evidence, disposition (`accepted`, `modified`, `rejected`, or
 | Starting HEAD | `git log --oneline -8` | Passed: `699dd14`, `f75934c`, `758caef` match the supplied baseline |
 | Active-plan uniqueness before creation | `rg -l '^Status: Active$' docs/plans` | Passed: no result |
 | Required authority reads | Complete chunked reads of all named files | Passed |
+| Toolchain | `xcodebuild -version`; `swift --version`; `deno --version` | Passed: Xcode 26.6, Swift 6.3.3, Deno 2.9.5 |
+| TypeScript execution | `deno eval --no-config 'const value: number = 6; ...'` | Passed: `deno-typescript-ok` |
+| Simulator discovery | `xcrun simctl list runtimes`; `xcrun simctl list devices available` | No runtimes/devices before authorized installation |
+| Simulator installation | `xcodebuild -downloadPlatform iOS` | Passed: iOS 26.5 (23F77) and standard devices installed |
+| Word pack | `python3 scripts/check_word_pack.py` | Passed: 100 words and deterministic manifest |
+| Manifest hash | Independent SHA-256 comparison | Passed: `7c4bdd9281e3bf6d6b45013772c9bb104f0779499cb576c7384f5b649405cbcf` |
+| Phase 0 whitespace | `git diff --check` | Passed before checkpoint staging |
 
 ## Integrated commits
 
-No task commits yet.
+| Commit | Purpose | Status |
+| --- | --- | --- |
+| `4caf8f0 docs: track phase 0 and 1 foundation` | Activate durable task tracking | Complete |
+| `ac8ebe2 test(rules): add shared evaluator contract` | Add the canonical vectors, word pack, manifest, and checker | Complete |
 
 ## Unrun or unavailable gates
 
 - Xcode project discovery, build, XCTest, simulator launch, UI inspection, VoiceOver,
   Reduce Motion, TypeScript tests, word-pack validation, manifest validation, and
-  final Git gates remain unrun because their implementation surfaces or discovery
-  work are not complete.
+  final Git gates remain unrun because their implementation surfaces are not complete.
 
 ## Stop conditions
 

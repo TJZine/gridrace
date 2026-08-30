@@ -3,7 +3,7 @@
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution lives in the one active file under [`docs/plans/`](plans/);
-today that is the [Repository Foundation Plan](plans/2026-08-30-repository-foundation.md).
+today that is the [Phase 0 and Phase 1 Foundation Plan](plans/2026-08-30-phase-0-1-foundation.md).
 
 ## 2026-08-30 — Focus the Product on Blind Race
 

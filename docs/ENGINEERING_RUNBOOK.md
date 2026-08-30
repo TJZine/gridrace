@@ -120,8 +120,7 @@ The primary controller resolves overlap before dispatch and integrates all work.
 
 ### Available now
 
-At the repository-foundation stage, only structural Git inspection has been proved.
-These commands are the current canon:
+These commands are the current proved canon:
 
 ```bash
 git status --short
@@ -130,6 +129,7 @@ git diff --stat
 git diff --cached --check
 git diff --cached --stat
 git log -1 --oneline
+python3 scripts/check_word_pack.py
 ```
 
 Use `rg --files` and `rg` for discovery when available, but do not treat search
@@ -137,9 +137,8 @@ output as product verification. Scope every diff review by appending `--` and
 concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
-No Xcode, Swift test, Supabase, Deno, database, word-pack, or CI command is canonical
-yet. Do not claim a product gate passed merely because the desired command appears
-below.
+No Xcode, Swift test, Supabase, Deno, database, or CI command is canonical yet. Do
+not claim a product gate passed merely because the desired command appears below.
 
 ### Candidate gates to prove and promote
 
@@ -156,7 +155,7 @@ Expected gate families are:
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
 | Supabase local stack | Pinned local CLI start, reset-from-zero, database lint, and database tests | Migrations and seed rebuild a clean local database; pgTAP/RLS tests pass, including negative users. |
 | Edge Functions | Repository-selected Deno format, lint, type-check, and test commands | Checked-in Deno config/import policy and focused function tests pass locally. |
-| Word pack | Deterministic build script plus regeneration/check mode | Same inputs produce identical artifacts; counts, duplicates, banned terms, and manifest checksum pass. |
+| Word pack | `python3 scripts/check_word_pack.py` | Proved locally against the curated source and deterministic manifest. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
 Exact command spellings remain undefined until the real project names, paths,

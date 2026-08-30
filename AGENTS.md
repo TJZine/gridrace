@@ -36,6 +36,12 @@ Coordination boundaries:
 Where to look next:
 
 - Active execution state and evidence: `docs/plans/`
+- Current product behavior and exact rules: [docs/product-spec.md](docs/product-spec.md)
+  and [docs/game-rules.md](docs/game-rules.md)
+- Current system, privacy, and presentation boundaries:
+  [docs/architecture.md](docs/architecture.md),
+  [docs/privacy-data-map.md](docs/privacy-data-map.md), and
+  [docs/screen-flow.md](docs/screen-flow.md)
 - Engineering workflow and verification: [docs/ENGINEERING_RUNBOOK.md](docs/ENGINEERING_RUNBOOK.md)
 - Durable architectural decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
 - Non-authoritative backlog candidates: [docs/TODO.md](docs/TODO.md)
