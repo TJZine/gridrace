@@ -1,11 +1,7 @@
----
-search:
-  exclude: true
----
-
 Status: Active
 Scope: GridRace repository agent instructions, workflow rules, and durable task tracking
 Owner: Primary Codex session
+Started: 2026-08-30
 Last updated: 2026-08-30
 
 # Repository Foundation Plan
@@ -18,12 +14,12 @@ useful agent, workflow, review, verification, and handoff conventions from
 
 ## Current snapshot
 
-- Phase: source audit
+- Phase: final verification
 - State: in progress
-- Next action: reconcile the three read-only audits into a GridRace authority map
+- Next action: run structural checks and create the authority-baseline content commit
 - Blockers: none
 - Working branch: `main`
-- Commits created: none
+- Latest integrated commit: `758caef docs: track repository foundation work`
 
 ## Scope
 
@@ -60,12 +56,12 @@ useful agent, workflow, review, verification, and handoff conventions from
 
 | ID | Work unit | Owner | Status | Evidence / output |
 | --- | --- | --- | --- | --- |
-| FND-01 | Audit Frame Compare instruction and orchestration patterns | `source_rules_audit` | In progress | Pending agent report |
-| FND-02 | Adapt authority and verification model to GridRace | `gridrace_adaptation` | In progress | Pending agent report |
-| FND-03 | Audit tracking, PR, and commit conventions | `tracking_commit_audit` | In progress | Pending agent report |
-| FND-04 | Implement repository authority files | Primary controller + bounded writer(s) | Pending | File diff and structural checks |
-| FND-05 | Independent review and finding adjudication | Fresh read-only reviewer | Pending | Finding ledger below |
-| FND-06 | Final verification and commits | Primary controller | Pending | Verification and commit records below |
+| FND-01 | Audit Frame Compare instruction and orchestration patterns | `source_rules_audit` | Complete | Structure retained; Python/CLI/release machinery excluded |
+| FND-02 | Adapt authority and verification model to GridRace | `gridrace_adaptation` | Complete | GridRace invariants, ownership, and staged command guidance delivered |
+| FND-03 | Audit tracking, PR, and commit conventions | `tracking_commit_audit` | Complete | Single-plan, conventional-commit, and evidence-ledger guidance delivered |
+| FND-04 | Implement repository authority files | Primary controller + bounded writer(s) | Complete | Entrypoint, shim, runbook, decisions, and backlog integrated |
+| FND-05 | Independent review and finding adjudication | Fresh read-only reviewer | Complete | FAR-01 through FAR-05 closed in the closure review |
+| FND-06 | Final verification and commits | Primary controller | In progress | Verification and commit records below |
 
 ## Decision log
 
@@ -73,41 +69,58 @@ useful agent, workflow, review, verification, and handoff conventions from
 | --- | --- | --- | --- |
 | D-001 | Use one short entrypoint, one canonical runbook, and one thin rule shim. | Prevents competing workflow authorities. | Accepted |
 | D-002 | Keep this plan as the single live task ledger. | The maintainer explicitly requested durable tracking; a second progress document would duplicate state. | Accepted |
-| D-003 | Defer executable CI until executable project surfaces exist. | A workflow with invented commands would provide false confidence and immediate maintenance debt. | Provisional; review after audits |
+| D-003 | Defer executable CI until executable project surfaces exist. | A workflow with invented commands would provide false confidence and immediate maintenance debt. | Accepted |
 | D-004 | The primary controller alone stages and commits. | Avoids concurrent Git state changes while subagents share the worktree. | Accepted |
+| D-005 | Do not copy Frame Compare's Zensical search front matter. | GridRace has no documentation search index, so the metadata has no current function. | Accepted |
 
 ## Agent ledger
 
 | Agent | Mode | Assignment | Write boundary | Status |
 | --- | --- | --- | --- | --- |
 | Primary Codex session | Controller | Scope, decisions, integration, verification, commits | Whole task scope | Active |
-| `source_rules_audit` | Read-only explorer | Source instruction and orchestration audit | None | Running |
-| `gridrace_adaptation` | Read-only explorer | GridRace-specific authority adaptation | None | Running |
-| `tracking_commit_audit` | Read-only explorer | Tracking and commit convention audit | None | Running |
+| `source_rules_audit` | Read-only explorer | Source instruction and orchestration audit | None | Complete |
+| `gridrace_adaptation` | Read-only explorer | GridRace-specific authority adaptation | None | Complete |
+| `tracking_commit_audit` | Read-only explorer | Tracking and commit convention audit | None | Complete |
+| `implement_entrypoint_rules` | Bounded writer | `AGENTS.md` and thin rule shim | Assigned files only | Complete |
+| `implement_runbook` | Bounded writer | Canonical engineering runbook | `docs/ENGINEERING_RUNBOOK.md` | Complete |
+| `implement_decisions_backlog` | Bounded writer | Durable decisions and non-authoritative backlog | `docs/DECISIONS.md`, `docs/TODO.md` | Complete |
+| `final_authority_review` | Read-only reviewer | Integrated authority consistency and risk review | None | Complete; five findings closed |
 
 ## Review findings
 
-No findings yet. Record each finding with severity, evidence, disposition, action,
-and verification before closeout.
+| ID | Severity | Evidence | Disposition | Action | Verification |
+| --- | --- | --- | --- | --- | --- |
+| FAR-01 | High | `AGENTS.md` allowed explicitly assigned workers to use Git, conflicting with controller-only Git ownership. | Accepted | Removed the exception; bounded workers never mutate Git. | Closed by reviewer |
+| FAR-02 | Medium | Plan updates after every commit made a closeout commit's own hash impossible to record without another commit. | Accepted | Record the latest content checkpoint, label closeout “this commit,” and report its SHA in the handoff. | Closed by reviewer |
+| FAR-03 | Medium | `docs/TODO.md` required durable plans for every candidate despite the runbook's lighter inline path. | Accepted | Made durable-plan promotion conditional on the runbook threshold. | Closed by reviewer |
+| FAR-04 | Low | Angle-bracket path placeholders in the current command canon were not shell-safe copyable commands. | Accepted | Removed placeholder commands and explained scoped diff syntax in prose. | Closed by reviewer |
+| FAR-05 | Low | Completed audits conflicted with an unchecked reconciliation item. | Accepted | Marked the reconciliation checklist item complete. | Direct plan inspection |
 
 ## Verification record
 
 Risk: medium (workflow and authority changes only)
 
-Planned proof:
+| Surface | Command / check | Result |
+| --- | --- | --- |
+| Whitespace and source leakage | `rg` scans across the authority set | Passed; no trailing whitespace or source-specific tooling outside this plan's audit history |
+| Authority uniqueness | Count active-plan markers and runbook files | Passed; one active plan and one runbook |
+| Markdown structure | `/usr/bin/awk` fence count | Passed; 10 balanced fences |
+| Rule shim | `/usr/bin/ruby` YAML parse | Passed; `trigger: always_on` |
+| Local references | `/usr/bin/ruby` Markdown-link existence scan | Passed; all local targets exist |
+| Independent review | Fresh read-only review plus focused closure review | Passed; FAR-01 through FAR-05 closed with no remaining defects |
+| Staged change | `git diff --cached --check`, stat, status, and full diff inspection | Passed; six task-owned authority/tracking files, no unrelated paths |
 
-- `git diff --check`
-- parse any edited YAML with an available native or already-installed parser
-- verify every path and command named by an authority file exists or is explicitly
-  marked as future/not yet available
-- inspect `git status --short`, the diff stat, and the full task-owned diff
-- independent read-only review of the final authority set
+The first combined structural helper used unqualified `awk` and `ruby`, which were
+not on the non-login command path. The same checks passed with their absolute system
+paths. Product gates are not applicable because this task creates no executable
+Swift, Supabase, Deno, database, word-pack, or CI surface.
 
 ## Commit checkpoints
 
 | Commit | Purpose | Verification | Status |
 | --- | --- | --- | --- |
-| Pending | Repository instruction, workflow, and tracking baseline | Structural checks + independent review | Pending |
+| `758caef` | Track repository foundation work | `git diff --cached --check` | Complete |
+| This content commit | Repository instruction, workflow, and decision baseline | Structural checks + independent review | Ready to commit |
 
 ## Stop conditions
 
@@ -117,10 +130,10 @@ authorized, adding a dependency, or expanding this foundation task into product 
 
 ## Closeout checklist
 
-- [ ] All three audits reconciled.
-- [ ] Authority files implemented with no broken references.
-- [ ] Tracking snapshot and ledgers updated.
-- [ ] Independent review findings adjudicated.
-- [ ] Risk-matched verification passes.
+- [x] All three audits reconciled.
+- [x] Authority files implemented with no broken references.
+- [x] Tracking snapshot and ledgers updated.
+- [x] Independent review findings adjudicated.
+- [x] Risk-matched verification passes.
 - [ ] Task-owned files committed with conventional commit messages.
-- [ ] This plan marked `Historical` with the final commit and next product action.
+- [ ] This plan marked `Historical`; closeout SHA reported in the final handoff.
