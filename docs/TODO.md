@@ -11,7 +11,7 @@
 
 - Add the minimum Supabase migrations for authentication, profiles, matches, two
   players, one round, private words/secrets, guesses, and tested RLS boundaries.
-- Implement create, join, ready/start, idempotent guess submission, canonical match
+- Implement create, join, creator start, idempotent guess submission, canonical match
   snapshots, progress subscriptions, deadline finalization, reconnect, and reveal.
 - Prove on two separate clients that results converge, retries create one guess,
   reconnect restores the board, and normal client credentials cannot read the answer

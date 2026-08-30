@@ -23,18 +23,16 @@ prototype.
 - The repository has no other `Status: Active` plan.
 - The formal goal and live execution plan are active.
 - Wave 1 completed with no authority contradiction. Xcode 26.6, Swift 6.3.3, and
-  Deno 2.9.5 are available; the authorized iOS 26.5 simulator runtime download is
-  in progress.
+  Deno 2.9.5 are available; iOS 26.5 and standard simulator devices are installed.
 - The product gaps and artifact contracts are frozen below.
 - All Phase 0 authority and artifact write units are integrated in the worktree.
   Controller inspection and the deterministic word/manifest check pass. The shared
-  artifact checkpoint is committed; the authority checkpoint and independent
-  contract review remain.
+  artifact and authority checkpoints are committed. Independent contract review
+  found six issues; all accepted fixes passed focused closure with no new findings.
 
 ## Next integration action
 
-Dispatch a fresh independent read-only contract review against the committed Phase 0
-authority and artifact checkpoints.
+Freeze Phase 1 iOS and TypeScript write paths and dispatch the two disjoint writers.
 
 ## Scope
 
@@ -92,7 +90,7 @@ authority and artifact checkpoints.
 | P0-01 Product/rules/flow authorities | `rules_authority_audit` | `docs/product-spec.md`, `docs/game-rules.md`, `docs/screen-flow.md` | D-01, D-03 | Complete; controller-read |
 | P0-02 Architecture/privacy/ADR | `local_toolchain_audit` | `docs/architecture.md`, `docs/privacy-data-map.md`, `docs/adr/0001-native-swiftui-authoritative-supabase.md` | D-01 | Complete; controller-read |
 | P0-03 Word pack/vectors | `word_vector_audit` | `shared/word-packs/**`, `shared/test-vectors/game-rules-v1.json`, `scripts/check_word_pack.py` | D-03 and frozen shapes | Complete; checker passed |
-| P0-04 Contract review and checkpoint | Controller + fresh read-only reviewer | Integrated Phase 0 diff | P0-01..03 | Pending |
+| P0-04 Contract review and checkpoint | Controller + `phase0_contract_review` | Integrated Phase 0 diff | P0-01..03 | Complete; CR-01..06 closed |
 | P1-01 Native iOS implementation | Single bounded iOS writer | `ios/**` only | Phase 0 checkpoint | Pending |
 | P1-02 TypeScript evaluator | Separate bounded writer | Frozen TypeScript paths only | Phase 0 checkpoint | Pending |
 | P1-03 Integration and end-to-end proof | Primary orchestrator | Shared contracts, project, docs, Git | P1-01..02 | Pending |
@@ -123,9 +121,14 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 
 ## Review findings and dispositions
 
-No review findings yet. Material findings will be recorded with severity, exact
-location and evidence, disposition (`accepted`, `modified`, `rejected`, or
-`deferred`), action, and closure proof.
+| ID | Severity | Location and evidence | Disposition | Action | Verification |
+| --- | --- | --- | --- | --- | --- |
+| CR-01 | High | `docs/game-rules.md` named no owner for round-player transitions. | Accepted | Add transactional PostgreSQL/Edge Function owners for solve, fail, timeout, and forfeit. | Closed by focused reviewer |
+| CR-02 | Medium | `docs/product-spec.md` labeled beta-exit gates as conditions for beta start. | Accepted | Say the production beta exits only when all listed gates pass. | Closed by focused reviewer |
+| CR-03 | Medium | `docs/screen-flow.md` showed an undefined summary both before and after staged rows. | Accepted | Show only the answer before rows; keep summary after rows. | Closed by focused reviewer |
+| CR-04 | Medium | Product/architecture labels overstated Phase 1 as already implemented. | Accepted | Use neutral Phase 1 scope and local-architecture labels. | Closed by focused reviewer |
+| CR-05 | Low | `docs/TODO.md` reintroduced readiness despite the no-readiness decision. | Accepted | Replace `ready/start` with `creator start`. | Closed by focused reviewer |
+| CR-06 | Low | Plan omitted the authority commit and contained stale simulator/verification state. | Accepted | Refresh outcome, commit ledger, and unavailable-gate list. | Closed by focused reviewer |
 
 ## Verification evidence
 
@@ -142,6 +145,7 @@ location and evidence, disposition (`accepted`, `modified`, `rejected`, or
 | Word pack | `python3 scripts/check_word_pack.py` | Passed: 100 words and deterministic manifest |
 | Manifest hash | Independent SHA-256 comparison | Passed: `7c4bdd9281e3bf6d6b45013772c9bb104f0779499cb576c7384f5b649405cbcf` |
 | Phase 0 whitespace | `git diff --check` | Passed before checkpoint staging |
+| Phase 0 contract closure | Focused re-review of CR-01..06 | Passed: all closed, no new findings |
 
 ## Integrated commits
 
@@ -149,12 +153,13 @@ location and evidence, disposition (`accepted`, `modified`, `rejected`, or
 | --- | --- | --- |
 | `4caf8f0 docs: track phase 0 and 1 foundation` | Activate durable task tracking | Complete |
 | `ac8ebe2 test(rules): add shared evaluator contract` | Add the canonical vectors, word pack, manifest, and checker | Complete |
+| `5c60f7a docs: define GridRace product foundation` | Add and map the Phase 0 authority set | Complete |
 
 ## Unrun or unavailable gates
 
 - Xcode project discovery, build, XCTest, simulator launch, UI inspection, VoiceOver,
-  Reduce Motion, TypeScript tests, word-pack validation, manifest validation, and
-  final Git gates remain unrun because their implementation surfaces are not complete.
+  Reduce Motion, TypeScript tests, and final Git gates remain unrun because their
+  implementation surfaces are not complete.
 
 ## Stop conditions
 

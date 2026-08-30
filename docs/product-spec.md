@@ -67,14 +67,14 @@ Those are planned product responsibilities, not Phase 1 behavior.
 
 ## Screen responsibilities
 
-| Screen | Responsibility | Phase 1 status |
+| Screen | Responsibility | Phase 1 scope |
 | --- | --- | --- |
-| Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
+| Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Local target |
 | Home | Start create/join, resume an eligible match, and reach history/profile. | Future |
 | Create/join | Choose 1/3/5 rounds or enter a private link/code; explain that the roster locks at countdown. | Future |
 | Lobby | Show the private roster and invite controls; only the creator starts, with no readiness state. | Future |
-| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Local tutorial only |
-| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Minimal local prototype |
+| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Local target |
+| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Minimal local target |
 | Results | Show exact round/match placement and summary. | Local comparison only |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Show the signed-in player's completed matches under the eventual retention policy. | Future |
@@ -82,7 +82,7 @@ Those are planned product responsibilities, not Phase 1 behavior.
 
 ## Beta exit criteria
 
-The production beta starts only when:
+The production beta exits only when:
 
 - the complete MVP flow works for 2–8 players and all supported round counts;
 - server-owned answers, validation, feedback, timestamps, scoring, deadlines,

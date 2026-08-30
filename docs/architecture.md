@@ -3,7 +3,7 @@
 This document is the current architecture authority. It separates the local Phase 1
 tutorial from the production architecture selected for later phases.
 
-## Current system: Phase 1
+## Phase 1 local architecture
 
 Phase 1 is a native, local iPhone app built with Swift 6, SwiftUI, Observation, and
 Apple frameworks. Its deployment target is iOS 18. It contains no authentication,

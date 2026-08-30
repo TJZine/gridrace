@@ -89,7 +89,7 @@ about production round completion.
 
 Presentation order is deterministic:
 
-1. Show the answer and round summary.
+1. Show the answer.
 2. Order boards with the viewing player first, then opponents in stable roster
    order.
 3. Within each board, reveal accepted rows from top to bottom in original guess

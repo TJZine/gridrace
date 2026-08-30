@@ -84,6 +84,13 @@ These terminal states do not transition into one another. Connection is an
 orthogonal advisory state: disconnecting never forfeits, changes placement, or
 prevents a rostered player from recovering through a snapshot.
 
+| Player transition | Named production owner |
+| --- | --- |
+| `playing -> solved` | The transactional PostgreSQL guess command evaluates and accepts the correct guess atomically behind an authenticated Edge Function. |
+| `playing -> failed` | The same transactional PostgreSQL guess command accepts the sixth incorrect guess and marks failure atomically. |
+| `playing -> timedOut` | The idempotent PostgreSQL round finalizer marks remaining players timed out, whether reached from a command path or Cron safety invocation. |
+| `playing -> forfeited` | An authenticated Edge Function invokes a transactional PostgreSQL forfeit command for the caller's own active player record. |
+
 At `startsAt`, each rostered player is playing. A submission during countdown,
 at or after the deadline, or after the player becomes terminal is rejected
 without consuming a row. The same transaction that observes an elapsed deadline
