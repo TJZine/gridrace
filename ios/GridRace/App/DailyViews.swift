@@ -4,31 +4,36 @@ import UIKit
 enum AppRoute: Hashable {
     case daily
     case statistics
+    case account
     case settings
     case help
     case tutorial
 }
 
 struct DailyAppView: View {
-    @Bindable var daily: DailyClassicModel
-    @Bindable var tutorial: TutorialModel
+    @Bindable var app: DailyAccountCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
-            DailyHomeView(model: daily)
+            DailyHomeView(
+                model: app.daily,
+                account: app.account,
+                syncMessage: app.syncMessage
+            )
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
-                    case .daily: DailyGameView(model: daily)
-                    case .statistics: DailyStatisticsView(model: daily)
-                    case .settings: DailySettingsView(model: daily)
+                    case .daily: DailyGameView(model: app.daily)
+                    case .statistics: DailyStatisticsView(model: app.daily)
+                    case .account: accountDestination
+                    case .settings: DailySettingsView(model: app.daily)
                     case .help: DailyHelpView()
                     case .tutorial:
                         TutorialView(
-                            model: tutorial,
+                            model: app.tutorial,
                             hapticsEnabled: Binding(
-                                get: { daily.settings.hapticsEnabled },
-                                set: { daily.updateHaptics($0) }
+                                get: { app.daily.settings.hapticsEnabled },
+                                set: { app.daily.updateHaptics($0) }
                             )
                         )
                     }
@@ -36,19 +41,37 @@ struct DailyAppView: View {
         }
         .tint(Color.raceIndigo)
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { daily.refreshForCurrentDay() }
+            if phase == .active { app.foregrounded() }
         }
-        .task(id: daily.puzzle.id) {
-            let delay = max(1, daily.nextReset.timeIntervalSinceNow)
+        .task { await app.start() }
+        .task(id: app.daily.puzzle.id) {
+            let delay = max(1, app.daily.nextReset.timeIntervalSinceNow)
             try? await Task<Never, Never>.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            daily.refreshForCurrentDay()
+            app.daily.refreshForCurrentDay()
         }
+    }
+
+    private var accountDestination: some View {
+        AccountView(
+            model: app.account,
+            syncMessage: app.syncMessage,
+            retrySync: app.showsRetry ? { app.retrySync() } : nil,
+            canImportGuestHistory: app.canImportGuestHistory,
+            importGuestHistory: { app.importGuestHistory() },
+            skipGuestHistory: { app.skipGuestHistory() },
+            useCloudAttempt: app.conflicts.isEmpty
+                ? nil : { app.resolveFirstConflict(useCloud: true) },
+            keepDeviceAttempt: app.conflicts.isEmpty
+                ? nil : { app.resolveFirstConflict(useCloud: false) }
+        )
     }
 }
 
 struct DailyHomeView: View {
     @Bindable var model: DailyClassicModel
+    @Bindable var account: AccountModel
+    let syncMessage: String?
 
     var body: some View {
         ZStack {
@@ -58,6 +81,7 @@ struct DailyHomeView: View {
                     brandHeader
                     dailyCard
                     statisticsStrip
+                    accountCard
                     secondaryRoutes
                 }
                 .frame(maxWidth: 620)
@@ -165,6 +189,42 @@ struct DailyHomeView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var accountCard: some View {
+        NavigationLink(value: AppRoute.account) {
+            HStack(spacing: 14) {
+                if let profile = account.profile {
+                    PlayerAvatarView(seed: profile.avatarSeed, size: 48)
+                } else {
+                    Image(systemName: account.isSignedIn ? "person.crop.circle" : "person.crop.circle.badge.plus")
+                        .font(.title2)
+                        .frame(width: 48, height: 48)
+                        .background(Color.raceIndigo.opacity(0.1), in: Circle())
+                        .foregroundStyle(Color.raceIndigo)
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(account.profile?.displayName ?? "GridRace account")
+                        .font(.headline)
+                    Text(account.isSignedIn
+                        ? (syncMessage ?? "Save and sync your progress")
+                        : "Save and sync your progress")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.58), in: RoundedRectangle(cornerRadius: 18))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(account.isSignedIn ? "Manage your profile and synchronization" : "Sign in to save your progress")
     }
 }
 

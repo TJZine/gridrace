@@ -1,0 +1,306 @@
+import AuthenticationServices
+import SwiftUI
+
+struct AccountView: View {
+    @Bindable var model: AccountModel
+    var syncMessage: String?
+    var retrySync: (() -> Void)?
+    var canImportGuestHistory = false
+    var importGuestHistory: (() -> Void)?
+    var skipGuestHistory: (() -> Void)?
+    var useCloudAttempt: (() -> Void)?
+    var keepDeviceAttempt: (() -> Void)?
+
+    @State private var rawAppleNonce: String?
+    @State private var editingProfile = false
+    @State private var showingDeleteConfirmation = false
+    @State private var showingImportConfirmation = false
+    @State private var actionTask: Task<Void, Never>?
+    #if DEBUG
+    @State private var localEmail = ""
+    @State private var localPassword = ""
+    #endif
+
+    var body: some View {
+        ZStack {
+            Color.raceBackground.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    if !model.isConfigured {
+                        unavailableCard
+                    } else if model.isRestoring {
+                        ProgressView("Restoring account")
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                    } else if model.isSignedIn {
+                        signedInContent
+                    } else {
+                        signedOutContent
+                    }
+
+                    if let error = model.errorMessage {
+                        errorCard(error)
+                    }
+                }
+                .frame(maxWidth: 560)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle("Account")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await model.start() }
+        .alert("Delete your GridRace account?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete account", role: .destructive) { run { await model.deleteAccount() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account and synchronized GridRace data. This can't be undone.")
+        }
+        .alert("Add local Daily Classic history?", isPresented: $showingImportConfirmation) {
+            Button("Add to account") { importGuestHistory?() }
+            Button("Not now", role: .cancel) { skipGuestHistory?() }
+        } message: {
+            Text("Your local results will be saved as personal history. They won't count as verified competitive results.")
+        }
+    }
+
+    private var unavailableCard: some View {
+        ContentUnavailableView(
+            "Accounts unavailable",
+            systemImage: "person.crop.circle.badge.exclamationmark",
+            description: Text("Account configuration is missing. Daily Classic still works normally on this device.")
+        )
+    }
+
+    private var signedOutContent: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 52, weight: .semibold))
+                .foregroundStyle(Color.raceIndigo)
+                .accessibilityHidden(true)
+            Text("Save and sync your progress")
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
+            Text("Keep playing without an account, or sign in to restore your Daily Classic history on your devices.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            SignInWithAppleButton(.signIn) { request in
+                do {
+                    let nonce = try AppleNonce.generate()
+                    rawAppleNonce = nonce
+                    request.nonce = AppleNonce.sha256(nonce)
+                } catch {
+                    rawAppleNonce = nil
+                    model.noncePreparationFailed()
+                }
+            } onCompletion: { result in
+                handleAppleAuthorization(result)
+            }
+            .signInWithAppleButtonStyle(.black)
+            .frame(height: 50)
+            .disabled(model.isWorking)
+            .accessibilityHint("Signs in to save and synchronize your personal GridRace progress")
+
+            #if DEBUG
+            DisclosureGroup("Local development sign in") {
+                VStack(spacing: 12) {
+                    TextField("Test user email", text: $localEmail)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.username)
+                    SecureField("Test user password", text: $localPassword)
+                        .textContentType(.password)
+                    Button("Sign in to local Supabase") {
+                        let email = localEmail
+                        let password = localPassword
+                        run { await model.signInForLocalTesting(email: email, password: password) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking)
+                }
+                .textFieldStyle(.roundedBorder)
+                .padding(.top, 8)
+            }
+            #endif
+        }
+        .padding(24)
+        .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 24))
+    }
+
+    @ViewBuilder
+    private var signedInContent: some View {
+        if let profile = model.profile {
+            VStack(spacing: 18) {
+                PlayerAvatarView(seed: model.avatarSeedDraft, size: 92)
+                if editingProfile || profile.needsSetup {
+                    profileEditor(isInitialSetup: profile.needsSetup)
+                } else {
+                    Text(profile.displayName)
+                        .font(.title2.bold())
+                    Label("Signed in", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Button("Edit profile") { editingProfile = true }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
+            .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 24))
+
+            if let syncMessage {
+                syncCard(syncMessage)
+            }
+
+            if canImportGuestHistory, importGuestHistory != nil {
+                Button {
+                    showingImportConfirmation = true
+                } label: {
+                    Label("Add local Daily Classic history", systemImage: "arrow.up.doc")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            VStack(spacing: 12) {
+                Button("Sign out") { run { await model.signOut() } }
+                    .disabled(model.isWorking)
+                Button("Delete account", role: .destructive) {
+                    showingDeleteConfirmation = true
+                }
+                .disabled(model.isWorking)
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            VStack(spacing: 14) {
+                ProgressView()
+                Text("Loading your profile")
+                Button("Try again") { run { await model.retryProfile() } }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isWorking)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+        }
+    }
+
+    private func profileEditor(isInitialSetup: Bool) -> some View {
+        VStack(spacing: 14) {
+            Text(isInitialSetup ? "Choose your player name" : "Edit profile")
+                .font(.title3.bold())
+            TextField("Player name", text: $model.displayNameDraft)
+                .textInputAutocapitalization(.words)
+                .textContentType(.nickname)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityHint("Use 2 to 16 letters, numbers, spaces, apostrophes, or hyphens")
+            Button("Try another avatar") { model.randomizeAvatar() }
+                .buttonStyle(.bordered)
+            HStack {
+                if !isInitialSetup {
+                    Button("Cancel") {
+                        model.displayNameDraft = model.profile?.displayName ?? ""
+                        model.avatarSeedDraft = model.profile?.avatarSeed ?? model.avatarSeedDraft
+                        editingProfile = false
+                    }
+                }
+                Button("Save") {
+                    run {
+                        await model.saveProfile()
+                        if model.errorMessage == nil { editingProfile = false }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isWorking)
+            }
+        }
+    }
+
+    private func syncCard(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(Color.raceIndigo)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let retrySync {
+                    Button("Retry", action: retrySync)
+                        .buttonStyle(.bordered)
+                }
+            }
+            if let useCloudAttempt, let keepDeviceAttempt {
+                VStack(spacing: 8) {
+                    Button("Use synced attempt", action: useCloudAttempt)
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    Button("Keep this device", action: keepDeviceAttempt)
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.raceIndigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func errorCard(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .accessibilityHidden(true)
+            Text(message)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Dismiss") { model.clearError() }
+                .font(.callout)
+        }
+        .padding(14)
+        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func handleAppleAuthorization(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let error):
+            rawAppleNonce = nil
+            model.appleAuthorizationFailed(error)
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8),
+                  let nonce = rawAppleNonce
+            else {
+                rawAppleNonce = nil
+                model.noncePreparationFailed()
+                return
+            }
+            rawAppleNonce = nil
+            run { await model.signInWithApple(idToken: idToken, rawNonce: nonce) }
+        }
+    }
+
+    private func run(_ operation: @escaping @MainActor () async -> Void) {
+        actionTask?.cancel()
+        actionTask = Task { await operation() }
+    }
+}
+
+struct PlayerAvatarView: View {
+    let seed: String
+    var size: CGFloat = 56
+
+    private let symbols = [
+        "hare.fill", "tortoise.fill", "bird.fill", "fish.fill",
+        "ladybug.fill", "pawprint.fill", "leaf.fill", "bolt.fill"
+    ]
+
+    var body: some View {
+        let index = seed.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) % symbols.count }
+        Image(systemName: symbols[index])
+            .font(.system(size: size * 0.42, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(
+                Color(hue: Double(index) / Double(symbols.count), saturation: 0.62, brightness: 0.72),
+                in: Circle()
+            )
+            .accessibilityLabel("Generated player avatar")
+    }
+}

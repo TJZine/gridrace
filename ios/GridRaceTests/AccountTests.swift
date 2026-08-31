@@ -1,0 +1,340 @@
+import Foundation
+import XCTest
+@testable import GridRace
+
+final class AppleNonceTests: XCTestCase {
+    func testNonceUsesSecureAllowedShapeAndRequestedLength() throws {
+        let nonce = try AppleNonce.generate(length: 48)
+        let allowed = Set("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        XCTAssertEqual(nonce.count, 48)
+        XCTAssertTrue(nonce.allSatisfy(allowed.contains))
+    }
+
+    func testSHA256MatchesKnownValue() {
+        XCTAssertEqual(
+            AppleNonce.sha256("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        )
+    }
+}
+
+final class PlayerProfileTests: XCTestCase {
+    func testDisplayNameNormalizationMatchesDatabaseBoundary() {
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("  Alex-7  "), "Alex-7")
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("O'Brien"), "O'Brien")
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("A  B"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("-Alex"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex_7"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
+    }
+
+    func testGeneratedProfileNeedsInitialSetup() {
+        let generated = profile(name: "Player 12abef")
+        XCTAssertTrue(generated.needsSetup)
+        XCTAssertFalse(profile(name: "Player One").needsSetup)
+    }
+
+    private func profile(name: String) -> PlayerProfile {
+        PlayerProfile(
+            userID: UUID(),
+            displayName: name,
+            avatarSeed: "seed",
+            createdAt: .distantPast,
+            updatedAt: .distantPast
+        )
+    }
+}
+
+final class SupabaseAccountConfigurationTests: XCTestCase {
+    func testMissingOrMalformedConfigurationDisablesAccounts() {
+        XCTAssertNil(SupabaseAccountService.Configuration(urlString: nil, publishableKey: "key"))
+        XCTAssertNil(SupabaseAccountService.Configuration(urlString: "https://example.test", publishableKey: ""))
+        XCTAssertNil(SupabaseAccountService.Configuration(urlString: "file:///tmp/backend", publishableKey: "key"))
+    }
+
+    func testHTTPConfigurationSupportsLocalSupabase() {
+        XCTAssertEqual(
+            SupabaseAccountService.Configuration(
+                urlString: "http://127.0.0.1:54321",
+                publishableKey: "publishable"
+            )?.projectURL.absoluteString,
+            "http://127.0.0.1:54321"
+        )
+    }
+}
+
+@MainActor
+final class DailyAccountCoordinatorTests: XCTestCase {
+    func testAccountActivationFailureNeverDisplaysGuestDataAndRetryReopensCache() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceAccountActivationTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+            urlString: "http://127.0.0.1:54321",
+            publishableKey: "local-test-key"
+        ))
+        var attempts = 0
+        let coordinator = try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main),
+            tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore,
+            accountService: SupabaseAccountService(configuration: configuration),
+            accountStoreFactory: { userID in
+                attempts += 1
+                if attempts == 1 { throw TestError.failed }
+                return AccountDailyClassicStore(rootDirectory: root, userID: userID)
+            }
+        )
+        coordinator.daily.typeLetter("A")
+        XCTAssertEqual(coordinator.daily.homeStatus, .inProgress(0))
+
+        coordinator.sessionChanged(to: UUID())
+
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+        XCTAssertEqual(coordinator.syncStatus, .failed(.invalidData))
+
+        coordinator.retrySync()
+
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+    }
+}
+
+@MainActor
+final class AccountModelTests: XCTestCase {
+    func testSessionRestorationLoadsOnlyTheOwnersProfile() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.restoredSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        let model = AccountModel(service: service)
+
+        await model.start()
+
+        XCTAssertEqual(model.session?.userID, userID)
+        XCTAssertEqual(model.profile?.displayName, "Alex")
+        XCTAssertEqual(service.loadedUserIDs, [userID])
+    }
+
+    func testAppleSignInPassesRawNonceAndLoadsProfile() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Taylor")
+        let model = AccountModel(service: service)
+
+        await model.signInWithApple(idToken: "identity-token", rawNonce: "raw-nonce")
+
+        XCTAssertEqual(service.appleCredentials?.idToken, "identity-token")
+        XCTAssertEqual(service.appleCredentials?.nonce, "raw-nonce")
+        XCTAssertEqual(model.profile?.displayName, "Taylor")
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testInvalidProfileIsRejectedBeforeNetwork() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        let model = AccountModel(service: service)
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        model.displayNameDraft = "A"
+
+        await model.saveProfile()
+
+        XCTAssertEqual(service.profileUpdateCount, 0)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testProfileEditingAndAvatarRandomizationPersistTogether() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        let model = AccountModel(service: service)
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        let oldSeed = model.avatarSeedDraft
+        model.displayNameDraft = "Sam-2"
+        model.randomizeAvatar()
+        service.updatedProfile = profile(
+            userID: userID,
+            name: "Sam-2",
+            avatarSeed: model.avatarSeedDraft
+        )
+
+        await model.saveProfile()
+
+        XCTAssertNotEqual(model.avatarSeedDraft, oldSeed)
+        XCTAssertEqual(service.lastProfileUpdate?.name, "Sam-2")
+        XCTAssertEqual(service.lastProfileUpdate?.seed, model.avatarSeedDraft)
+        XCTAssertEqual(model.profile?.displayName, "Sam-2")
+    }
+
+    func testDeletionCallbackRunsOnlyAfterServerSuccess() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        var deletedUserID: UUID?
+        let model = AccountModel(
+            service: service,
+            didDeleteAccount: { deletedUserID = $0 }
+        )
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+
+        service.deleteError = TestError.failed
+        await model.deleteAccount()
+        XCTAssertNil(deletedUserID)
+        XCTAssertEqual(model.session?.userID, userID)
+
+        service.deleteError = nil
+        await model.deleteAccount()
+        XCTAssertEqual(deletedUserID, userID)
+        XCTAssertNil(model.session)
+    }
+
+    func testDeletionReportsLocalCleanupFailureAfterServerSuccess() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        var isolatedSession = false
+        let model = AccountModel(
+            service: service,
+            didChangeSession: { if $0 == nil { isolatedSession = true } },
+            didDeleteAccount: { _ in throw TestError.failed }
+        )
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+
+        await model.deleteAccount()
+
+        XCTAssertNil(model.session)
+        XCTAssertTrue(isolatedSession)
+        XCTAssertTrue(model.errorMessage?.contains("local data") == true)
+    }
+
+    func testSignOutCallbackReceivesAccountBeforeStateIsCleared() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        service.loadedProfile = profile(userID: userID, name: "Alex")
+        var signedOutUserID: UUID?
+        let model = AccountModel(service: service, didSignOut: { signedOutUserID = $0 })
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+
+        await model.signOut()
+
+        XCTAssertEqual(signedOutUserID, userID)
+        XCTAssertNil(model.session)
+        XCTAssertNil(model.profile)
+    }
+
+    func testCancellationAlwaysEndsLoadingWithoutPresentingAnError() async {
+        let service = AccountServiceMock()
+        service.signInDelay = .seconds(60)
+        let model = AccountModel(service: service)
+
+        let task = Task { await model.signInWithApple(idToken: "token", rawNonce: "nonce") }
+        await Task.yield()
+        task.cancel()
+        await task.value
+
+        XCTAssertFalse(model.isWorking)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.session)
+    }
+
+    private func session(_ userID: UUID) -> AccountSession {
+        AccountSession(userID: userID, expiresAt: Date().addingTimeInterval(3_600))
+    }
+
+    private func profile(
+        userID: UUID,
+        name: String,
+        avatarSeed: String = "avatar-seed"
+    ) -> PlayerProfile {
+        PlayerProfile(
+            userID: userID,
+            displayName: name,
+            avatarSeed: avatarSeed,
+            createdAt: .distantPast,
+            updatedAt: .distantPast
+        )
+    }
+}
+
+@MainActor
+private final class AccountServiceMock: AccountServicing {
+    private let stream: AsyncStream<AccountSession?>
+    private let continuation: AsyncStream<AccountSession?>.Continuation
+
+    var restoredSession: AccountSession?
+    var refreshedSession: AccountSession?
+    var appleSession: AccountSession?
+    var loadedProfile: PlayerProfile?
+    var updatedProfile: PlayerProfile?
+    var deleteError: Error?
+    var signInDelay: Duration?
+    var appleCredentials: (idToken: String, nonce: String)?
+    var loadedUserIDs: [UUID] = []
+    var profileUpdateCount = 0
+    var lastProfileUpdate: (name: String, seed: String)?
+
+    init() {
+        let pair = AsyncStream<AccountSession?>.makeStream()
+        stream = pair.stream
+        continuation = pair.continuation
+    }
+
+    var authStateChanges: AsyncStream<AccountSession?> { stream }
+
+    func restoreSession() async throws -> AccountSession? { restoredSession }
+    func refreshSession() async throws -> AccountSession? { refreshedSession }
+
+    func signInWithApple(idToken: String, rawNonce: String) async throws -> AccountSession {
+        appleCredentials = (idToken, rawNonce)
+        if let signInDelay { try await Task.sleep(for: signInDelay) }
+        guard let appleSession else { throw TestError.failed }
+        return appleSession
+    }
+
+    func signInForLocalTesting(email: String, password: String) async throws -> AccountSession {
+        guard let appleSession else { throw TestError.failed }
+        return appleSession
+    }
+
+    func loadProfile(userID: UUID) async throws -> PlayerProfile {
+        loadedUserIDs.append(userID)
+        guard let loadedProfile else { throw TestError.failed }
+        return loadedProfile
+    }
+
+    func updateProfile(
+        userID: UUID,
+        displayName: String,
+        avatarSeed: String
+    ) async throws -> PlayerProfile {
+        profileUpdateCount += 1
+        lastProfileUpdate = (displayName, avatarSeed)
+        guard let updatedProfile else { throw TestError.failed }
+        return updatedProfile
+    }
+
+    func signOut() async throws {}
+
+    func deleteAccount() async throws {
+        if let deleteError { throw deleteError }
+    }
+
+    func emit(_ session: AccountSession?) {
+        continuation.yield(session)
+    }
+}
+
+private enum TestError: Error {
+    case failed
+}

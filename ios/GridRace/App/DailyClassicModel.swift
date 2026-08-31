@@ -116,6 +116,7 @@ final class DailyClassicModel {
     private let defaults: UserDefaults
     private let now: @MainActor () -> Date
     private var pendingTerminalResult: DailyCompletedResult?
+    @ObservationIgnored var acceptedStateChanged: (@MainActor () -> Void)?
 
     init(
         pack: DailyWordPack,
@@ -285,6 +286,7 @@ final class DailyClassicModel {
         } else {
             persistProgress()
         }
+        acceptedStateChanged?()
     }
 
     func updateHaptics(_ enabled: Bool) {
@@ -302,6 +304,7 @@ final class DailyClassicModel {
         settings.hardModeEnabled = enabled
         persistSettings()
         persistProgress()
+        acceptedStateChanged?()
     }
 
     private func persistProgress() {

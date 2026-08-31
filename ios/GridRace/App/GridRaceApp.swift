@@ -10,8 +10,7 @@ struct GridRaceApp: App {
 }
 
 private struct AppRootView: View {
-    @State private var dailyModel: DailyClassicModel?
-    @State private var tutorialModel: TutorialModel?
+    @State private var appModel: DailyAccountCoordinator?
     @State private var loadFailure: LoadFailure?
 
     private enum LoadFailure {
@@ -30,8 +29,8 @@ private struct AppRootView: View {
 
     var body: some View {
         Group {
-            if let dailyModel, let tutorialModel {
-                DailyAppView(daily: dailyModel, tutorial: tutorialModel)
+            if let appModel {
+                DailyAppView(app: appModel)
             } else if let loadFailure {
                 VStack(spacing: 16) {
                     ContentUnavailableView(
@@ -75,11 +74,11 @@ private struct AppRootView: View {
 
         do {
             let store = try DailyClassicStore.applicationSupport()
-            dailyModel = try DailyClassicModel(
-                pack: dailyPack,
-                store: store
+            appModel = try DailyAccountCoordinator(
+                dailyPack: dailyPack,
+                tutorialPack: tutorialPack,
+                guestStore: store
             )
-            tutorialModel = TutorialModel(acceptedWords: Set(tutorialPack.words))
         } catch DailyClassicError.puzzleUnavailable {
             loadFailure = .bundledData
         } catch {
