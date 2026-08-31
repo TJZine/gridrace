@@ -38,13 +38,17 @@ recovery, deadline finalization, and shared reveal.
   deletion/anonymization, fixed rate limits, debug-auth boundary, snapshot v1, safe
   match-row Realtime signals, command envelopes, and negative/concurrency proof are
   frozen. The missing display-name contract is now explicit in the live API authority.
+- P2-01 is integrated: the exact Supabase CLI 2.116.0 lockfile installs, generated
+  local config pins Postgres 17 with public-table auto-exposure disabled, and a
+  standard-library generator proves the derived 100-row private word seed has not
+  drifted from the canonical JSON artifact.
 - No Supabase project has been linked, reset, migrated, or deployed. No remote
   Supabase state has been read or mutated.
 
 ## Next integration action
 
-Bootstrap the repository-pinned local Supabase toolchain and deterministic canonical
-word seed, then prove their exact install/version/drift commands before schema work.
+Implement the single forward migration and database tests for schema, commands,
+private answer handling, grants/RLS, concurrency, finalization, and deletion.
 
 ## Scope
 
@@ -152,7 +156,7 @@ auth must compile out of Release and use independent sessions without admin acce
 | D-03 iOS integration audit | `ios_audit` | Read-only iOS/project/official docs | Required reads | Complete: SDK 2.55.1 and minimum seams frozen |
 | D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | Complete: wire/privacy/concurrency/two-client proof frozen |
 | C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete; controller diff audit pending checkpoint |
-| P2-01 Local toolchain and deterministic seed | Assigned after freeze | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Pending |
+| P2-01 Local toolchain and deterministic seed | `backend_audit` | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Complete; controller verified |
 | P2-02 Schema, transactions, grants, RLS, database tests | Assigned after freeze | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Pending |
 | P2-03 Edge command functions and focused tests | Assigned after SQL freeze | `supabase/functions/**` only | P2-02 SQL/API freeze | Pending |
 | P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Pending |
@@ -245,6 +249,10 @@ Allowed dispositions: `accepted`, `modified`, `rejected`, or `deferred`.
 | Simulator discovery | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations` | Passed: live UUID recorded above |
 | iOS tests | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-baseline-test test` | Passed: 16 tests, 0 failed |
 | iOS clean build | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-baseline-build clean build` | Passed |
+| Package install | `npm ci --no-audit --no-fund` | Passed: 8 packages from lockfile |
+| Pinned Supabase CLI | `npx supabase --version` | Passed: `2.116.0` |
+| Derived word seed | `npm run check:seed` | Passed: 100 canonical rows |
+| Supabase config | Python 3 `tomllib` assertions for Postgres 17, API schemas, auto-exposure, and seed path | Passed |
 
 ## Integrated commits
 
@@ -253,6 +261,8 @@ Phase 2/3 commits to date:
 | Commit | Purpose | Status |
 | --- | --- | --- |
 | `70c0339 docs: track phase 2 and 3 live slice` | Activate durable task tracking | Complete |
+| `357af25 docs: define phase 2 and 3 live contract` | Freeze phase naming, trust boundaries, commands, snapshot, deletion, and proof | Complete |
+| This commit | Pin the local Supabase CLI and deterministic canonical word seed | Pending checkpoint creation |
 
 Remaining intended checkpoints are adjusted only when the real dependency graph
 makes units inseparable:

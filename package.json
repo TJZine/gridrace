@@ -1,0 +1,14 @@
+{
+  "name": "gridrace",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check:seed": "python3 scripts/generate_supabase_seed.py",
+    "generate:seed": "python3 scripts/generate_supabase_seed.py --write"
+  },
+  "devDependencies": {
+    "supabase": "2.116.0"
+  }
+}
