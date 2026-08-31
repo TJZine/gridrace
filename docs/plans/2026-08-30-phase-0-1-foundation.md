@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: GridRace Phase 0 product baseline and Phase 1 local SwiftUI foundation
 Owner: Primary orchestrator
 Started: 2026-08-30
@@ -29,10 +29,25 @@ prototype.
   Controller inspection and the deterministic word/manifest check pass. The shared
   artifact and authority checkpoints are committed. Independent contract review
   found six issues; all accepted fixes passed focused closure with no new findings.
+- Phase 0 is complete. Both runtime evaluators consume the canonical vectors and
+  pass their focused rule and duplicate-letter properties.
+- The native iOS 18 / Swift 6 app, local tutorial race, board, keyboard, absolute
+  countdown, clue-free opponent progress, and deterministic reveal are committed.
+  A clean build and 16 focused XCTest cases pass on an iOS 26.5 iPhone 17 Pro
+  simulator.
+- The installed app was exercised end to end. VoiceOverTouch exposed meaningful
+  opponent and control announcements, Reduce Motion produced the complete reveal
+  immediately, and the largest accessibility text size plus Increased Contrast
+  remained usable through the surrounding scroll layout.
+- The maintainer waived the fresh final review because it would repeat the focused
+  rule, XCTest, simulator, VoiceOver, and Reduce Motion proof already completed.
+- Phase 0 and Phase 1 exit criteria are complete. The latest content checkpoint is
+  `65c9a70 docs: record phase 1 verification`; tracker closeout is this commit.
 
 ## Next integration action
 
-Freeze Phase 1 iOS and TypeScript write paths and dispatch the two disjoint writers.
+Create the Phase 2 live-slice plan and freeze its two-player, one-round authenticated
+command/snapshot contract before adding Supabase migrations or client networking.
 
 ## Scope
 
@@ -91,11 +106,11 @@ Freeze Phase 1 iOS and TypeScript write paths and dispatch the two disjoint writ
 | P0-02 Architecture/privacy/ADR | `local_toolchain_audit` | `docs/architecture.md`, `docs/privacy-data-map.md`, `docs/adr/0001-native-swiftui-authoritative-supabase.md` | D-01 | Complete; controller-read |
 | P0-03 Word pack/vectors | `word_vector_audit` | `shared/word-packs/**`, `shared/test-vectors/game-rules-v1.json`, `scripts/check_word_pack.py` | D-03 and frozen shapes | Complete; checker passed |
 | P0-04 Contract review and checkpoint | Controller + `phase0_contract_review` | Integrated Phase 0 diff | P0-01..03 | Complete; CR-01..06 closed |
-| P1-01 Native iOS implementation | Single bounded iOS writer | `ios/**` only | Phase 0 checkpoint | Pending |
-| P1-02 TypeScript evaluator | Separate bounded writer | Frozen TypeScript paths only | Phase 0 checkpoint | Pending |
-| P1-03 Integration and end-to-end proof | Primary orchestrator | Shared contracts, project, docs, Git | P1-01..02 | Pending |
-| R-01 Final independent review | Fresh read-only reviewer | Final diff and proof packet; no writes | Integrated Phase 1 | Pending |
-| C-01 Closeout | Primary orchestrator | Findings, plan, authorities, commits, handoff | R-01 closure | Pending |
+| P1-01 Native iOS implementation | `local_toolchain_audit`, integrated by controller after worker limit | `ios/**` only | Phase 0 checkpoint | Complete; committed and proved |
+| P1-02 TypeScript evaluator | `word_vector_audit` | `rules/typescript/evaluator.ts`, `rules/typescript/evaluator_test.ts` | Phase 0 checkpoint | Complete; committed and proved |
+| P1-03 Integration and end-to-end proof | Primary orchestrator | Shared contracts, project, docs, Git | P1-01..02 | Complete; simulator exercised |
+| R-01 Final independent review | `final_phase_review` | Final repository and proof packet; no writes | Integrated Phase 1 | Waived by maintainer before duplicate review work |
+| C-01 Closeout | Primary orchestrator | Findings, plan, authorities, commits, handoff | Verified Phase 1 | Complete in this commit |
 
 Only the primary orchestrator edits this plan, shared contracts after freeze, the
 Xcode project/composition root during integration, the Git index, or commits. Workers
@@ -118,6 +133,7 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 | DEC-11 | Validation precedence is non-ASCII, ASCII lowercase mapping, invalid length, invalid character, then unknown word; invalid input consumes no row and solve beats sixth-guess failure. | Accepted | Stable cross-runtime error contract |
 | BLK-01 | No simulator runtime was installed at discovery time. | Resolved | `xcodebuild -downloadPlatform iOS` installed iOS 26.5 and standard devices |
 | BLK-02 | Canonical vector and word layouts were unfrozen. | Resolved | DEC-02, DEC-09, and DEC-11 |
+| BLK-03 | The bounded iOS writer reached its usage limit before returning a proof packet. | Resolved | Controller read every produced file, made the final grammar fix, ran all iOS gates, and performed simulator inspection |
 
 ## Review findings and dispositions
 
@@ -129,6 +145,7 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 | CR-04 | Medium | Product/architecture labels overstated Phase 1 as already implemented. | Accepted | Use neutral Phase 1 scope and local-architecture labels. | Closed by focused reviewer |
 | CR-05 | Low | `docs/TODO.md` reintroduced readiness despite the no-readiness decision. | Accepted | Replace `ready/start` with `creator start`. | Closed by focused reviewer |
 | CR-06 | Low | Plan omitted the authority commit and contained stale simulator/verification state. | Accepted | Refresh outcome, commit ledger, and unavailable-gate list. | Closed by focused reviewer |
+| FR-01 | — | Fresh final review would repeat the same evaluator, XCTest, simulator, VoiceOver, and Reduce Motion proof. | Waived by maintainer | Stop the read-only reviewer and close from controller evidence. | Reviewer interrupted before findings |
 
 ## Verification evidence
 
@@ -146,6 +163,18 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 | Manifest hash | Independent SHA-256 comparison | Passed: `7c4bdd9281e3bf6d6b45013772c9bb104f0779499cb576c7384f5b649405cbcf` |
 | Phase 0 whitespace | `git diff --check` | Passed before checkpoint staging |
 | Phase 0 contract closure | Focused re-review of CR-01..06 | Passed: all closed, no new findings |
+| TypeScript format | `deno fmt --check rules/typescript` | Passed: 2 files |
+| TypeScript lint | `deno lint rules/typescript` | Passed: 2 files |
+| TypeScript type-check | `deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts` | Passed |
+| TypeScript rules | `deno test --allow-read rules/typescript/evaluator_test.ts` | Passed: 3 tests, 0 failed; all vectors and 59,049 duplicate pairs |
+| Xcode project | `xcodebuild -project ios/GridRace.xcodeproj -list` | Passed: `GridRace` app/test targets and shared `GridRace` scheme |
+| Simulator destinations | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations` plus `xcrun simctl list devices available` | Passed: iOS 26.5 iPhone 17 Pro `1BCA3F5A-3228-4888-909E-ED86AE627221` |
+| Swift rules and feature state | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-test test` | Passed: 16 tests, 0 failed |
+| Clean iOS build | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-build clean build` | Passed: clean and build succeeded |
+| Simulator install/launch | `xcrun simctl install ... GridRace.app`; `xcrun simctl launch ... com.example.GridRace` | Passed on iPhone 17 Pro; intro, countdown, race, solved reveal, and replay visually inspected |
+| VoiceOver | Enabled `VoiceOverTouchEnabled`, started `user/501/com.apple.VoiceOverTouch`, and inspected the live simulator AX tree during a race | Passed: countdown, opponent names/counts/states/connectivity, board, keyboard, haptics, reveal, and replay exposed; opponent example announced equivalently |
+| Reduce Motion | Enabled `ReduceMotionEnabled`, solved the tutorial, and inspected the immediate reveal AX tree | Passed: all local/Alex/Sam boards and summary were present immediately without staged delay |
+| Dynamic Type / contrast | Set `content_size accessibility-extra-extra-large` and `increase_contrast enabled`, relaunched, and inspected the surrounding scroll layout | Passed: content remained legible and reachable by scrolling |
 
 ## Integrated commits
 
@@ -154,12 +183,23 @@ do not nest delegation, change Git state, or write outside their explicit bounda
 | `4caf8f0 docs: track phase 0 and 1 foundation` | Activate durable task tracking | Complete |
 | `ac8ebe2 test(rules): add shared evaluator contract` | Add the canonical vectors, word pack, manifest, and checker | Complete |
 | `5c60f7a docs: define GridRace product foundation` | Add and map the Phase 0 authority set | Complete |
+| `95ed837 docs: close phase 0 contract review` | Apply and close CR-01 through CR-06 | Complete |
+| `b741095 feat(rules): add TypeScript evaluator` | Add and prove the future server-side pure evaluator | Complete |
+| `c3fd854 feat(ios): add local tutorial race` | Add the native project, app, pure rules, feature state, views, and focused tests | Complete |
+| `65c9a70 docs: record phase 1 verification` | Promote proved commands and mark Phase 1 current behavior | Complete; latest content checkpoint |
+| This commit | Close the historical execution plan | Complete |
 
 ## Unrun or unavailable gates
 
-- Xcode project discovery, build, XCTest, simulator launch, UI inspection, VoiceOver,
-  Reduce Motion, TypeScript tests, and final Git gates remain unrun because their
-  implementation surfaces are not complete.
+- No physical iPhone or iPad run was requested or available; simulator evidence is
+  the Phase 1 device proof.
+- Bold Text is handled through SwiftUI's native legibility environment and source
+  inspection; it was not toggled independently during simulator inspection.
+- Supabase, database, RLS, authentication, networking, Edge Function, APNs, and CI
+  gates are unavailable because those Phase 2+ surfaces intentionally do not exist.
+- Fresh final review was explicitly waived by the maintainer to avoid repeating
+  unchanged proof. The earlier Phase 0 contract review remains the independent
+  contract check.
 
 ## Stop conditions
 
@@ -170,12 +210,13 @@ resolved inside the requested scope.
 
 ## Closeout state
 
-- [ ] Phase 0 exit criteria all have evidence.
-- [ ] Phase 1 exit criteria all have evidence.
-- [ ] Phase 0 contract review findings are adjudicated.
-- [ ] Final independent review findings are adjudicated and closed.
-- [ ] Successful exact commands are promoted into the runbook.
-- [ ] Content checkpoints are committed with conventional subjects.
-- [ ] The working tree is clean and no push is performed.
-- [ ] This plan is marked `Historical`, names the latest content commit, and records
+- [x] Phase 0 exit criteria all have evidence.
+- [x] Phase 1 exit criteria all have evidence.
+- [x] Phase 0 contract review findings are adjudicated.
+- [x] Fresh final review was explicitly waived before duplicate work; no findings
+      were produced.
+- [x] Successful exact commands are promoted into the runbook.
+- [x] Content checkpoints are committed with conventional subjects.
+- [x] The working tree is clean after this commit and no push is performed.
+- [x] This plan is marked `Historical`, names the latest content commit, and records
       tracker closeout as “this commit”; its SHA is reported in the final handoff.
