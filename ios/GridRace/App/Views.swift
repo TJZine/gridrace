@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TutorialView: View {
     @Bindable var model: TutorialModel
+    @Binding var hapticsEnabled: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -10,11 +11,11 @@ struct TutorialView: View {
             Color.raceBackground.ignoresSafeArea()
             switch model.phase {
             case .introduction:
-                IntroductionView(model: model)
+                IntroductionView(model: model, hapticsEnabled: $hapticsEnabled)
             case .countdown:
                 CountdownView(seconds: model.countdownSeconds)
             case .playing:
-                RaceView(model: model)
+                RaceView(model: model, hapticsEnabled: $hapticsEnabled)
             case .reveal:
                 RevealView(model: model)
             }
@@ -25,15 +26,16 @@ struct TutorialView: View {
         .onChange(of: scenePhase) { _, value in
             if value == .active { model.refreshFromClock() }
         }
-        .onDisappear { model.cancelSessionTasks() }
+        .onDisappear { model.replay() }
         .sensoryFeedback(trigger: model.hapticEvent) { _, _ in
-            model.hapticsEnabled ? .impact(weight: .light) : nil
+            hapticsEnabled ? .impact(weight: .light) : nil
         }
     }
 }
 
 private struct IntroductionView: View {
     @Bindable var model: TutorialModel
+    @Binding var hapticsEnabled: Bool
 
     var body: some View {
         ScrollView {
@@ -60,7 +62,7 @@ private struct IntroductionView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Toggle("Haptics", isOn: $model.hapticsEnabled)
+                Toggle("Haptics", isOn: $hapticsEnabled)
                     .frame(maxWidth: 280)
                 Button("Start local race") {
                     model.startTutorial()
@@ -100,6 +102,7 @@ private struct CountdownView: View {
 
 private struct RaceView: View {
     @Bindable var model: TutorialModel
+    @Binding var hapticsEnabled: Bool
 
     var body: some View {
         ScrollView {
@@ -140,7 +143,7 @@ private struct RaceView: View {
                 }
 
                 KeyboardView(model: model)
-                Toggle("Haptics", isOn: $model.hapticsEnabled)
+                Toggle("Haptics", isOn: $hapticsEnabled)
                     .font(.callout)
                     .padding(.horizontal)
             }

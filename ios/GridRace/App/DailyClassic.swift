@@ -42,7 +42,16 @@ struct DailyWordPack: Decodable, Equatable, Sendable {
         guard let url = bundle.url(forResource: resource, withExtension: "json") else {
             throw DailyClassicError.missingWordPack
         }
-        return try load(from: Data(contentsOf: url))
+        let pack = try load(from: Data(contentsOf: url))
+        try validateBundledIdentity(pack)
+        return pack
+    }
+
+    static func validateBundledIdentity(_ pack: DailyWordPack) throws {
+        guard pack.id == "daily-classic-en-US-v1",
+              pack.scheduleVersion == 1,
+              pack.epochDay == 20_696
+        else { throw DailyClassicError.invalidWordPack }
     }
 
     private static func isWord(_ word: String) -> Bool {
@@ -139,14 +148,14 @@ struct DailyClassicProgress: Codable, Equatable, Sendable {
         completion = nil
     }
 
-    init(result: DailyCompletedResult, hardModeEnabled: Bool) {
+    init(result: DailyCompletedResult) {
         formatVersion = 1
         puzzleID = result.puzzleID
         puzzleNumber = result.puzzleNumber
         puzzleDay = result.puzzleDay
         wordPackID = result.wordPackID
         scheduleVersion = result.scheduleVersion
-        self.hardModeEnabled = hardModeEnabled
+        hardModeEnabled = result.hardModeEnabled
         acceptedGuesses = result.guesses
         draft = ""
         completion = DailyCompletion(
@@ -301,10 +310,11 @@ struct DailyClassicGame: Equatable, Sendable {
                 return DailySubmission(guess: nil, error: .hardMode(violation), completion: nil)
             }
 
+            let acceptedAt = max(date, progress.acceptedGuesses.last?.acceptedAt ?? date)
             let guess = DailyGuess(
                 word: word,
                 feedback: GameRules.evaluate(answer: puzzle.answer, guess: word),
-                acceptedAt: date
+                acceptedAt: acceptedAt
             )
             progress.acceptedGuesses.append(guess)
             progress.draft = ""
@@ -312,10 +322,14 @@ struct DailyClassicGame: Equatable, Sendable {
                 progress.completion = DailyCompletion(
                     outcome: .solved,
                     guessCount: progress.acceptedGuesses.count,
-                    completedAt: date
+                    completedAt: acceptedAt
                 )
             } else if progress.acceptedGuesses.count == 6 {
-                progress.completion = DailyCompletion(outcome: .failed, guessCount: 6, completedAt: date)
+                progress.completion = DailyCompletion(
+                    outcome: .failed,
+                    guessCount: 6,
+                    completedAt: acceptedAt
+                )
             }
             return DailySubmission(guess: guess, error: nil, completion: progress.completion)
         }
@@ -329,6 +343,7 @@ struct DailyClassicGame: Equatable, Sendable {
             puzzleDay: progress.puzzleDay,
             wordPackID: progress.wordPackID,
             scheduleVersion: progress.scheduleVersion,
+            hardModeEnabled: progress.hardModeEnabled,
             guesses: progress.acceptedGuesses,
             outcome: completion.outcome,
             guessCount: completion.guessCount,
@@ -361,7 +376,7 @@ struct DailyClassicGame: Equatable, Sendable {
               })
         else { return false }
 
-        if saved.hardModeEnabled, saved.completion == nil {
+        if saved.hardModeEnabled {
             for index in saved.acceptedGuesses.indices {
                 guard DailyHardMode.violation(
                     for: saved.acceptedGuesses[index].word,
@@ -393,10 +408,54 @@ struct DailyCompletedResult: Codable, Equatable, Sendable {
     let puzzleDay: Int
     let wordPackID: String
     let scheduleVersion: Int
+    let hardModeEnabled: Bool
     let guesses: [DailyGuess]
     let outcome: DailyOutcome
     let guessCount: Int
     let completedAt: Date
+
+    init(
+        puzzleID: String,
+        puzzleNumber: Int,
+        puzzleDay: Int,
+        wordPackID: String,
+        scheduleVersion: Int,
+        hardModeEnabled: Bool = false,
+        guesses: [DailyGuess],
+        outcome: DailyOutcome,
+        guessCount: Int,
+        completedAt: Date
+    ) {
+        self.puzzleID = puzzleID
+        self.puzzleNumber = puzzleNumber
+        self.puzzleDay = puzzleDay
+        self.wordPackID = wordPackID
+        self.scheduleVersion = scheduleVersion
+        self.hardModeEnabled = hardModeEnabled
+        self.guesses = guesses
+        self.outcome = outcome
+        self.guessCount = guessCount
+        self.completedAt = completedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case puzzleID, puzzleNumber, puzzleDay, wordPackID, scheduleVersion
+        case hardModeEnabled, guesses, outcome, guessCount, completedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        puzzleID = try values.decode(String.self, forKey: .puzzleID)
+        puzzleNumber = try values.decode(Int.self, forKey: .puzzleNumber)
+        puzzleDay = try values.decode(Int.self, forKey: .puzzleDay)
+        wordPackID = try values.decode(String.self, forKey: .wordPackID)
+        scheduleVersion = try values.decode(Int.self, forKey: .scheduleVersion)
+        hardModeEnabled = try values.decodeIfPresent(Bool.self, forKey: .hardModeEnabled) ?? false
+        guesses = try values.decode([DailyGuess].self, forKey: .guesses)
+        outcome = try values.decode(DailyOutcome.self, forKey: .outcome)
+        guessCount = try values.decode(Int.self, forKey: .guessCount)
+        completedAt = try values.decode(Date.self, forKey: .completedAt)
+    }
 
     fileprivate var isStructurallyValid: Bool {
         guard (0...100_000).contains(puzzleDay) else { return false }
@@ -459,9 +518,27 @@ struct DailyStatistics: Codable, Equatable, Sendable {
 }
 
 struct DailyClassicHistory: Codable, Equatable, Sendable {
+    private(set) var formatVersion = 1
     private(set) var completedResults: [DailyCompletedResult] = []
     private(set) var statistics = DailyStatistics()
     private(set) var statisticsAppliedPuzzleIDs: Set<String> = []
+
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion, completedResults, statistics, statisticsAppliedPuzzleIDs
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try values.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
+        completedResults = try values.decode([DailyCompletedResult].self, forKey: .completedResults)
+        statistics = try values.decode(DailyStatistics.self, forKey: .statistics)
+        statisticsAppliedPuzzleIDs = try values.decode(
+            Set<String>.self,
+            forKey: .statisticsAppliedPuzzleIDs
+        )
+    }
 
     @discardableResult
     mutating func record(_ result: DailyCompletedResult) -> Bool {
@@ -485,7 +562,8 @@ struct DailyClassicHistory: Codable, Equatable, Sendable {
     static func load(from data: Data) throws -> DailyClassicHistory {
         let history = try JSONDecoder().decode(DailyClassicHistory.self, from: data)
         let ids = history.completedResults.map(\.puzzleID)
-        guard Set(ids).count == ids.count,
+        guard history.formatVersion == 1,
+              Set(ids).count == ids.count,
               Set(history.completedResults.map(\.puzzleDay)).count == history.completedResults.count,
               history.completedResults.allSatisfy(\.isStructurallyValid),
               history.statisticsAppliedPuzzleIDs == Set(ids),

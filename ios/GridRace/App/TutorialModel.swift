@@ -88,7 +88,6 @@ final class TutorialModel {
     private(set) var revealTaskIsActive = false
     private(set) var hapticEvent = 0
 
-    var hapticsEnabled = true
     private(set) var prefersReducedMotion = false
 
     private let acceptedWords: Set<String>

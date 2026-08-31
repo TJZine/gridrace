@@ -32,6 +32,28 @@ final class DailyClassicTests: XCTestCase {
         XCTAssertThrowsError(try DailyWordPack.load(from: packData(answers: ["other"])))
     }
 
+    func testBundledWordPackIdentityIsPinned() throws {
+        let published = try DailyWordPack.load(from: packData(
+            id: "daily-classic-en-US-v1",
+            epochDay: 20_696
+        ))
+        XCTAssertNoThrow(try DailyWordPack.validateBundledIdentity(published))
+
+        let wrongID = try DailyWordPack.load(from: packData(id: "replacement", epochDay: 20_696))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongID))
+        let wrongSchedule = try DailyWordPack.load(from: packData(
+            id: "daily-classic-en-US-v1",
+            scheduleVersion: 2,
+            epochDay: 20_696
+        ))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongSchedule))
+        let wrongEpoch = try DailyWordPack.load(from: packData(
+            id: "daily-classic-en-US-v1",
+            epochDay: 20_697
+        ))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongEpoch))
+    }
+
     func testSixthGuessCanWinOrFailAndCompletionIsImmutable() throws {
         var solved = game(answer: "stone")
         for _ in 0..<5 { submit("civic", to: &solved) }
@@ -65,6 +87,25 @@ final class DailyClassicTests: XCTestCase {
         XCTAssertEqual(restored.draft, "CR")
         XCTAssertEqual(restored.rows.count, 1)
         XCTAssertEqual(restored.keyboard.feedback(for: "C"), .absent)
+    }
+
+    func testAcceptedTimestampsClampWhenClockMovesBackward() throws {
+        var game = game(answer: "stone")
+        for letter in "civic" { game.type(letter) }
+        _ = game.submit(at: date(day: epochDay, seconds: 100))
+        for letter in "stone" { game.type(letter) }
+        _ = game.submit(at: date(day: epochDay, seconds: 50))
+
+        XCTAssertEqual(game.progress.acceptedGuesses.map(\.acceptedAt), [
+            date(day: epochDay, seconds: 100),
+            date(day: epochDay, seconds: 100)
+        ])
+        XCTAssertEqual(game.completion?.completedAt, date(day: epochDay, seconds: 100))
+        XCTAssertNoThrow(try DailyClassicGame(
+            puzzle: game.puzzle,
+            acceptedWords: accepted,
+            restoring: game.progress
+        ))
     }
 
     func testRestoreRejectsWrongPuzzleOrTamperedFeedback() throws {
@@ -197,6 +238,23 @@ final class DailyClassicTests: XCTestCase {
         XCTAssertEqual(DailyClassicSettings.load(from: defaults), settings)
     }
 
+    func testHistoryMigratesLegacyFormatAndRejectsUnknownVersion() throws {
+        var history = DailyClassicHistory()
+        _ = history.record(result(day: epochDay, outcome: .solved, guesses: 2))
+        let encoded = try DailyClassicPersistence.encode(history)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        object.removeValue(forKey: "formatVersion")
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertEqual(try DailyClassicHistory.load(from: legacy), history)
+
+        object["formatVersion"] = 2
+        let future = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertThrowsError(try DailyClassicHistory.load(from: future))
+    }
+
     func testCompletedResultReconstructsImmutableProgress() throws {
         let completed = DailyCompletedResult(
             puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay))",
@@ -204,7 +262,8 @@ final class DailyClassicTests: XCTestCase {
             puzzleDay: epochDay,
             wordPackID: "test-v1",
             scheduleVersion: 1,
-            guesses: ["crane", "civic", "stone"].enumerated().map { index, word in
+            hardModeEnabled: true,
+            guesses: ["civic", "stone"].enumerated().map { index, word in
                 DailyGuess(
                     word: word,
                     feedback: GameRules.evaluate(answer: "stone", guess: word),
@@ -212,10 +271,10 @@ final class DailyClassicTests: XCTestCase {
                 )
             },
             outcome: .solved,
-            guessCount: 3,
+            guessCount: 2,
             completedAt: date(day: epochDay, seconds: 100)
         )
-        let saved = DailyClassicProgress(result: completed, hardModeEnabled: true)
+        let saved = DailyClassicProgress(result: completed)
         let restored = try DailyClassicGame(
             puzzle: puzzle(answer: "stone"),
             acceptedWords: accepted,
@@ -247,14 +306,19 @@ final class DailyClassicTests: XCTestCase {
         XCTAssertEqual(text.components(separatedBy: "\n").suffix(2), ["−↻−−−", "✓✓✓✓✓"])
     }
 
-    private func packData(answers: [String] = ["stone", "civic", "crane"]) -> Data {
+    private func packData(
+        answers: [String] = ["stone", "civic", "crane"],
+        id: String = "test-v1",
+        scheduleVersion: Int = 1,
+        epochDay: Int? = nil
+    ) -> Data {
         let object: [String: Any] = [
             "formatVersion": 1,
-            "id": "test-v1",
-            "scheduleVersion": 1,
+            "id": id,
+            "scheduleVersion": scheduleVersion,
             "locale": "en-US",
             "wordLength": 5,
-            "epochDay": epochDay,
+            "epochDay": epochDay ?? self.epochDay,
             "acceptedGuesses": Array(accepted).sorted(),
             "answers": answers
         ]

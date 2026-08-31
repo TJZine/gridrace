@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AppRoute: Hashable {
     case daily
@@ -22,13 +23,26 @@ struct DailyAppView: View {
                     case .statistics: DailyStatisticsView(model: daily)
                     case .settings: DailySettingsView(model: daily)
                     case .help: DailyHelpView()
-                    case .tutorial: TutorialView(model: tutorial)
+                    case .tutorial:
+                        TutorialView(
+                            model: tutorial,
+                            hapticsEnabled: Binding(
+                                get: { daily.settings.hapticsEnabled },
+                                set: { daily.updateHaptics($0) }
+                            )
+                        )
                     }
                 }
         }
         .tint(Color.raceIndigo)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { daily.refreshForCurrentDay() }
+        }
+        .task(id: daily.puzzle.id) {
+            let delay = max(1, daily.nextReset.timeIntervalSinceNow)
+            try? await Task<Never, Never>.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            daily.refreshForCurrentDay()
         }
     }
 }
@@ -297,7 +311,24 @@ struct DailyGameView: View {
         .sensoryFeedback(trigger: model.hapticEvent) { _, _ in
             model.settings.hapticsEnabled ? .impact(weight: .light) : nil
         }
-        .sensoryFeedback(.success, trigger: model.resultEvent)
+        .sensoryFeedback(trigger: model.resultEvent) { _, _ in
+            model.settings.hapticsEnabled ? .success : nil
+        }
+        .onChange(of: model.hapticEvent) { _, _ in
+            if let error = model.errorMessage {
+                UIAccessibility.post(notification: .announcement, argument: error)
+            }
+        }
+        .onChange(of: model.resultEvent) { _, _ in
+            guard let completion = model.game.completion else { return }
+            let outcome = completion.outcome == .solved
+                ? "Solved in \(completion.guessCount) guesses."
+                : "Daily puzzle failed."
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "\(outcome) The answer was \(model.puzzle.answer.uppercased())."
+            )
+        }
     }
 
     private var puzzleHeader: some View {

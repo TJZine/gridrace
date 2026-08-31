@@ -48,6 +48,55 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertEqual(model.homeStatus, .unplayed)
     }
 
+    func testSubmitAcrossUTCMidnightCannotMutateYesterday() throws {
+        let fixture = try Fixture()
+        var now = fixture.date(day: fixture.epochDay, seconds: 86_399)
+        let model = try fixture.model(now: { now })
+        fixture.type("adore", into: model)
+
+        now = fixture.date(day: fixture.epochDay + 1)
+        model.submitGuess()
+        XCTAssertEqual(model.puzzle.number, 2)
+        XCTAssertTrue(model.game.rows.isEmpty)
+        XCTAssertFalse(model.game.isComplete)
+        XCTAssertEqual(model.errorMessage, "A new daily puzzle is ready.")
+    }
+
+    func testSubmitUsesOneClockSampleAcrossMidnight() throws {
+        let fixture = try Fixture()
+        let samples = [
+            fixture.date(day: fixture.epochDay, seconds: 100),
+            fixture.date(day: fixture.epochDay, seconds: 86_399),
+            fixture.date(day: fixture.epochDay + 1)
+        ]
+        var calls = 0
+        let model = try fixture.model(now: {
+            defer { calls += 1 }
+            return samples[min(calls, samples.count - 1)]
+        })
+        fixture.type("adore", into: model)
+
+        model.submitGuess()
+
+        XCTAssertEqual(calls, 2, "Submission must use the same timestamp for its guard and mutation")
+        XCTAssertTrue(model.game.isComplete)
+    }
+
+    func testCompletedHistoryWinsOverStaleProgress() throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(now: { now })
+        let stale = model.game.progress
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        try DailyClassicStore(directory: fixture.directory).save(stale)
+
+        model = try fixture.model(now: { now })
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.game.completion?.outcome, .solved)
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+    }
+
     func testSettingsPersistAndHardModeLocksAfterAcceptedGuess() throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)
@@ -65,6 +114,94 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertTrue(model.settings.highContrastEnabled)
         XCTAssertTrue(model.settings.hardModeEnabled)
         XCTAssertFalse(model.game.canChangeHardMode)
+    }
+
+    func testBackwardClockCompletionRestoresAndRecordsStatisticsOnce() throws {
+        let fixture = try Fixture()
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(now: { now })
+        fixture.type("civic", into: model)
+        model.submitGuess()
+        now = fixture.date(day: fixture.epochDay, seconds: 50)
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        model = try fixture.model(now: { now })
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+        XCTAssertEqual(model.game.progress.acceptedGuesses.map(\.acceptedAt), [
+            fixture.date(day: fixture.epochDay, seconds: 100),
+            fixture.date(day: fixture.epochDay, seconds: 100)
+        ])
+    }
+
+    func testCorruptProgressIsDiscardedWithoutErasingHistory() throws {
+        let fixture = try Fixture()
+        var model = try fixture.model(now: { fixture.date(day: fixture.epochDay) })
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        try Data("{".utf8).write(
+            to: fixture.directory.appending(path: "daily-progress-v1.json"),
+            options: .atomic
+        )
+
+        model = try fixture.model(now: { fixture.date(day: fixture.epochDay + 1) })
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+        XCTAssertEqual(model.homeStatus, .unplayed)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: fixture.directory.appending(path: "daily-progress-v1.json").path
+        ), "A fresh valid progress file should replace the corrupt file")
+    }
+
+    func testTerminalPersistenceRetriesAfterBothWritesFail() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(store: store, now: { now })
+        fixture.type("adore", into: model)
+        store.historySaveFailures = 1
+        store.progressSaveFailures = 1
+        model.submitGuess()
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertNil(store.savedHistory)
+
+        model.refreshForCurrentDay()
+        XCTAssertEqual(store.savedHistory?.statistics.gamesPlayed, 1)
+
+        model = try fixture.model(store: store, now: { now })
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+    }
+}
+
+private enum TestStoreError: Error { case failed }
+
+private final class FailingStore: DailyClassicStoring, @unchecked Sendable {
+    var savedProgress: DailyClassicProgress?
+    var savedHistory: DailyClassicHistory?
+    var historySaveFailures = 0
+    var progressSaveFailures = 0
+
+    func loadProgress() throws -> DailyClassicProgress? { savedProgress }
+
+    func save(_ progress: DailyClassicProgress) throws {
+        if progressSaveFailures > 0 {
+            progressSaveFailures -= 1
+            throw TestStoreError.failed
+        }
+        savedProgress = progress
+    }
+
+    func discardProgress() throws { savedProgress = nil }
+
+    func loadHistory() throws -> DailyClassicHistory { savedHistory ?? DailyClassicHistory() }
+
+    func save(_ history: DailyClassicHistory) throws {
+        if historySaveFailures > 0 {
+            historySaveFailures -= 1
+            throw TestStoreError.failed
+        }
+        savedHistory = history
     }
 }
 
@@ -104,6 +241,13 @@ private final class Fixture {
             defaults: defaults,
             now: now
         )
+    }
+
+    func model(
+        store: any DailyClassicStoring,
+        now: @escaping @MainActor () -> Date
+    ) throws -> DailyClassicModel {
+        try DailyClassicModel(pack: pack, store: store, defaults: defaults, now: now)
     }
 
     func type(_ text: String, into model: DailyClassicModel) {
