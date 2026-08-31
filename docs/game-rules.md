@@ -1,5 +1,29 @@
 # GridRace Game Rules
 
+## Daily Classic
+
+Daily Classic publishes one puzzle at 00:00 UTC. Schedule version 1 starts with
+puzzle #1 on UTC day 20696 (2026-08-31); an answer's array position is its permanent
+puzzle assignment. Published entries may only be appended, never reordered, removed,
+or selected modulo the current array count.
+
+The player has six accepted guesses. Format and dictionary rejection do not consume
+a row. Feedback uses the same two-pass duplicate-letter evaluator defined below, and
+keyboard evidence keeps the strongest observed state: correct, then present, then
+absent. A correct sixth guess solves; an incorrect sixth guess fails.
+
+Optional Hard Mode locks when the first guess is accepted. Every later guess must
+keep correct letters in place, move present letters away from their revealed wrong
+positions, and include at least the highest duplicate count previously proved by
+correct or present evidence.
+
+Progress includes the puzzle and schedule identity, draft, accepted words, feedback,
+timestamps, Hard Mode choice, and completion. Completion is immutable. One structured
+result per puzzle updates statistics idempotently. Solved consecutive puzzle days
+extend a streak; a failed or missed puzzle day breaks the current streak. Shares show
+only puzzle number, guess count or failure marker, and semantic feedback symbols—never
+the answer or guessed letters.
+
 This is the authority for Blind Race rules and cross-runtime behavior. Production
 state is server-owned. Phase 1 executes the same pure rules against local tutorial
 fixtures; Phase 2 establishes the backend authority; Phase 3 proves it with exactly

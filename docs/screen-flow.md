@@ -7,7 +7,16 @@ broader production MVP.
 
 ## Flow map
 
-Phase 1 implements only:
+The current app flow is:
+
+```text
+Home
+  -> Daily Classic -> play or immutable result -> statistics/share
+  -> Statistics
+  -> Settings -> How to Play or Tutorial
+```
+
+The preserved tutorial flow is:
 
 ```text
 Tutorial introduction
@@ -17,7 +26,7 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-Phase 3 adds this fixed live slice while broader MVP branches remain later:
+The paused Phase 3 plan later adds this fixed live slice:
 
 ```text
 Tutorial or Sign in with Apple / Debug local sign-in
@@ -32,6 +41,22 @@ state. Once the first countdown starts, new players cannot join; an existing
 roster member may reconnect.
 
 ## Screen behavior
+
+### Daily Classic home and play
+
+Home leads with today's Daily Classic status: unplayed, in progress, solved, or
+failed. Its primary action is Play, Continue, or View result. A compact streak
+summary and direct routes to statistics, settings, help, and tutorial follow without
+empty destinations for future modes.
+
+Play keeps the six-row board and keyboard primary. Invalid or incomplete words leave
+the draft intact and announce a concise reason. Accepted rows reveal using GridRace's
+symbol-plus-color semantics; Reduce Motion shows the same complete row immediately.
+Hardware letters, delete, and return mirror the on-screen controls. Backgrounding
+persists the draft and board; foregrounding rechecks the UTC puzzle day.
+
+Completion reveals the answer, today's immutable result, share action, statistics,
+and next-puzzle availability. Reopening never reapplies statistics or changes the result.
 
 ### Onboarding and tutorial
 

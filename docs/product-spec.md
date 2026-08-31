@@ -1,7 +1,7 @@
 # GridRace Product Specification
 
-GridRace is a temporary codename for a private, synchronous word race. This
-document defines the product scope. [`game-rules.md`](game-rules.md) owns exact
+GridRace is an original daily word game that will grow into private, synchronous
+word racing. This document defines the product scope. [`game-rules.md`](game-rules.md) owns exact
 rules, [`screen-flow.md`](screen-flow.md) owns navigation and reveal presentation,
 and [`architecture.md`](architecture.md) owns system boundaries.
 
@@ -16,7 +16,24 @@ or inspiration, a `-dle` derivative, that product's icon or typography, or a
 near-identical green/yellow/gray tile system. Tile meaning never depends on
 color alone.
 
-## Blind Race MVP
+## Daily Classic
+
+Daily Classic is the first complete permanent mode. Every player receives the same
+five-letter puzzle at the fixed 00:00 UTC boundary, has six accepted guesses, and
+can resume an unfinished board after relaunch. A completed puzzle is immutable and
+retained as a structured local result for statistics, spoiler-safe sharing, and
+future account synchronization.
+
+The answer schedule has an explicit epoch, schedule version, ordered answer list,
+and stable puzzle number. Expanding accepted guesses does not change published
+answers; changing the ordered answer schedule requires a new schedule version that
+preserves prior assignments.
+
+Daily Classic includes a home status card, full board and keyboard, hardware-keyboard
+input, optional Hard Mode, statistics and streaks, native sharing, persistent haptics
+and contrast settings, help, and the existing tutorial.
+
+## Blind Race roadmap
 
 The production MVP includes:
 
@@ -40,7 +57,7 @@ spectators, generalized modes, and a game-plugin or generalized rules engine.
 Opponent guesses, feedback, keyboard state, starting words, and exact solve time
 remain private until reveal.
 
-## Current behavior and phase order
+## Current behavior and roadmap
 
 Phase 0 establishes the product, rule, architecture, privacy, flow, word-pack,
 and cross-runtime evaluator authorities. It adds no playable or networked
@@ -54,11 +71,15 @@ the device, so it demonstrates interaction only. It does not claim production
 answer secrecy, server authority, authentication, multiplayer, persistence, or
 network recovery.
 
-Phase 2 establishes the local authoritative backend foundation: Supabase Auth and
+Daily Classic is now the product priority and the first selectable mode. It is local
+and intentionally does not depend on authentication, Supabase, Realtime, or live
+multiplayer. Its durable result records are shaped for later synchronization.
+
+The paused Phase 2 work establishes the local authoritative backend foundation: Supabase Auth and
 profiles, private words and round secrets, grants and RLS, transactional commands,
 deterministic development-word seeding, account deletion, and database/Edge tests.
 
-Phase 3 is the first networked vertical slice: exactly two authenticated players,
+The paused Phase 3 work is the first networked vertical slice: exactly two authenticated players,
 one round, a server-selected answer, server-validated guesses, clue-free progress,
 reconnect from canonical snapshots, deadline finalization, and shared reveal. It
 must prove answer isolation, RLS denial, idempotent submission, server time, and

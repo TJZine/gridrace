@@ -1,7 +1,26 @@
 # GridRace Architecture
 
-This document is the current architecture authority. It separates the local Phase 1
-tutorial, Phase 2 backend foundation, and Phase 3 live slice.
+This document is the current architecture authority. It separates the permanent
+local Daily Classic mode, the Phase 1 tutorial, and the preserved Phase 2/3 backend
+and live-race foundation.
+
+## Daily Classic architecture
+
+Daily Classic is a native local vertical slice. A main-actor observable model owns
+today's board, input, terminal presentation, settings, and persistence calls. Pure
+values own UTC puzzle identity, deterministic answer selection, Hard Mode checks,
+result records, statistics, and spoiler-safe sharing. SwiftUI views render that
+state and send intents.
+
+The bundled word pack has separately versioned accepted guesses and an explicitly
+ordered answer schedule. Codable storage is sufficient for the small current state,
+settings, and completed-result history. Completed puzzle records are immutable and
+statistics are derived idempotently from history. This shape can later map to cloud
+records without adding a local database framework or speculative repository layer.
+
+The daily boundary is 00:00 UTC. Device time chooses which published puzzle to show;
+future social comparison will synchronize the same puzzle IDs and server-validated
+results once accounts exist. This local mode makes no secrecy claim for bundled answers.
 
 ## Phase 1 local architecture
 

@@ -2,8 +2,21 @@
 
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
-tracker. Current execution lives in the one active file under [`docs/plans/`](plans/);
-today that is the [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md).
+tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
+[Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
+is paused and preserved for later adaptation.
+
+## 2026-08-31 — Ship Daily Classic Before Accounts and Live Racing
+
+**Decision:** Daily Classic is GridRace's first complete permanent mode. It uses a
+fixed 00:00 UTC boundary, an explicit versioned answer schedule, local Codable
+progress and immutable result history, and idempotently derived statistics. Accounts,
+friends, and the live backend follow after this local experience is complete.
+
+**Rationale:** A polished daily loop proves the core rules, content, persistence,
+accessibility, and result model now. It creates a useful product and sync-ready data
+without making unfinished authentication or multiplayer infrastructure a launch
+dependency.
 
 ## 2026-08-30 — Focus the Product on Blind Race
 

@@ -1,8 +1,12 @@
-Status: Active
+Status: Paused
 Scope: GridRace Phase 2 backend foundation and Phase 3 two-player live slice
 Owner: Primary orchestrator
 Started: 2026-08-30
 Last updated: 2026-08-31
+
+Paused for Daily Classic, the first permanent mode. All completed Phase 2 work and
+the in-progress Edge Functions are preserved for later adaptation; live multiplayer
+is not a prerequisite for the local daily milestone.
 
 # Phase 2 and Phase 3 Live Slice Plan
 
@@ -163,7 +167,7 @@ auth must compile out of Release and use independent sessions without admin acce
 | C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete; controller diff audit pending checkpoint |
 | P2-01 Local toolchain and deterministic seed | `backend_audit` | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Complete; controller verified |
 | P2-02 Schema, transactions, grants, RLS, database tests | `schema_security_audit` | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Complete: reset/lint/79 tests green; DB-01..05 closed |
-| P2-03 Edge command functions and focused tests | Assigned after SQL freeze | `supabase/functions/**` only | P2-02 SQL/API freeze | Pending |
+| P2-03 Edge command functions and focused tests | `backend_audit` | `supabase/functions/**` only | P2-02 SQL/API freeze | Paused: functions committed; focused contract tests remain |
 | P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Pending |
 | P3-01 SwiftUI live slice | One iOS writer | `ios/**`; project/composition serialized to this writer/controller | P2 checkpoint | Pending |
 | P3-02 Disjoint backend integration/recovery tests | Assigned after freeze if useful | Exact test-only paths, no SQL/API/project overlap | P2 checkpoint | Pending |
@@ -273,7 +277,8 @@ Phase 2/3 commits to date:
 | `70c0339 docs: track phase 2 and 3 live slice` | Activate durable task tracking | Complete |
 | `357af25 docs: define phase 2 and 3 live contract` | Freeze phase naming, trust boundaries, commands, snapshot, deletion, and proof | Complete |
 | `f69365b build(backend): bootstrap local Supabase` | Pin the local Supabase CLI and deterministic canonical word seed | Complete |
-| This commit | Add the authoritative schema, service-only transactions, RLS, finalizer, deletion, and database proof | Pending checkpoint creation |
+| `b9628c0 feat(backend): add private game schema and RLS` | Add authoritative schema, service-only transactions, RLS, finalizer, deletion, and database proof | Complete |
+| `95edc90 feat(backend): add authenticated command edge functions` | Preserve the six authenticated Edge boundaries after format, lint, and type checks | Paused before focused contract tests |
 
 Remaining intended checkpoints are adjusted only when the real dependency graph
 makes units inseparable:
