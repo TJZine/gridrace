@@ -6,6 +6,18 @@ tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
 [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
 is paused and preserved for later adaptation.
 
+## 2026-08-31 — Separate Imported Daily History From Verified Competition
+
+**Decision:** All Daily Classic results produced by the bundled client evaluator are
+stored only as immutable `daily_imported_results` for the owner's history, backup,
+streaks, and statistics. No client-writable verification flag or promotion path
+exists. Future competitive results require a separate server-owned attempt flow and
+result surface.
+
+**Rationale:** Recomputing a bundled puzzle does not prove when or how a client played.
+A hard database provenance boundary lets personal synchronization ship now without
+creating counterfeit evidence for friends or leaderboards later.
+
 ## 2026-08-31 — Ship Daily Classic Before Accounts and Live Racing
 
 **Decision:** Daily Classic is GridRace's first complete permanent mode. It uses a

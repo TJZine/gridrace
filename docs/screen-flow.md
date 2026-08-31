@@ -13,6 +13,8 @@ The current app flow is:
 Home
   -> Daily Classic -> play or immutable result -> statistics/share
   -> Statistics
+  -> Account -> Sign in with Apple -> profile setup -> sync/import/status
+             -> profile edit, retry, sign out, or confirmed deletion
   -> Settings -> How to Play or Tutorial
 ```
 
@@ -57,6 +59,20 @@ persists the draft and board; foregrounding rechecks the UTC puzzle day.
 
 Completion reveals the answer, today's immutable result, share action, statistics,
 and next-puzzle availability. Reopening never reapplies statistics or changes the result.
+
+### Account and synchronization
+
+Home always shows an account card. Signed out, it explains “Save and sync your
+progress” without blocking play. Sign in uses the native Apple control; Debug builds
+also expose a credential-free local Supabase test form. First sign-in loads the
+owner-only profile and asks before adding existing guest history. Skipping or importing
+does not delete guest files.
+
+The account screen shows the generated avatar, 2–16 character player-name editor,
+simple synced/pending/error status, retry, sign out, and confirmed deletion. A
+divergent attempt explains that devices differ and offers “Use synced attempt” or
+“Keep this device.” It never presents either imported attempt as verified. Network
+failure leaves the local game available.
 
 ### Onboarding and tutorial
 

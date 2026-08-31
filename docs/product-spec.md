@@ -21,8 +21,9 @@ color alone.
 Daily Classic is the first complete permanent mode. Every player receives the same
 five-letter puzzle at the fixed 00:00 UTC boundary, has six accepted guesses, and
 can resume an unfinished board after relaunch. A completed puzzle is immutable and
-retained as a structured local result for statistics, spoiler-safe sharing, and
-future account synchronization.
+retained as a structured local result for statistics and spoiler-safe sharing.
+Optional accounts synchronize accepted rows and imported personal results; account
+or network availability never gates Daily Classic.
 
 The answer schedule has an explicit epoch, schedule version, ordered answer list,
 and stable puzzle number. Expanding accepted guesses does not change published
@@ -71,9 +72,10 @@ the device, so it demonstrates interaction only. It does not claim production
 answer secrecy, server authority, authentication, multiplayer, persistence, or
 network recovery.
 
-Daily Classic is now the product priority and the first selectable mode. It is local
-and intentionally does not depend on authentication, Supabase, Realtime, or live
-multiplayer. Its durable result records are shaped for later synchronization.
+Daily Classic is the first selectable mode and remains local-first. Optional account
+sessions, owner-private profiles, intentional guest import, account-scoped caches,
+and compact cloud synchronization are implemented. Every current Daily result is an
+imported/client-originated personal record, never server-verified competition.
 
 The paused Phase 2 work establishes the local authoritative backend foundation: Supabase Auth and
 profiles, private words and round secrets, grants and RLS, transactional commands,
@@ -96,15 +98,15 @@ not Phase 3 behavior.
 | Screen | Responsibility | Current phase scope |
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
-| Home | Start create/join, reach the profile, sign out, and delete the account. | Phase 3 forces two players and one round |
+| Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic and accounts implemented; live create/join paused |
 | Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 3; broader configuration and links are later |
 | Lobby | Show the private roster; only the creator starts, with no readiness state. | Phase 3 |
 | Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 local tutorial and Phase 3 server-backed slice |
 | Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 prototype and Phase 3 shared reveal |
 | Results | Show exact round/match placement and summary. | Local comparison only |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
-| History | Show the signed-in player's completed matches under the eventual retention policy. | Future |
-| Profile | Manage display name, generated avatar, blocks, and account deletion. Email is never a public profile field. | Phase 2/3 identity and deletion; blocks later |
+| History | Derive personal Daily statistics from synchronized immutable imported results. | Implemented for Daily Classic; competitive history later |
+| Profile | Manage display name, generated avatar, synchronization, sign out, and account deletion. Email is never exposed. | Implemented; blocks later |
 
 ## Beta exit criteria
 

@@ -1,22 +1,25 @@
 # GridRace Now
 
-Current outcome: a complete, permanent Daily Classic mode with one shared UTC puzzle
-per day, resumable local play, durable results, statistics, sharing, settings, help,
-and the existing tutorial.
+Current outcome: Daily Classic remains immediately playable signed out and offline,
+and optional accounts now save an owner-private profile, accepted rows, completed
+personal results, and derived statistics across devices.
 
-Completed large chunks: production Daily Classic pack; UTC schedule; game, persistence,
-Hard Mode, statistics, and share rules; complete SwiftUI shell; preserved tutorial and
-Phase 2 Supabase/Edge foundation; three integrated reviews completed with accepted
-correctness, recovery, accessibility, and maintainability findings resolved.
+Completed large chunks: production Daily Classic; native Sign in with Apple client
+flow and profile experience; account-scoped local storage; explicit guest import;
+offline pending/retry and deterministic conflict handling; owner-only sync tables,
+RPCs, RLS, and deletion integration. Imported results are personal history only and
+cannot enter a verified competitive surface.
 
-Current work: Daily Classic milestone complete and ready for account/cloud-sync work.
+Current work: account and Daily Classic synchronization milestone complete locally.
+Real Apple-provider/device proof remains external configuration work.
 
-Next large chunk: add accounts and synchronize profiles, Daily Classic progress/results,
-and statistics without changing the local-first game contract.
+Next large chunk: friends and privacy-controlled Daily Classic result sharing, while
+keeping imported personal history separate from future server-verified competition.
 
 Genuine blockers: none.
 
-Last meaningful verification: production pack validation passed (725 answers, 8,508
-accepted guesses); Deno formatting/lint/type checks and 3 evaluator tests passed; all
-42 iOS tests passed; a clean simulator build passed; solve, fail, relaunch/restore,
-settings, Reduce Motion, and basic VoiceOver flows were exercised on iPhone 17 Pro.
+Last meaningful verification: clean database reset; 146 pgTAP tests; focused database
+lint; 74 always-on iOS tests plus an opt-in real two-client Supabase Swift integration
+test; clean Debug and Release simulator builds; two-user REST/RLS, idempotent
+import/conflict, retry-safe account deletion, and account-cache removal proof against
+local Supabase; signed-out home visual check at the largest accessibility text size.

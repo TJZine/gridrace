@@ -176,7 +176,10 @@ host deletion removes the unstarted match; lobby guest deletion removes the gues
 slot. Active deletion is an explicit authenticated forfeit, and completed results
 are retained only under an irreversibly anonymized `Deleted Player` member. The
 Edge Function then hard-deletes the Auth identity. An already-absent identity is
-success. No deletion ledger or reversible retained user mapping is permitted.
+success. A service-only receipt keyed by a one-way hash of the initiating bearer lets
+the same stale bearer finish or confirm deletion after a lost response. Pending
+receipts lose their user reference with Auth deletion; completed receipts contain no
+reversible retained user mapping and expose no account data.
 
 ## Snapshot v1
 

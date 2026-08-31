@@ -18,9 +18,32 @@ settings, and completed-result history. Completed puzzle records are immutable a
 statistics are derived idempotently from history. This shape can later map to cloud
 records without adding a local database framework or speculative repository layer.
 
-The daily boundary is 00:00 UTC. Device time chooses which published puzzle to show;
-future social comparison will synchronize the same puzzle IDs and server-validated
-results once accounts exist. This local mode makes no secrecy claim for bundled answers.
+The daily boundary is 00:00 UTC. Device time chooses which published puzzle to show.
+This local mode makes no secrecy claim for bundled answers.
+
+## Daily account and synchronization boundary
+
+Accounts are optional. Guest Codable files remain the immediate gameplay source while
+signed out. Each authenticated UUID has a separate local directory; changing or
+deleting an account swaps away from that directory before another account can render
+it. Supabase Auth sessions use the SDK's Apple-platform Keychain storage and never
+enter Daily Classic files or `UserDefaults`.
+
+After sign-in, a small sync coordinator pulls owner-private state and continues using
+the account's local files for gameplay. It marks the current compact snapshot pending
+after an accepted row or completion and retries on sign-in, foreground, and explicit
+retry. Draft letters remain device-local. Exact records deduplicate; completion
+dominates compatible progress; a longer exact-prefix attempt advances; divergence is
+shown as a choice rather than silently combined. Statistics are always recalculated
+from the merged immutable results.
+
+`public.daily_progress` is mutable only through `sync_daily_progress` and carries a
+monotonic revision. `public.daily_imported_results` is an immutable client-originated
+personal-history table written only through `import_daily_result`. Both are owner-only
+under grants and RLS. There is deliberately no verified column, verified-results
+table, promotion RPC, or competitive statistics path. A future verified Daily result
+must come from a separate server-owned evaluator that selects the answer, accepts and
+timestamps guesses, controls attempts, and finalizes the result.
 
 ## Phase 1 local architecture
 
@@ -156,13 +179,25 @@ then the server hard-deletes the Supabase Auth identity. An unstarted host lobby
 removed; an unstarted guest slot is removed. Deletion during play is an explicit
 authenticated forfeit. A result needed by the surviving participant retains only a
 detached member slot named `Deleted Player` and its canonical result rows. The
-profile and auth link are removed, no deletion ledger or reversible mapping remains,
-and every other command requires an active profile/member mapping so a previously
-issued JWT cannot regain access.
+profile and auth link are removed, no reversible user mapping remains, and every
+other command requires an active profile/member mapping so a previously issued JWT
+cannot regain access.
 
 Database preparation treats an absent profile as already complete. An already
-absent Auth identity is also success. Real Apple provider-token revocation remains a
-production-hardening proof when provider credentials are unavailable locally.
+absent Auth identity is also success. To converge after a lost success response, the
+deletion function hashes the initiating bearer and stores a private service-only
+receipt. A pending receipt temporarily references the user so a retry can finish Auth
+deletion; the Auth foreign key clears that reference, and completion retains only the
+one-way hash and terminal state. The narrow function route bypasses gateway JWT
+rejection so the handler can validate a stale bearer against this receipt; it grants
+no account access and returns only deletion success. Raw bearers never enter the
+database or logs. Real Apple provider-token revocation remains a production-hardening
+proof when provider credentials are unavailable locally.
+
+Daily progress and imported personal results are deleted in the same authenticated
+database preparation transaction. The iOS client removes only that UUID's local
+account cache after the Edge Function reports successful server deletion, then drops
+the active session and returns to the untouched guest store.
 
 ## Secrets, privacy, and logs
 

@@ -134,6 +134,9 @@ deno fmt --check rules/typescript
 deno lint rules/typescript
 deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
 deno test --allow-read rules/typescript/evaluator_test.ts
+supabase db reset
+supabase test db
+supabase db lint --local --schema public,private --level warning --fail-on error
 xcodebuild -project ios/GridRace.xcodeproj -list
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
@@ -149,11 +152,11 @@ output as product verification. Scope every diff review by appending `--` and
 concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
-The checked-in project currently proves these Deno and Xcode commands with Deno
-2.9.5, Xcode 26.6, the installed iOS 26.5 runtime, and the named iPhone 17 Pro
-simulator. The simulator UUID is local toolchain state: rediscover it with the
-proved destination commands before reusing the build or test command on another
-machine. No Supabase, database, or CI command is canonical yet.
+The checked-in project currently proves these Deno, local Supabase, and Xcode commands
+with Deno 2.9.5, Supabase CLI 2.115.0, Xcode 26.6, the installed iOS 26.5 runtime,
+and the named iPhone 17 Pro simulator. The simulator UUID is local toolchain state:
+rediscover it with the proved destination commands before reusing the build or test
+command on another machine. No remote deployment or CI command is canonical yet.
 
 ### Candidate gates to prove and promote
 
@@ -320,7 +323,8 @@ Allowed dispositions are `accepted`, `modified`, `rejected`, and `deferred`.
 - Reject with specific counter-evidence, not preference.
 - Defer only when it is outside scope or needs a product decision; name an owner and
   revisit trigger in `docs/TODO.md` or `docs/DECISIONS.md` as appropriate.
-- Re-review the changed seam after a fix and rerun the proof invalidated by that fix.
+- After an accepted review fix, the orchestrator performs targeted inspection of the
+  changed seam and reruns affected proof. Do not commission a second reviewer cycle.
 
 High-risk work needs one fresh independent final review after integration. A clean
 review does not replace verification, and repeated clean reviews do not add evidence.
