@@ -2,7 +2,7 @@ Status: Active
 Scope: GridRace Phase 2 backend foundation and Phase 3 two-player live slice
 Owner: Primary orchestrator
 Started: 2026-08-30
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 # Phase 2 and Phase 3 Live Slice Plan
 
@@ -42,13 +42,18 @@ recovery, deadline finalization, and shared reveal.
   local config pins Postgres 17 with public-table auto-exposure disabled, and a
   standard-library generator proves the derived 100-row private word seed has not
   drifted from the canonical JSON artifact.
+- P2-02 is integrated and controller-verified. One forward migration recreates the
+  constrained schema, profile trigger, service-only transactions, private evaluator,
+  snapshot, finalizer/Cron, deletion preparation, grants, column privileges, RLS,
+  and Realtime publication from zero. Database lint has zero errors and 79 pgTAP
+  assertions pass after closure of DB-01 through DB-05.
 - No Supabase project has been linked, reset, migrated, or deployed. No remote
   Supabase state has been read or mutated.
 
 ## Next integration action
 
-Implement the single forward migration and database tests for schema, commands,
-private answer handling, grants/RLS, concurrency, finalization, and deletion.
+Implement the six authenticated Edge Function boundaries and focused contract tests
+against the now-frozen service-only database RPCs.
 
 ## Scope
 
@@ -157,7 +162,7 @@ auth must compile out of Release and use independent sessions without admin acce
 | D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | Complete: wire/privacy/concurrency/two-client proof frozen |
 | C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete; controller diff audit pending checkpoint |
 | P2-01 Local toolchain and deterministic seed | `backend_audit` | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Complete; controller verified |
-| P2-02 Schema, transactions, grants, RLS, database tests | Assigned after freeze | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Pending |
+| P2-02 Schema, transactions, grants, RLS, database tests | `schema_security_audit` | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Complete: reset/lint/79 tests green; DB-01..05 closed |
 | P2-03 Edge command functions and focused tests | Assigned after SQL freeze | `supabase/functions/**` only | P2-02 SQL/API freeze | Pending |
 | P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Pending |
 | P3-01 SwiftUI live slice | One iOS writer | `ios/**`; project/composition serialized to this writer/controller | P2 checkpoint | Pending |
@@ -227,11 +232,13 @@ cross-stack contracts are all touched.
 
 ## Review findings and dispositions
 
-No findings yet. Material findings will use:
-
-`ID | severity | location | claim | evidence | disposition | action | verification`
-
-Allowed dispositions: `accepted`, `modified`, `rejected`, or `deferred`.
+| ID | Severity | Location and claim | Evidence | Disposition | Action | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| DB-01 | High | `submit_guess`: a concurrent identical retry can consume rate quota before the second receipt check. | Counter call preceded match lock and serialized receipt lookup. | Accepted | Counter moved after lock/receipt resolution; unchanged-counter test added. | Closed: reset/lint/79 pgTAP pass |
+| DB-02 | Medium | `delete_account`: member lock preceded round/player locks. | Source contradicted frozen shared lock order and `start_match`. | Accepted | Member mutation now follows round and seat-ordered player locks. | Closed: reset/lint/79 pgTAP pass |
+| DB-03 | Medium | `create_match`: code existence check and unique insert were separate. | Concurrent creation could win the code between check and insert. | Accepted | Insert retries only the join-code unique constraint. | Closed: reset/lint/79 pgTAP pass |
+| DB-04 | Low | `pg_cron` privileges were not explicitly denied to client roles. | Game schemas were explicit; extension schema relied on defaults. | Accepted | Client schema/table/routine privileges revoked; owner job retained. | Closed: reset/lint/79 pgTAP pass |
+| DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
 
 ## Verification record
 
@@ -253,6 +260,9 @@ Allowed dispositions: `accepted`, `modified`, `rejected`, or `deferred`.
 | Pinned Supabase CLI | `npx supabase --version` | Passed: `2.116.0` |
 | Derived word seed | `npm run check:seed` | Passed: 100 canonical rows |
 | Supabase config | Python 3 `tomllib` assertions for Postgres 17, API schemas, auto-exposure, and seed path | Passed |
+| Database reset | `npx supabase db reset --local` | Passed: migration and exact seed applied from zero |
+| Database lint | `npx supabase db lint --local --schema public,private,app_rls --level error --fail-on error` | Passed: zero results |
+| Database/RLS tests | `npx supabase test db --local supabase/tests/database` | Passed: 79 tests, 0 failed |
 
 ## Integrated commits
 
@@ -262,7 +272,8 @@ Phase 2/3 commits to date:
 | --- | --- | --- |
 | `70c0339 docs: track phase 2 and 3 live slice` | Activate durable task tracking | Complete |
 | `357af25 docs: define phase 2 and 3 live contract` | Freeze phase naming, trust boundaries, commands, snapshot, deletion, and proof | Complete |
-| This commit | Pin the local Supabase CLI and deterministic canonical word seed | Pending checkpoint creation |
+| `f69365b build(backend): bootstrap local Supabase` | Pin the local Supabase CLI and deterministic canonical word seed | Complete |
+| This commit | Add the authoritative schema, service-only transactions, RLS, finalizer, deletion, and database proof | Pending checkpoint creation |
 
 Remaining intended checkpoints are adjusted only when the real dependency graph
 makes units inseparable:
