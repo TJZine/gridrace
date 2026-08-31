@@ -1,0 +1,166 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000201 /* GridRaceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000101 /* GridRaceApp.swift */; };
+		A00000000000000000000202 /* GameRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000102 /* GameRules.swift */; };
+		A00000000000000000000203 /* TutorialModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000103 /* TutorialModel.swift */; };
+		A00000000000000000000204 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000104 /* Views.swift */; };
+		A00000000000000000000205 /* GameRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000105 /* GameRulesTests.swift */; };
+		A00000000000000000000206 /* TutorialModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000106 /* TutorialModelTests.swift */; };
+		A00000000000000000000207 /* development-en-US-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* development-en-US-v1.json */; };
+		A00000000000000000000208 /* development-en-US-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* development-en-US-v1.json */; };
+		A00000000000000000000209 /* game-rules-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* game-rules-v1.json */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A00000000000000000000601 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000401;
+			remoteInfo = GridRace;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000101 /* GridRaceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridRaceApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000102 /* GameRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRules.swift; sourceTree = "<group>"; };
+		A00000000000000000000103 /* TutorialModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000104 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		A00000000000000000000105 /* GameRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRulesTests.swift; sourceTree = "<group>"; };
+		A00000000000000000000106 /* TutorialModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialModelTests.swift; sourceTree = "<group>"; };
+		A00000000000000000000107 /* development-en-US-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "../shared/word-packs/development-en-US-v1.json"; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000108 /* game-rules-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "../shared/test-vectors/game-rules-v1.json"; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000109 /* GridRace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GridRace.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000110 /* GridRaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GridRaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A00000000000000000000302 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000305 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* App */,
+				A00000000000000000000005 /* GridRaceTests */,
+				A00000000000000000000006 /* Shared Resources */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (A00000000000000000000109 /* GridRace.app */, A00000000000000000000110 /* GridRaceTests.xctest */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (A00000000000000000000101, A00000000000000000000102, A00000000000000000000103, A00000000000000000000104);
+			path = GridRace/App;
+			sourceTree = SOURCE_ROOT;
+		};
+		A00000000000000000000005 /* GridRaceTests */ = {
+			isa = PBXGroup;
+			children = (A00000000000000000000105, A00000000000000000000106);
+			path = GridRaceTests;
+			sourceTree = SOURCE_ROOT;
+		};
+		A00000000000000000000006 /* Shared Resources */ = {
+			isa = PBXGroup;
+			children = (A00000000000000000000107, A00000000000000000000108);
+			name = "Shared Resources";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000401 /* GridRace */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000513;
+			buildPhases = (A00000000000000000000301, A00000000000000000000302, A00000000000000000000303);
+			buildRules = ();
+			dependencies = ();
+			name = GridRace;
+			productName = GridRace;
+			productReference = A00000000000000000000109;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000402 /* GridRaceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000523;
+			buildPhases = (A00000000000000000000304, A00000000000000000000305, A00000000000000000000306);
+			buildRules = ();
+			dependencies = (A00000000000000000000602);
+			name = GridRaceTests;
+			productName = GridRaceTests;
+			productReference = A00000000000000000000110;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					A00000000000000000000401 = {CreatedOnToolsVersion = 26.6; };
+					A00000000000000000000402 = {CreatedOnToolsVersion = 26.6; TestTargetID = A00000000000000000000401; };
+				};
+			};
+			buildConfigurationList = A00000000000000000000503;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A00000000000000000000002;
+			productRefGroup = A00000000000000000000003;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A00000000000000000000401, A00000000000000000000402);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000303 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000207); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000306 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000208, A00000000000000000000209); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000301 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000201, A00000000000000000000202, A00000000000000000000203, A00000000000000000000204); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000304 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000205, A00000000000000000000206); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A00000000000000000000602 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A00000000000000000000401 /* GridRace */; targetProxy = A00000000000000000000601 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000501 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		A00000000000000000000502 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
+		A00000000000000000000511 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = GridRace; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.GridRace; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		A00000000000000000000512 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = GridRace; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.GridRace; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; VALIDATE_PRODUCT = YES; }; name = Release; };
+		A00000000000000000000521 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.GridRaceTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GridRace.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GridRace"; }; name = Debug; };
+		A00000000000000000000522 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.GridRaceTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GridRace.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GridRace"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000503 /* Build configuration list for PBXProject */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000501, A00000000000000000000502); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A00000000000000000000513 /* Build configuration list for PBXNativeTarget "GridRace" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000511, A00000000000000000000512); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A00000000000000000000523 /* Build configuration list for PBXNativeTarget "GridRaceTests" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000521, A00000000000000000000522); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}
