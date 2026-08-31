@@ -1,7 +1,7 @@
 # GridRace Architecture
 
 This document is the current architecture authority. It separates the local Phase 1
-tutorial from the production architecture selected for later phases.
+tutorial, Phase 2 backend foundation, and Phase 3 live slice.
 
 ## Phase 1 local architecture
 
@@ -49,10 +49,12 @@ Optional haptics use native APIs and respect the user's in-app preference. Swift
 environment values drive Reduce Motion, Increased Contrast, Bold Text, and Dynamic
 Type behavior; domain rules do not depend on those presentation choices.
 
-## Selected production boundary: later phases
+## Phase 2 backend and Phase 3 live boundary
 
 The production design is a native SwiftUI client backed by authoritative Supabase.
-It is selected now but is not implemented in Phase 1.
+Phase 2 implements the local backend/authentication trust boundary. Phase 3 connects
+the fixed two-player, one-round client slice to it. The complete 2–8 player,
+multi-round MVP remains later work.
 
 The client eventually displays server-owned state and submits authenticated intents.
 The backend selects answers, validates accepted words, computes feedback and scores,
@@ -61,9 +63,9 @@ client cannot read a round answer before reveal or directly mutate authoritative
 state. All Supabase access stays behind service boundaries; SwiftUI views never import
 or call the SDK.
 
-Future responsibilities are intentionally narrow:
+Phase 2/3 responsibilities are intentionally narrow:
 
-| Component | Later production responsibility |
+| Component | Phase 2/3 responsibility |
 | --- | --- |
 | Supabase Auth | Establish identity and sessions, including Sign in with Apple. Auth identity is not a public profile and email is never shown to other players. |
 | PostgreSQL | Own canonical profiles, rosters, rounds, guesses, timestamps, scores, reports, blocks, and state transitions. Constraints and transactional functions enforce valid, idempotent changes. Private schemas own answers and other server-only data. |
@@ -72,6 +74,23 @@ Future responsibilities are intentionally narrow:
 | Realtime | Signal that relevant state may have changed. It does not carry secret clues or replace a canonical snapshot. |
 | Cron | Ask server-owned finalization commands to resolve elapsed deadlines and other scheduled game transitions. It does not introduce a second clock or transition implementation. |
 | APNs | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
+
+Phase 2/3 implements every row above except APNs. The exact six-command and
+versioned snapshot shapes live in [`live-api-contract.md`](live-api-contract.md).
+The client uses only create, join, creator start, guess submission, snapshot, and
+account deletion commands; profile updates remain owner-scoped RLS writes.
+
+Public rows contain no answer. The secret-bearing `private` schema has no grant for
+anonymous or authenticated roles. A separate narrowly executable RLS-helper schema
+may answer membership predicates without granting access to private words or round
+secrets. Normal clients receive safe column grants: opponent timing, efficiency,
+placement, and member auth identifiers are available only through the conditional
+snapshot after reveal.
+
+Every canonical change touches the safe public match revision. Phase 3 Realtime
+subscribes only to that roster-authorized row and emits a refresh signal, avoiding
+secret or timing-bearing change payloads. A snapshot remains mandatory after the
+signal.
 
 PostgreSQL owns canonical match and round state. Explicit transitions are
 transactional commands; the countdown-to-playing state is interpreted from the
@@ -105,6 +124,27 @@ the result. If a command response is lost, the client refreshes rather than gues
 whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
 opponent feedback, keyboard evidence, starting words, and exact solve times.
 
+Snapshot version 1 uses stable member-seat order. A lobby has a pending public round
+with no timestamps or players. A started round includes the requester's full board
+and only coarse opponent state/count until reveal; reveal adds the answer, both
+boards, server timing, efficiency, and competition placement. Mapping rejects
+impossible combinations before they become feature state.
+
+## Phase 2/3 account deletion
+
+The authenticated deletion command first prepares canonical data transactionally,
+then the server hard-deletes the Supabase Auth identity. An unstarted host lobby is
+removed; an unstarted guest slot is removed. Deletion during play is an explicit
+authenticated forfeit. A result needed by the surviving participant retains only a
+detached member slot named `Deleted Player` and its canonical result rows. The
+profile and auth link are removed, no deletion ledger or reversible mapping remains,
+and every other command requires an active profile/member mapping so a previously
+issued JWT cannot regain access.
+
+Database preparation treats an absent profile as already complete. An already
+absent Auth identity is also success. Real Apple provider-token revocation remains a
+production-hardening proof when provider credentials are unavailable locally.
+
 ## Secrets, privacy, and logs
 
 - Production answers live in a private schema with no authenticated-client grant and
@@ -125,7 +165,9 @@ pre-production decisions rather than defaults inferred by the client.
 
 ## Phase boundary
 
-The next network phase may add the smallest two-player, one-round vertical slice.
-It must preserve the contracts above and prove server authority, RLS denial,
-idempotency, snapshot recovery, and answer secrecy. Phase 1 adds none of that future
-code.
+Phase 2 proves the local backend, authentication/profile boundary, private storage,
+RLS, commands, deletion, seed, and database/Edge tests before the client relies on
+them. Phase 3 proves the smallest two-player, one-round live race, including server
+authority, idempotency, deadline finalization, snapshot recovery, Realtime
+convergence, and answer secrecy. Later phases must not generalize the implementation
+until that proof is complete.

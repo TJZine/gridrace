@@ -3,7 +3,7 @@
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution lives in the one active file under [`docs/plans/`](plans/);
-today that is the [Phase 0 and Phase 1 Foundation Plan](plans/2026-08-30-phase-0-1-foundation.md).
+today that is the [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md).
 
 ## 2026-08-30 — Focus the Product on Blind Race
 
@@ -62,3 +62,25 @@ architecture are outside the initial build.
 
 **Rationale:** None is required to validate private live races, and each adds product
 or operational complexity before demand is established.
+
+## 2026-08-30 — Split Backend Foundation From the Live Slice
+
+**Decision:** Phase 2 establishes the local Supabase, authentication/profile,
+private-data, RLS, command, seed, deletion, and database-test foundation. Phase 3
+uses that foundation for exactly two authenticated players and one round through
+create, join, creator start, authoritative guessing, snapshot recovery, deadline
+finalization, and shared reveal.
+
+**Rationale:** The split makes the trust boundary independently reviewable before
+the client relies on it without expanding or changing the focused product slice.
+
+## 2026-08-30 — Retain Only Anonymized Survivor Results on Deletion
+
+**Decision:** Account deletion removes the profile and Auth identity. An unstarted
+host lobby is removed; an unstarted guest slot is removed. Active deletion is an
+explicit authenticated forfeit. A completed or otherwise survivor-visible result
+may retain the deleted slot and accepted rows only after the auth link and profile
+are removed and its presentation becomes nonidentifying `Deleted Player` data.
+
+**Rationale:** Hard deletion must leave no reversible user mapping while preserving
+the other participant's structurally valid immutable result.

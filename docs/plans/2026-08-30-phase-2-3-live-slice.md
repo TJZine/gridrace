@@ -28,17 +28,23 @@ recovery, deadline finalization, and shared reveal.
   evaluator gates, 16 XCTest cases, and a clean iOS build.
 - The available simulator was rediscovered as iPhone 17 Pro / iOS 26.5 with UUID
   `1BCA3F5A-3228-4888-909E-ED86AE627221`; it was not assumed from prose.
-- Wave 1 discovery is in progress. Backend/toolchain, schema/RLS/security, and iOS
-  integration audits are delegated read-only; the controller owns the command,
-  snapshot, and two-client proof audit.
+- Wave 1 discovery is complete. The controller reconciled the backend/toolchain,
+  schema/RLS/security, iOS integration, and command/test reports into the versioned
+  contract at `docs/live-api-contract.md` and the current authority documents.
+- Supabase CLI `2.116.0` and Supabase Swift `2.55.1` are frozen from current official
+  releases. Node 24.14.0, npm 11.9.0, Docker 29.5.2, Deno 2.9.5, Xcode 26.6, and
+  Swift 6.3.3 are locally available.
+- Schema ownership, column-level secrecy, nonrecursive RLS helpers, lock ordering,
+  deletion/anonymization, fixed rate limits, debug-auth boundary, snapshot v1, safe
+  match-row Realtime signals, command envelopes, and negative/concurrency proof are
+  frozen. The missing display-name contract is now explicit in the live API authority.
 - No Supabase project has been linked, reset, migrated, or deployed. No remote
   Supabase state has been read or mutated.
 
 ## Next integration action
 
-Reconcile the four Wave 1 audit reports into one frozen schema, command, snapshot,
-deletion, local-auth, rate-limit, and verification contract before dispatching any
-implementation writer.
+Bootstrap the repository-pinned local Supabase toolchain and deterministic canonical
+word seed, then prove their exact install/version/drift commands before schema work.
 
 ## Scope
 
@@ -102,9 +108,10 @@ implementation writer.
 - Accessibility, non-color semantics, Reduce Motion, Dynamic Type, Increased
   Contrast, Bold Text, usable targets, and optional native haptics remain intact.
 
-## Frozen-contract candidates
+## Frozen cross-stack contract
 
-These are discovery inputs, not final decisions until Wave 1 reconciliation.
+The normative wire details are in [`../live-api-contract.md`](../live-api-contract.md).
+The summaries below are frozen inputs to all implementation units.
 
 ### Command boundary
 
@@ -140,11 +147,11 @@ auth must compile out of Release and use independent sessions without admin acce
 
 | Unit | Owner | Write boundary | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| D-01 Backend/toolchain audit | `backend_audit` | Read-only repository/toolchain/official docs | Required reads | In progress |
-| D-02 Schema/RLS/security audit | `schema_security_audit` | Read-only repository/official docs | Required reads | In progress |
-| D-03 iOS integration audit | `ios_audit` | Read-only iOS/project/official docs | Required reads | In progress |
-| D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | In progress |
-| C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Pending |
+| D-01 Backend/toolchain audit | `backend_audit` | Read-only repository/toolchain/official docs | Required reads | Complete: CLI 2.116.0 and local gates frozen |
+| D-02 Schema/RLS/security audit | `schema_security_audit` | Read-only repository/official docs | Required reads | Complete: schema/policies/deletion/locks/tests frozen |
+| D-03 iOS integration audit | `ios_audit` | Read-only iOS/project/official docs | Required reads | Complete: SDK 2.55.1 and minimum seams frozen |
+| D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | Complete: wire/privacy/concurrency/two-client proof frozen |
+| C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete; controller diff audit pending checkpoint |
 | P2-01 Local toolchain and deterministic seed | Assigned after freeze | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Pending |
 | P2-02 Schema, transactions, grants, RLS, database tests | Assigned after freeze | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Pending |
 | P2-03 Edge command functions and focused tests | Assigned after SQL freeze | `supabase/functions/**` only | P2-02 SQL/API freeze | Pending |
@@ -205,8 +212,14 @@ cross-stack contracts are all touched.
 | DEC-04 | Keep the canonical evaluator and 100-word development pack unchanged; generated SQL is derived and drift-checked. | Accepted | Product/task contract |
 | DEC-05 | Local automated identities are debug-only, independent authenticated sessions; production remains Apple through Supabase Auth. | Accepted | Task contract |
 | DEC-06 | Real Apple provider exchange, external token revocation, and physical-device proof may be documented-only when credentials/hardware are unavailable. | Accepted | Task contract |
-| BLK-01 | Exact Supabase CLI/SDK versions and current API syntax are not yet frozen. | Open | D-01 and D-03 in progress |
-| BLK-02 | Final SQL/deletion/rate-limit/RLS structure is not yet frozen. | Open | D-02 in progress |
+| DEC-07 | Pin Supabase CLI `2.116.0` and Supabase Swift `2.55.1`; use the CLI's Docker matrix and no custom Compose stack. | Accepted | Official release/source audits D-01/D-03 |
+| DEC-08 | Use service-only security-invoker command RPCs, a separate safe definer-helper schema for nonrecursive RLS, column grants for timing/auth IDs, and a public match revision as the only Realtime signal. | Accepted | D-02/D-03 reconciliation |
+| DEC-09 | Use one fixed lock order: match, round, player rows in seat order, then guesses/receipts. Expected business errors return typed results so rate counters commit. | Accepted | D-02 concurrency audit |
+| DEC-10 | Delete invalid lobbies, treat active account deletion as explicit forfeit, and retain only irreversibly anonymized survivor-required results before hard Auth deletion. | Accepted | Architecture/privacy decision and D-02 |
+| DEC-11 | Display names are 2–16 ASCII characters with alphanumeric ends and internal letters, digits, single spaces, apostrophes, or hyphens. | Accepted assumption | The supplied “documented” set was absent; narrow trust-boundary rule now documented |
+| DEC-12 | Local trusted client-IP provenance is unavailable. Prove transactional per-user limits and the keyed-IP database path; keep live address extraction documented-only. | Accepted limitation | Current official deployment material does not identify a trustworthy local header |
+| BLK-01 | Exact Supabase CLI/SDK versions and current API syntax. | Resolved | DEC-07 and official source inspection |
+| BLK-02 | Final SQL/deletion/rate-limit/RLS structure. | Resolved | DEC-08..12 and live API contract |
 
 ## Review findings and dispositions
 
@@ -235,19 +248,24 @@ Allowed dispositions: `accepted`, `modified`, `rejected`, or `deferred`.
 
 ## Integrated commits
 
-No Phase 2/3 commits yet. Intended checkpoints are adjusted only when the real
-dependency graph makes units inseparable:
+Phase 2/3 commits to date:
 
-1. `docs: track phase 2 and 3 live slice`
-2. `build(backend): bootstrap local Supabase`
-3. `feat(backend): add private game schema and RLS`
-4. `feat(auth): add Supabase authentication and profiles`
-5. `feat(backend): add match commands and snapshots`
-6. `feat(backend): add idempotent guessing and finalization`
-7. `feat(ios): add two-player live race`
-8. `test(integration): prove authoritative live slice`
-9. `docs: record phase 2 and 3 verification`
-10. `docs: close phase 2 and 3 plan`
+| Commit | Purpose | Status |
+| --- | --- | --- |
+| `70c0339 docs: track phase 2 and 3 live slice` | Activate durable task tracking | Complete |
+
+Remaining intended checkpoints are adjusted only when the real dependency graph
+makes units inseparable:
+
+1. `build(backend): bootstrap local Supabase`
+2. `feat(backend): add private game schema and RLS`
+3. `feat(auth): add Supabase authentication and profiles`
+4. `feat(backend): add match commands and snapshots`
+5. `feat(backend): add idempotent guessing and finalization`
+6. `feat(ios): add two-player live race`
+7. `test(integration): prove authoritative live slice`
+8. `docs: record phase 2 and 3 verification`
+9. `docs: close phase 2 and 3 plan`
 
 ## Unavailable or documented-only proof
 

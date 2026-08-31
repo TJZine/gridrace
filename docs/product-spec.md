@@ -54,31 +54,36 @@ the device, so it demonstrates interaction only. It does not claim production
 answer secrecy, server authority, authentication, multiplayer, persistence, or
 network recovery.
 
-Phase 2 is the first networked vertical slice: exactly two authenticated
-players, one round, a server-selected answer, server-validated guesses,
-progress updates, reconnect from canonical snapshots, and shared reveal. It
+Phase 2 establishes the local authoritative backend foundation: Supabase Auth and
+profiles, private words and round secrets, grants and RLS, transactional commands,
+deterministic development-word seeding, account deletion, and database/Edge tests.
+
+Phase 3 is the first networked vertical slice: exactly two authenticated players,
+one round, a server-selected answer, server-validated guesses, clue-free progress,
+reconnect from canonical snapshots, deadline finalization, and shared reveal. It
 must prove answer isolation, RLS denial, idempotent submission, server time, and
 state convergence before broader match flow is added.
 
 Later production phases expand the proved slice to the complete Blind Race MVP:
 2–8 players, 1/3/5 rounds, invite links and room codes, full results and rematch,
-profiles, history, notifications where useful, moderation, and account deletion.
-Those are planned product responsibilities, not Phase 1 behavior.
+history, notifications where useful, report/block moderation, broader retention, and
+production identity/deletion hardening. Those are planned product responsibilities,
+not Phase 3 behavior.
 
 ## Screen responsibilities
 
-| Screen | Responsibility | Phase 1 scope |
+| Screen | Responsibility | Current phase scope |
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
-| Home | Start create/join, resume an eligible match, and reach history/profile. | Future |
-| Create/join | Choose 1/3/5 rounds or enter a private link/code; explain that the roster locks at countdown. | Future |
-| Lobby | Show the private roster and invite controls; only the creator starts, with no readiness state. | Future |
-| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Implemented locally |
-| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Minimal local prototype |
+| Home | Start create/join, reach the profile, sign out, and delete the account. | Phase 3 forces two players and one round |
+| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 3; broader configuration and links are later |
+| Lobby | Show the private roster; only the creator starts, with no readiness state. | Phase 3 |
+| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 local tutorial and Phase 3 server-backed slice |
+| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 prototype and Phase 3 shared reveal |
 | Results | Show exact round/match placement and summary. | Local comparison only |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Show the signed-in player's completed matches under the eventual retention policy. | Future |
-| Profile | Manage display name, generated avatar, blocks, and account deletion. Email is never a public profile field. | Future |
+| Profile | Manage display name, generated avatar, blocks, and account deletion. Email is never a public profile field. | Phase 2/3 identity and deletion; blocks later |
 
 ## Beta exit criteria
 

@@ -1,8 +1,9 @@
 # GridRace Screen Flow
 
-This document describes presentation and navigation. Exact game behavior lives
-in [`game-rules.md`](game-rules.md). “Local” means Phase 1 tutorial behavior;
-“future” means a later server-backed phase.
+This document describes presentation and navigation. Exact game behavior lives in
+[`game-rules.md`](game-rules.md). “Tutorial” means Phase 1 local behavior; “live
+slice” means the Phase 3 server-backed two-player/one-round flow; “later” means the
+broader production MVP.
 
 ## Flow map
 
@@ -16,17 +17,14 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-The production MVP flow is future work:
+Phase 3 adds this fixed live slice while broader MVP branches remain later:
 
 ```text
-Onboarding / Sign in with Apple
+Tutorial or Sign in with Apple / Debug local sign-in
   -> Home
      -> Create -> Lobby -> Countdown -> Round -> Reveal
      -> Join   -> Lobby -> Countdown -> Round -> Reveal
-                                      -> next-round countdown, when applicable
-                                      -> Results -> Rematch or Home
-     -> History -> completed match detail
-     -> Profile -> identity, blocks, account deletion
+     -> Profile -> identity, sign out, account deletion
 ```
 
 The match creator starts the first and later countdowns. There is no readiness
@@ -45,11 +43,11 @@ authority demonstration.
 
 ### Home, create/join, and lobby
 
-These screens are future production work. Home routes to create, join, history,
-and profile. Create selects 1, 3, or 5 rounds with 3 as the default. Join accepts
-a private invite link or six-character room code. Lobby shows the private roster,
-invite controls, connection state, and a creator-only Start action. It does not
-add readiness, public discovery, chat, or late joining.
+The Phase 3 Home routes to fixed Create, manual-code Join, tutorial, and Profile.
+Create always makes exactly two seats and one round; configuration and invite links
+remain later. Lobby shows the private roster, room code, advisory connection state,
+and creator-only Start. It does not add readiness, public discovery, chat, or late
+joining.
 
 ### Countdown and round
 
@@ -70,9 +68,9 @@ The opponent strip shows, for each opponent:
 - playing, solved, failed, timed-out, or forfeited state;
 - a small progress response when the accepted count increases.
 
-Phase 1 ghosts remain connected and use only playing, solved, or failed. The
-broader connection and terminal presentations belong to the future production
-flow.
+Phase 1 ghosts remain connected and use only playing, solved, or failed. The live
+slice uses the full connection and terminal presentations while preserving those
+local tutorial ghosts.
 
 During play it never shows opponent letters or submitted words, feedback,
 keyboard state, starting words, or exact solve time. An accessible summary is
@@ -112,10 +110,9 @@ round remains, reveal stays available until the creator starts its countdown.
 After the final reveal, Results offers Rematch or Home. Rematch creates a new
 match; it does not reopen or mutate the completed one.
 
-History and Profile are also future work. History shows completed matches allowed
-by the approved retention policy. Profile manages display name, generated avatar,
-blocked players, and complete in-app account deletion. Contacts, photos, chat, and
-visible email are outside the product.
+History remains later. Phase 2/3 Profile manages display name, generated avatar,
+sign out, and complete in-app deletion; blocked-player controls remain later.
+Contacts, photos, chat, and visible email are outside the product.
 
 ## Accessibility flow requirements
 
