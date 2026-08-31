@@ -37,7 +37,7 @@ enum GuessValidationError: String, Codable, Error, Sendable {
         case .nonAscii: "Use only the English letters A through Z."
         case .invalidLength: "Enter exactly five letters."
         case .invalidCharacter: "Use letters only."
-        case .notAccepted: "That word is not in this small tutorial list."
+        case .notAccepted: "That word is not accepted."
         }
     }
 }

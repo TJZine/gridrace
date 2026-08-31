@@ -120,7 +120,11 @@ private struct RaceView: View {
                 .padding(.horizontal)
 
                 OpponentStrip(opponents: model.opponents)
-                BoardView(board: model.board)
+                BoardView(
+                    rows: model.board.rows,
+                    draft: model.board.draft,
+                    isPlaying: model.board.status == .playing
+                )
                     .padding(.horizontal)
 
                 if let error = model.errorMessage {
@@ -190,8 +194,11 @@ private struct OpponentStrip: View {
     }
 }
 
-private struct BoardView: View {
-    let board: BoardState
+struct BoardView: View {
+    let rows: [GuessRow]
+    let draft: String
+    let isPlaying: Bool
+    var highContrast = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -203,7 +210,8 @@ private struct BoardView: View {
                             letter: tile.letter,
                             feedback: tile.feedback,
                             isDraft: tile.isDraft,
-                            emptyLabel: "Empty tile, row \(rowIndex + 1), column \(columnIndex + 1)"
+                            emptyLabel: "Empty tile, row \(rowIndex + 1), column \(columnIndex + 1)",
+                            highContrast: highContrast
                         )
                     }
                 }
@@ -216,23 +224,24 @@ private struct BoardView: View {
     }
 
     private func tile(row: Int, column: Int) -> (letter: Character?, feedback: Feedback?, isDraft: Bool) {
-        if board.rows.indices.contains(row) {
-            let accepted = board.rows[row]
+        if rows.indices.contains(row) {
+            let accepted = rows[row]
             return (Array(accepted.word.uppercased())[column], accepted.feedback[column], false)
         }
-        if row == board.rows.count, board.status == .playing {
-            let letters = Array(board.draft)
+        if row == rows.count, isPlaying {
+            let letters = Array(draft)
             return (letters.indices.contains(column) ? letters[column] : nil, nil, true)
         }
         return (nil, nil, false)
     }
 }
 
-private struct TileView: View {
+struct TileView: View {
     let letter: Character?
     let feedback: Feedback?
     let isDraft: Bool
     let emptyLabel: String
+    var highContrast = false
 
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.legibilityWeight) private var legibilityWeight
@@ -242,7 +251,7 @@ private struct TileView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(fillColor)
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(borderColor, lineWidth: contrast == .increased ? 3 : 1.5)
+                .strokeBorder(borderColor, lineWidth: isHighContrast ? 3 : 1.5)
             if let letter {
                 Text(String(letter).uppercased())
                     .font(.title2)
@@ -272,7 +281,7 @@ private struct TileView: View {
     }
 
     private var borderColor: Color {
-        if contrast == .increased { return .black }
+        if isHighContrast { return .black }
         return feedback == nil
             ? Color.raceIndigo.opacity(isDraft ? 0.65 : 0.22)
             : Color.white.opacity(0.9)
@@ -285,20 +294,38 @@ private struct TileView: View {
         }
         return "Letter \(letter), draft."
     }
+
+    private var isHighContrast: Bool { highContrast || contrast == .increased }
 }
 
 private struct KeyboardView: View {
     @Bindable var model: TutorialModel
+
+    var body: some View {
+        LetterKeyboardView(
+            keyboard: model.board.keyboard,
+            typeLetter: model.typeLetter,
+            submit: model.submitGuess,
+            delete: model.deleteLetter
+        )
+    }
+}
+
+struct LetterKeyboardView: View {
+    let keyboard: KeyboardState
+    let typeLetter: (Character) -> Void
+    let submit: () -> Void
+    let delete: () -> Void
+    var highContrast = false
 
     private let rows = [Array("QWERTYUIOP"), Array("ASDFGHJKL"), Array("ZXCVBNM")]
 
     var body: some View {
         VStack(spacing: 5) {
             letterRow(rows[0])
-            letterRow(rows[1])
-                .padding(.horizontal, 14)
+            letterRow(rows[1]).padding(.horizontal, 14)
             HStack(spacing: 4) {
-                Button { model.submitGuess() } label: {
+                Button(action: submit) {
                     Image(systemName: "return")
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
@@ -308,11 +335,12 @@ private struct KeyboardView: View {
                 ForEach(rows[2], id: \.self) { letter in
                     KeyboardKey(
                         letter: letter,
-                        feedback: model.board.keyboard.feedback(for: letter)
-                    ) { model.typeLetter(letter) }
+                        feedback: keyboard.feedback(for: letter),
+                        highContrast: highContrast
+                    ) { typeLetter(letter) }
                 }
 
-                Button { model.deleteLetter() } label: {
+                Button(action: delete) {
                     Image(systemName: "delete.left")
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
@@ -330,16 +358,18 @@ private struct KeyboardView: View {
             ForEach(letters, id: \.self) { letter in
                 KeyboardKey(
                     letter: letter,
-                    feedback: model.board.keyboard.feedback(for: letter)
-                ) { model.typeLetter(letter) }
+                    feedback: keyboard.feedback(for: letter),
+                    highContrast: highContrast
+                ) { typeLetter(letter) }
             }
         }
     }
 }
 
-private struct KeyboardKey: View {
+struct KeyboardKey: View {
     let letter: Character
     let feedback: Feedback?
+    var highContrast = false
     let action: () -> Void
 
     @Environment(\.colorSchemeContrast) private var contrast
@@ -360,8 +390,8 @@ private struct KeyboardKey: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        contrast == .increased ? Color.black : Color.raceIndigo.opacity(0.4),
-                        lineWidth: contrast == .increased ? 2.5 : 1
+                        isHighContrast ? Color.black : Color.raceIndigo.opacity(0.4),
+                        lineWidth: isHighContrast ? 2.5 : 1
                     )
             }
         }
@@ -383,6 +413,8 @@ private struct KeyboardKey: View {
         guard let feedback else { return "Letter \(letter)" }
         return "Letter \(letter), \(feedback.accessibilityMeaning)."
     }
+
+    private var isHighContrast: Bool { highContrast || contrast == .increased }
 }
 
 private extension View {
@@ -468,7 +500,7 @@ private struct RevealRowView: View {
     }
 }
 
-private extension Color {
+extension Color {
     static let raceBackground = Color(red: 0.96, green: 0.94, blue: 0.99)
     static let raceIndigo = Color(red: 0.24, green: 0.20, blue: 0.58)
     static let raceCoral = Color(red: 0.78, green: 0.31, blue: 0.20)
