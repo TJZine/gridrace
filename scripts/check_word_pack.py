@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the development word pack and its deterministic manifest."""
+"""Validate checked-in word packs, manifests, and deterministic generation."""
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ import json
 from pathlib import Path
 import re
 import sys
+from typing import Callable
+
+from generate_daily_word_pack import BANNED_ANSWERS, build as build_daily_pack
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PACK = ROOT / "shared/word-packs/development-en-US-v1.json"
-MANIFEST = ROOT / "shared/word-packs/development-en-US-v1.manifest.json"
+PACKS = ROOT / "shared/word-packs"
 WORD = re.compile(r"[a-z]{5}", re.ASCII)
 
 
@@ -22,20 +24,53 @@ def require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def load_pack() -> tuple[dict[str, object], bytes]:
-    raw = PACK.read_bytes()
-    pack = json.loads(raw.decode("utf-8"))
-    require(isinstance(pack, dict), "word pack must be a JSON object")
-    canonical = (json.dumps(pack, indent=2, ensure_ascii=True) + "\n").encode()
-    require(raw == canonical, "word pack JSON is not in deterministic format")
-    return pack, raw
+def load(path: Path) -> tuple[dict[str, object], bytes]:
+    raw = path.read_bytes()
+    value = json.loads(raw.decode("utf-8"))
+    require(isinstance(value, dict), f"{path.name} must be a JSON object")
+    canonical = (json.dumps(value, indent=2, ensure_ascii=True) + "\n").encode()
+    require(raw == canonical, f"{path.name} is not in deterministic JSON format")
+    return value, raw
 
 
-def validate_pack(pack: dict[str, object]) -> list[str]:
-    require(pack.get("formatVersion") == 1, "formatVersion must be 1")
-    require(pack.get("id") == "development-en-US-v1", "unexpected pack id")
-    require(pack.get("locale") == "en-US", "locale must be en-US")
-    require(pack.get("wordLength") == 5, "wordLength must be 5")
+def words(value: object, label: str) -> list[str]:
+    require(isinstance(value, list), f"{label} must be an array")
+    require(all(isinstance(word, str) for word in value), f"{label} must contain strings")
+    result = [word for word in value if isinstance(word, str)]
+    require(len(result) == len(set(result)), f"{label} contains a duplicate")
+    invalid = [word for word in result if WORD.fullmatch(word) is None]
+    require(not invalid, f"{label} must be lowercase five-letter ASCII: {invalid[:5]}")
+    return result
+
+
+def manifest_bytes(pack: dict[str, object], raw: bytes, answers: int, accepted: int) -> bytes:
+    manifest = {
+        "formatVersion": 1,
+        "source": f"{pack['id']}.json",
+        "packID": pack["id"],
+        "packVersion": pack["formatVersion"],
+    }
+    if "scheduleVersion" in pack:
+        manifest["scheduleVersion"] = pack["scheduleVersion"]
+    if "epochDay" in pack:
+        manifest["epochDay"] = pack["epochDay"]
+    manifest.update(
+        {
+            "locale": pack["locale"],
+            "wordLength": pack["wordLength"],
+            "answerCount": answers,
+            "acceptedGuessCount": accepted,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+    )
+    return (json.dumps(manifest, indent=2, ensure_ascii=True) + "\n").encode()
+
+
+def validate_development(pack: dict[str, object]) -> tuple[int, int]:
+    require(pack.get("formatVersion") == 1, "development formatVersion must be 1")
+    require(pack.get("id") == "development-en-US-v1", "unexpected development pack id")
+    require(pack.get("locale") == "en-US", "development locale must be en-US")
+    require(pack.get("wordLength") == 5, "development wordLength must be 5")
     require(
         pack.get("usage")
         == {
@@ -46,7 +81,7 @@ def validate_pack(pack: dict[str, object]) -> list[str]:
                 "lexicon."
             ),
         },
-        "usage metadata must describe the Phase 1-only accepted-list limitation",
+        "development usage metadata changed",
     )
     require(
         pack.get("provenance")
@@ -65,7 +100,7 @@ def validate_pack(pack: dict[str, object]) -> list[str]:
                 "the owner adopts a license."
             ),
         },
-        "provenance or licensing metadata is incomplete",
+        "development provenance or licensing metadata changed",
     )
     require(
         pack.get("manualReview")
@@ -75,34 +110,62 @@ def validate_pack(pack: dict[str, object]) -> list[str]:
             "nonAbbreviated": True,
             "sensitiveTermsReviewed": True,
         },
-        "manual review attestations must all be true",
+        "development manual review attestations must all be true",
+    )
+    entries = words(pack.get("words"), "development words")
+    require(len(entries) == 100, "development pack must contain exactly 100 words")
+    require(entries == sorted(entries), "development words must be sorted")
+    return len(entries), len(entries)
+
+
+def validate_daily(pack: dict[str, object]) -> tuple[int, int]:
+    require(pack.get("formatVersion") == 1, "daily formatVersion must be 1")
+    require(pack.get("id") == "daily-classic-en-US-v1", "unexpected daily pack id")
+    require(pack.get("locale") == "en-US", "daily locale must be en-US")
+    require(pack.get("wordLength") == 5, "daily wordLength must be 5")
+    require(pack.get("scheduleVersion") == 1, "daily scheduleVersion must be 1")
+    require(pack.get("epochDay") == 20696, "daily epoch must be 2026-08-31 UTC")
+    require(
+        pack.get("schedulePolicy")
+        == "Fixed answer order; never reorder or remove published v1 entries.",
+        "daily schedule policy must preserve published assignments",
+    )
+    require(
+        pack.get("manualReview")
+        == {
+            "answersFamiliar": True,
+            "answersNonProper": True,
+            "answersNonAbbreviated": True,
+            "answersSensitiveTermsReviewed": True,
+        },
+        "daily answer review attestations must all be true",
     )
 
-    words = pack.get("words")
-    require(isinstance(words, list), "words must be an array")
-    require(all(isinstance(word, str) for word in words), "every word must be a string")
-    typed_words = [word for word in words if isinstance(word, str)]
-    require(len(typed_words) == 100, "word pack must contain exactly 100 words")
-    require(len(set(typed_words)) == 100, "word pack contains a duplicate")
-    require(typed_words == sorted(typed_words), "word pack must be sorted")
-    invalid = [word for word in typed_words if WORD.fullmatch(word) is None]
-    require(not invalid, f"words must be lowercase five-letter ASCII: {invalid}")
-    return typed_words
+    accepted = words(pack.get("acceptedGuesses"), "daily accepted guesses")
+    answers = words(pack.get("answers"), "daily answers")
+    require(accepted == sorted(accepted), "daily accepted guesses must be sorted")
+    require(len(accepted) >= 8_000, "daily accepted-guess list is too narrow")
+    require(len(answers) >= 365, "daily answer schedule must cover at least one year")
+    require(set(answers) <= set(accepted), "every daily answer must be an accepted guess")
+    require(not (set(answers) & BANNED_ANSWERS), "daily answers contain a banned term")
+    return len(answers), len(accepted)
 
 
-def manifest_bytes(pack: dict[str, object], raw: bytes, word_count: int) -> bytes:
-    manifest = {
-        "formatVersion": 1,
-        "source": PACK.name,
-        "packID": pack["id"],
-        "packVersion": pack["formatVersion"],
-        "locale": pack["locale"],
-        "wordLength": pack["wordLength"],
-        "answerCount": word_count,
-        "acceptedGuessCount": word_count,
-        "sha256": hashlib.sha256(raw).hexdigest(),
-    }
-    return (json.dumps(manifest, indent=2) + "\n").encode()
+def validate_one(
+    pack_id: str,
+    validator: Callable[[dict[str, object]], tuple[int, int]],
+    write_manifest: bool,
+) -> tuple[int, int]:
+    pack_path = PACKS / f"{pack_id}.json"
+    manifest_path = PACKS / f"{pack_id}.manifest.json"
+    pack, raw = load(pack_path)
+    answer_count, accepted_count = validator(pack)
+    expected = manifest_bytes(pack, raw, answer_count, accepted_count)
+    if write_manifest:
+        manifest_path.write_bytes(expected)
+    else:
+        require(manifest_path.read_bytes() == expected, f"{manifest_path.name} is stale")
+    return answer_count, accepted_count
 
 
 def main() -> int:
@@ -110,26 +173,34 @@ def main() -> int:
     parser.add_argument(
         "--write-manifest",
         action="store_true",
-        help="replace the manifest with the deterministic value",
+        help="replace manifests with deterministic values after validating packs",
     )
     args = parser.parse_args()
 
     try:
-        pack, raw = load_pack()
-        words = validate_pack(pack)
-        expected = manifest_bytes(pack, raw, len(words))
-        if args.write_manifest:
-            MANIFEST.write_bytes(expected)
-        else:
-            require(
-                MANIFEST.read_bytes() == expected,
-                "manifest is stale; run with --write-manifest",
-            )
+        development = validate_one(
+            "development-en-US-v1", validate_development, args.write_manifest
+        )
+        daily = validate_one("daily-classic-en-US-v1", validate_daily, args.write_manifest)
+        generated_pack, generated_manifest = build_daily_pack()
+        require(
+            (PACKS / "daily-classic-en-US-v1.json").read_bytes() == generated_pack,
+            "daily pack is stale; run scripts/generate_daily_word_pack.py",
+        )
+        require(
+            (PACKS / "daily-classic-en-US-v1.manifest.json").read_bytes()
+            == generated_manifest,
+            "daily manifest differs from deterministic generation",
+        )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"word-pack check failed: {error}", file=sys.stderr)
         return 1
 
-    print(f"word-pack check passed: {len(words)} words")
+    print(
+        "word-pack check passed: "
+        f"development {development[0]} words; "
+        f"Daily Classic {daily[0]} answers, {daily[1]} accepted guesses"
+    )
     return 0
 
 

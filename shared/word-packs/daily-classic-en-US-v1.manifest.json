@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "source": "daily-classic-en-US-v1.json",
+  "packID": "daily-classic-en-US-v1",
+  "packVersion": 1,
+  "scheduleVersion": 1,
+  "epochDay": 20696,
+  "locale": "en-US",
+  "wordLength": 5,
+  "answerCount": 725,
+  "acceptedGuessCount": 8508,
+  "sha256": "6f756532a13bed36f4862aac1466788b9c6c1ffaaf5bee58e75f59cd0d081f11"
+}
