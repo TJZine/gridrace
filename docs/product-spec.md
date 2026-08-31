@@ -46,7 +46,7 @@ Phase 0 establishes the product, rule, architecture, privacy, flow, word-pack,
 and cross-runtime evaluator authorities. It adds no playable or networked
 product.
 
-Phase 1 is the current implementation target: a native SwiftUI onboarding
+Phase 1 now provides a native SwiftUI onboarding
 tutorial with one deterministic local answer, two deterministic ghost
 opponents, an accessible board and keyboard, an absolute-time countdown, a
 private progress strip, and a minimal reveal. Its answer and ghost data live on
@@ -69,12 +69,12 @@ Those are planned product responsibilities, not Phase 1 behavior.
 
 | Screen | Responsibility | Phase 1 scope |
 | --- | --- | --- |
-| Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Local target |
+| Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
 | Home | Start create/join, resume an eligible match, and reach history/profile. | Future |
 | Create/join | Choose 1/3/5 rounds or enter a private link/code; explain that the roster locks at countdown. | Future |
 | Lobby | Show the private roster and invite controls; only the creator starts, with no readiness state. | Future |
-| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Local target |
-| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Minimal local target |
+| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Implemented locally |
+| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Minimal local prototype |
 | Results | Show exact round/match placement and summary. | Local comparison only |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Show the signed-in player's completed matches under the eventual retention policy. | Future |

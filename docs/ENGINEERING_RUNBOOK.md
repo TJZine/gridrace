@@ -130,6 +130,18 @@ git diff --cached --check
 git diff --cached --stat
 git log -1 --oneline
 python3 scripts/check_word_pack.py
+deno fmt --check rules/typescript
+deno lint rules/typescript
+deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
+deno test --allow-read rules/typescript/evaluator_test.ts
+xcodebuild -project ios/GridRace.xcodeproj -list
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
+  -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
+  -derivedDataPath /tmp/GridRaceDerivedData-test test
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug \
+  -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
+  -derivedDataPath /tmp/GridRaceDerivedData-build clean build
 ```
 
 Use `rg --files` and `rg` for discovery when available, but do not treat search
@@ -137,8 +149,11 @@ output as product verification. Scope every diff review by appending `--` and
 concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
-No Xcode, Swift test, Supabase, Deno, database, or CI command is canonical yet. Do
-not claim a product gate passed merely because the desired command appears below.
+The checked-in project currently proves these Deno and Xcode commands with Deno
+2.9.5, Xcode 26.6, the installed iOS 26.5 runtime, and the named iPhone 17 Pro
+simulator. The simulator UUID is local toolchain state: rediscover it with the
+proved destination commands before reusing the build or test command on another
+machine. No Supabase, database, or CI command is canonical yet.
 
 ### Candidate gates to prove and promote
 
@@ -151,17 +166,16 @@ Expected gate families are:
 
 | Future surface | Candidate command family; not yet executable canon | Promotion proof |
 | --- | --- | --- |
-| iOS build and tests | `xcodebuild` against the checked-in project/scheme and explicit simulator destination | Clean build plus focused unit/UI test output using the actual scheme and destination. |
+| iOS build and tests | Proved above for the checked-in `GridRace` project and scheme | Rediscover the destination UUID when the supported local simulator changes. |
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
 | Supabase local stack | Pinned local CLI start, reset-from-zero, database lint, and database tests | Migrations and seed rebuild a clean local database; pgTAP/RLS tests pass, including negative users. |
-| Edge Functions | Repository-selected Deno format, lint, type-check, and test commands | Checked-in Deno config/import policy and focused function tests pass locally. |
+| Edge Functions | Supabase function-specific Deno gates | Phase 1 proves only the pure TypeScript evaluator commands above; no Edge Function exists. |
 | Word pack | `python3 scripts/check_word_pack.py` | Proved locally against the curated source and deterministic manifest. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
-Exact command spellings remain undefined until the real project names, paths,
-schemes, simulator availability, Supabase CLI version, and Deno configuration exist.
-Never invent them in a plan or CI workflow. Record a missing gate as “not available”
-or “documented only,” not passed.
+Exact Supabase, database, Edge Function, and CI command spellings remain undefined
+until those surfaces exist. Never invent them in a plan or CI workflow. Record a
+missing gate as “not available” or “documented only,” not passed.
 
 ## Risk tiers and verification
 
