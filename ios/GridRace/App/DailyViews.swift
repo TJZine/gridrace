@@ -63,7 +63,8 @@ struct DailyAppView: View {
             useCloudAttempt: app.conflicts.isEmpty
                 ? nil : { app.resolveFirstConflict(useCloud: true) },
             keepDeviceAttempt: app.conflicts.isEmpty
-                ? nil : { app.resolveFirstConflict(useCloud: false) }
+                ? nil : { app.resolveFirstConflict(useCloud: false) },
+            conflictCount: app.conflicts.count
         )
     }
 }
@@ -333,10 +334,20 @@ struct DailyGameView: View {
     // stale target survives (same-value assignment would never move focus).
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var errorGeneration = 0
+    // Message that already owns focus. Submit-path errors are focused in
+    // noteSubmit; only errors arriving without a submit (save/record
+    // failures) are focused in `onChange` — one owner per transition.
+    @State private var lastFocusedError: String?
 
     private func noteSubmit() {
         errorGeneration += 1
-        errorFocus = model.errorMessage != nil ? errorGeneration : nil
+        if let error = model.errorMessage {
+            errorFocus = errorGeneration
+            lastFocusedError = error
+        } else {
+            errorFocus = nil
+            lastFocusedError = nil
+        }
     }
 
     var body: some View {
@@ -415,18 +426,29 @@ struct DailyGameView: View {
         .sensoryFeedback(trigger: model.resultEvent) { _, _ in
             model.settings.hapticsEnabled ? .success : nil
         }
-        .onChange(of: model.errorMessage) {
-            // Covers non-submit error sources (save/record failures); submit
-            // errors are focused per-submit via noteSubmit above.
-            if model.errorMessage != nil {
+        .onChange(of: model.errorMessage) { _, message in
+            // Covers only non-submit error sources (save/record failures):
+            // submit errors already own focus via noteSubmit, and an
+            // identical message never re-triggers this handler.
+            if message == nil {
+                errorFocus = nil
+                lastFocusedError = nil
+            } else if message != lastFocusedError {
                 errorGeneration += 1
                 errorFocus = errorGeneration
-            } else {
-                errorFocus = nil
+                lastFocusedError = message
             }
         }
         .onChange(of: model.resultEvent) { _, _ in
-            if model.game.isComplete { axFocus = .resultHeader }
+            // A terminal submit can increment `resultEvent` and then set a
+            // persistence error in the same transaction (record succeeds,
+            // history save fails). The error owns the single speech via
+            // noteSubmit/onChange(error); focusing the result as well would
+            // interrupt it. Focus the result only for error-free completion.
+            // Non-submit errors never touch `resultEvent`, and repeated
+            // submits with an error keep `resultEvent` unchanged, so both
+            // paths retain their existing single-owner behavior.
+            if model.game.isComplete, model.errorMessage == nil { axFocus = .resultHeader }
         }
     }
 
@@ -527,7 +549,7 @@ struct NextPuzzleLabel: View {
 
     private func spokenRemaining(at date: Date) -> String {
         let seconds = max(0, Int(reset.timeIntervalSince(date)))
-        return "\(seconds / 3600) hours, \(seconds / 60 % 60) minutes"
+        return "\(seconds / 3600) hours, \(seconds / 60 % 60) minutes, \(seconds % 60) seconds"
     }
 }
 
@@ -541,7 +563,7 @@ struct DailyStatisticsView: View {
                 VStack(spacing: 22) {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         StatisticCard(value: model.history.statistics.gamesPlayed, label: "Played")
-                        StatisticCard(value: model.history.statistics.solvePercentage, label: "Solved")
+                        StatisticCard(value: model.history.statistics.solvePercentage, label: "Solved", showsPercentSign: true)
                         StatisticCard(value: model.displayedCurrentStreak, label: "Streak")
                         StatisticCard(value: model.history.statistics.longestStreak, label: "Best")
                     }
@@ -586,10 +608,12 @@ struct DailyStatisticsView: View {
 private struct StatisticCard: View {
     let value: Int
     let label: String
+    var showsPercentSign = false
 
     var body: some View {
         VStack(spacing: 4) {
-            Text("\(value)").font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
+            Text("\(value)\(showsPercentSign ? "%" : "")")
+                .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
             Text(label).font(.subheadline).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 96)
@@ -599,12 +623,26 @@ private struct StatisticCard: View {
                 .stroke(Color.raceLine, lineWidth: 1.5)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        showsPercentSign ? "\(label), \(value) percent" : "\(value) \(label)"
     }
 }
 
 private struct GuessDistributionView: View {
     let distribution: [Int: Int]
     private var maximum: Int { max(1, distribution.values.max() ?? 0) }
+
+    private func barWidth(count: Int, in total: CGFloat) -> CGFloat {
+        // Zero-count rows render no fill (a 32pt minimum here would paint a
+        // misleading indigo bar for zero). Positive counts keep the readable
+        // 32pt minimum; the count label sits beside the bar in ink-on-card,
+        // so AX5/Bold sizes cannot clip it.
+        guard total > 0, count > 0 else { return 0 }
+        return min(total, max(32, total * CGFloat(count) / CGFloat(maximum)))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -619,18 +657,19 @@ private struct GuessDistributionView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.raceInset)
                             Capsule().fill(Color.raceIndigo)
-                                .frame(width: max(32, proxy.size.width * CGFloat(count) / CGFloat(maximum)))
-                        }
-                        .overlay(alignment: .leading) {
-                            Text("\(count)")
-                                .font(.caption2.bold().monospacedDigit())
-                                .foregroundStyle(.white)
-                                .padding(.leading, 8)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(width: barWidth(count: count, in: proxy.size.width))
                         }
                     }
                     .frame(height: 24)
+                    // Count sits beside the bar in ink-on-card (never clipped
+                    // white-on-fill), so AX5/Bold sizes cannot clip it or push
+                    // it outside its contrasting fill.
+                    Text("\(distribution[guess, default: 0])")
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundStyle(Color.raceInk)
+                        .frame(minWidth: 28, alignment: .leading)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Solved in \(guess) guesses, \(distribution[guess, default: 0]) games")
@@ -714,10 +753,8 @@ struct DailyHelpView: View {
                         title: "Not in the answer", detail: "The minus means this C is not used. Repeated letters are counted exactly."
                     )
                     DuplicateLetterExample(
-                        guess: "APPLE",
-                        feedback: [.present, .present, .absent, .absent, .correct],
                         title: "Same letter twice",
-                        detail: "In APPLE against GRAPE, the first P is present, the second P is absent, and E is exact."
+                        detail: "In APPLE against GRAPE, exact matches use up answer copies first, so E is exact. Leftover copies are then claimed left to right: A and the first P are present while an unused copy remains, and the second P is absent because GRAPE has no P copy left."
                     )
                     Divider()
                     Label("One puzzle is shared worldwide each UTC day.", systemImage: "globe.americas.fill")
@@ -753,29 +790,33 @@ private struct FeedbackExample: View {
     }
 }
 
-/// Fourth Help example: one five-tile row rendering the canonical duplicate
-/// vector `excess-guess-repeat` (answer `grape`, guess `apple`, feedback
-/// `[present, present, absent, absent, correct]`). The five feedback values are
-/// fixed literals matching the vector; this view performs no evaluation and
-/// makes no assertion.
+/// Fourth Help example: fixed five-tile row for the canonical duplicate vector
+/// `excess-guess-repeat` (answer `grape`, guess `apple`, feedback
+/// `[present, present, absent, absent, correct]`). Fixed literals only —
+/// evaluation and assertions belong in `GameRulesTests`.
 private struct DuplicateLetterExample: View {
-    let guess: String
-    let feedback: [Feedback]
     let title: String
     let detail: String
 
+    // One fixed source pairing each tile letter with its vector feedback
+    // (`excess-guess-repeat`: APPLE vs GRAPE → [present, present, absent,
+    // absent, correct]). Literals only; evaluation lives in GameRulesTests.
+    private let tiles: [(letter: Character, feedback: Feedback)] = [
+        (letter: "A", feedback: .present),
+        (letter: "P", feedback: .present),
+        (letter: "P", feedback: .absent),
+        (letter: "L", feedback: .absent),
+        (letter: "E", feedback: .correct),
+    ]
+
     var body: some View {
-        // R-01/F2: the guess and its five fixed feedback values are paired
-        // literals at the single call site; trap in Debug if ever mismatched.
-        assert(guess.count == 5 && feedback.count == 5, "DuplicateLetterExample needs 5 letters and 5 feedback values")
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
             HStack(spacing: 5) {
-                ForEach(0..<feedback.count, id: \.self) { position in
-                    let index = guess.index(guess.startIndex, offsetBy: position)
+                ForEach(tiles.indices, id: \.self) { index in
                     TileView(
-                        letter: guess[index],
-                        feedback: feedback[position],
+                        letter: tiles[index].letter,
+                        feedback: tiles[index].feedback,
                         isDraft: false,
                         emptyLabel: ""
                     )

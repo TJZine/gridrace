@@ -22,11 +22,31 @@ final class PlayerProfileTests: XCTestCase {
     func testDisplayNameNormalizationMatchesDatabaseBoundary() {
         XCTAssertEqual(PlayerProfile.normalizedDisplayName("  Alex-7  "), "Alex-7")
         XCTAssertEqual(PlayerProfile.normalizedDisplayName("O'Brien"), "O'Brien")
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("Anne-Marie"), "Anne-Marie")
         XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("A  B"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("-Alex"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex_7"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
+    }
+
+    func testDisplayNameNormalizationBoundaryLengthsAndBlankAndUnicode() {
+        // Empty and blank-only inputs normalize to nothing.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName(""))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("   "))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName(" \t\n "))
+        // Length boundaries: 1 rejects, 2 accepts, 16 accepts, 17 rejects.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("Al"), "Al")
+        XCTAssertEqual(
+            PlayerProfile.normalizedDisplayName("abcdefghijklmnop"),
+            "abcdefghijklmnop"
+        )
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
+        // Non-ASCII letters are rejected even at valid lengths.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Stöne"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Renée"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex😀"))
     }
 
     func testGeneratedProfileNeedsInitialSetup() {
@@ -290,6 +310,22 @@ final class AccountModelTests: XCTestCase {
         XCTAssertFalse(model.isWorking)
         XCTAssertNil(model.errorMessage)
         XCTAssertNil(model.session)
+    }
+
+    func testRepeatedProfileLoadFailureEmitsErrorEventAgain() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        let model = AccountModel(service: service)
+
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
+        let firstEvent = model.errorEvent
+
+        await model.retryProfile()
+
+        XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
+        XCTAssertEqual(model.errorEvent, firstEvent + 1)
     }
 
     private func session(_ userID: UUID) -> AccountSession {

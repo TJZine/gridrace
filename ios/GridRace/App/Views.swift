@@ -130,9 +130,11 @@ struct RaceErrorBanner: View {
             Text(message)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
-                Button("Retry", action: retry)
-                    .buttonStyle(.bordered)
-                    .frame(minHeight: 44)
+                Button(action: retry) {
+                    Text("Retry")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
             }
         }
         .font(.callout.weight(.semibold))
@@ -379,7 +381,9 @@ struct TileView: View {
     }
 
     private var borderColor: Color {
-        if isHighContrast { return .black }
+        // Adaptive system primary: dark edge in light, light edge in dark,
+        // so the stroke contrasts both fills and surfaces in each appearance.
+        if isHighContrast { return .primary }
         if feedback != nil { return .white }
         return isDraft ? Color.raceLineEmphasis : Color.raceLine
     }
@@ -497,7 +501,7 @@ struct KeyboardKey: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        isHighContrast ? Color.black : Color.raceLine,
+                        isHighContrast ? Color.primary : Color.raceLine,
                         lineWidth: isHighContrast ? 2.5 : 1
                     )
             }
@@ -546,10 +550,27 @@ enum RevealFocus: Hashable {
 
 private struct RevealView: View {
     @Bindable var model: TutorialModel
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @AccessibilityFocusState private var focus: RevealFocus?
 
     private var totalRevealRows: Int {
         model.revealBoards.reduce(0) { $0 + $1.rows.count }
+    }
+
+    /// VoiceOver uses the same stable full-state + manual traversal as Reduce
+    /// Motion: the animated row timer would otherwise steal focus every 350ms,
+    /// interrupting row speech, and any fixed summary delay stays
+    /// speech-rate dependent. Visual animation is preserved only when
+    /// VoiceOver is off and Reduce Motion is off.
+    private var usesStableReveal: Bool { model.prefersReducedMotion || voiceOverEnabled }
+
+    /// Full row speech: player and row position plus every tile's letter and
+    /// feedback meaning, so the combined row label never drops tile content.
+    private func revealRowLabel(boardName: String, rowIndex: Int, row: GuessRow) -> String {
+        let tiles = zip(Array(row.word.uppercased()), row.feedback).map { letter, feedback in
+            "\(letter) \(feedback.accessibilityMeaning)"
+        }.joined(separator: ", ")
+        return "\(boardName), row \(rowIndex + 1): \(tiles)"
     }
 
     var body: some View {
@@ -566,6 +587,11 @@ private struct RevealView: View {
 
                 ForEach(Array(model.revealBoards.enumerated()), id: \.element.id) { index, board in
                     let base = model.revealBoards.prefix(index).reduce(0) { $0 + $1.rows.count }
+                    // Stable VoiceOver tree: expose every row immediately so
+                    // the accessibility order (answer → global row order →
+                    // summary) never mutates mid-traversal. Visual animation
+                    // still uses `visibleRows` when VoiceOver is off.
+                    let visibleCount = usesStableReveal ? board.rows.count : model.visibleRows(in: index)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(board.name).font(.headline)
@@ -575,13 +601,19 @@ private struct RevealView: View {
                         }
                         .accessibilityElement(children: .combine)
                         ForEach(
-                            Array(board.rows.prefix(model.visibleRows(in: index)).enumerated()),
+                            Array(board.rows.prefix(visibleCount).enumerated()),
                             id: \.offset
                         ) { rowOffset, row in
                             RevealRowView(row: row)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                                 .accessibilityElement(children: .combine)
-                                .accessibilityLabel("\(board.name), row \(rowOffset + 1)")
+                                .accessibilityLabel(
+                                    revealRowLabel(
+                                        boardName: board.name,
+                                        rowIndex: rowOffset,
+                                        row: row
+                                    )
+                                )
                                 .accessibilityFocused($focus, equals: .row(base + rowOffset))
                         }
                     }
@@ -593,7 +625,10 @@ private struct RevealView: View {
                     }
                 }
 
-                if model.revealSummaryVisible {
+                // Stable VoiceOver tree: the summary is part of the initial
+                // manual-traversal order when VoiceOver is on, instead of
+                // appearing mid-traversal after the timed rows complete.
+                if model.revealSummaryVisible || (voiceOverEnabled && totalRevealRows > 0) {
                     Text(model.comparisonSummary)
                         .font(.headline)
                         .multilineTextAlignment(.center)
@@ -610,17 +645,33 @@ private struct RevealView: View {
             .padding(20)
             .frame(maxWidth: .infinity)
         }
-        .animation(model.prefersReducedMotion ? nil : .easeOut(duration: 0.25), value: model.visibleRevealRowCount)
+        .animation(usesStableReveal ? nil : .easeOut(duration: 0.25), value: model.visibleRevealRowCount)
         .onAppear {
-            if model.prefersReducedMotion {
-                focus = .answer
-            } else if totalRevealRows == 0, model.revealSummaryVisible {
+            // Initial focus is never nil: the answer first in every mode
+            // (the zero-row edge falls through to its visible summary).
+            // VoiceOver then traverses manually in global order with no
+            // timed focus changes to interrupt row speech.
+            if totalRevealRows == 0, model.revealSummaryVisible {
                 focus = .summary
+            } else {
+                focus = .answer
             }
         }
-        .onChange(of: model.visibleRevealRowCount) {
-            guard !model.prefersReducedMotion else { return }
-            if model.revealSummaryVisible, model.visibleRevealRowCount >= totalRevealRows {
+        .onChange(of: model.visibleRevealRowCount) { _, count in
+            // Timed focus only when VoiceOver is off: with VoiceOver on the
+            // full state is already exposed and manual traversal owns the
+            // sequence, so any per-row move would interrupt speech.
+            guard !usesStableReveal, count > 0 else { return }
+            focus = .row(count - 1)
+        }
+        .onChange(of: model.revealSummaryVisible) { _, visible in
+            // State-driven, never a fixed sleep: with VoiceOver off the final
+            // row and summary arrive together and the summary owns the single
+            // post-animation focus (no speech to interrupt). With VoiceOver
+            // on, manual traversal owns answer → rows → summary, so this
+            // never steals focus (the zero-row edge is set on appear).
+            guard visible, !usesStableReveal else { return }
+            if model.visibleRevealRowCount >= totalRevealRows {
                 focus = .summary
             } else if model.visibleRevealRowCount > 0 {
                 focus = .row(model.visibleRevealRowCount - 1)
@@ -628,6 +679,12 @@ private struct RevealView: View {
         }
         .onChange(of: model.prefersReducedMotion) {
             if model.prefersReducedMotion { focus = .answer }
+        }
+        .onChange(of: voiceOverEnabled) { _, enabled in
+            // Toggling VoiceOver mid-reveal restarts the manual sequence at
+            // its head; no view-owned Task exists, so leaving/replaying is
+            // safe (model cancellation owns the timed tasks).
+            if enabled { focus = .answer }
         }
     }
 }
