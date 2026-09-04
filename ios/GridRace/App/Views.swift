@@ -8,14 +8,14 @@ struct TutorialView: View {
 
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
+            Color.racePage.ignoresSafeArea()
             switch model.phase {
             case .introduction:
-                IntroductionView(model: model, hapticsEnabled: $hapticsEnabled)
+                IntroductionView(model: model)
             case .countdown:
                 CountdownView(seconds: model.countdownSeconds)
             case .playing:
-                RaceView(model: model, hapticsEnabled: $hapticsEnabled)
+                RaceView(model: model)
             case .reveal:
                 RevealView(model: model)
             }
@@ -35,7 +35,6 @@ struct TutorialView: View {
 
 private struct IntroductionView: View {
     @Bindable var model: TutorialModel
-    @Binding var hapticsEnabled: Bool
 
     var body: some View {
         ScrollView {
@@ -57,19 +56,24 @@ private struct IntroductionView: View {
                 )
                 .font(.body.weight(.semibold))
                 .padding()
-                .background(Color.raceIndigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
                 Text("This is an on-device practice race. Its answer and ghost moves are bundled with the app; production games will rely on the server.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Toggle("Haptics", isOn: $hapticsEnabled)
-                    .frame(maxWidth: 280)
                 Button("Start local race") {
                     model.startTutorial()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .frame(minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                NavigationLink(value: AppRoute.settings) {
+                    Label("Haptics and contrast live in Settings", systemImage: "gearshape")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.raceIndigo)
             }
             .frame(maxWidth: 560)
             .padding(24)
@@ -80,6 +84,8 @@ private struct IntroductionView: View {
 
 private struct CountdownView: View {
     let seconds: Int
+    // U-06: countdown -> focus countdown label (announcement off).
+    @AccessibilityFocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -87,8 +93,14 @@ private struct CountdownView: View {
                 .font(.title2)
             Text("\(seconds)")
                 .font(.system(size: 92, weight: .black, design: .rounded))
+                .minimumScaleFactor(0.5)
                 .foregroundStyle(Color.raceCoral)
                 .contentTransition(.numericText())
+            // Determinate 3-second progress; presentation only, hidden from
+            // VoiceOver so the combined label above stays the single speech.
+            ProgressView(value: Double(3 - seconds), total: 3)
+                .frame(maxWidth: 220)
+                .accessibilityHidden(true)
             Text("The deadline uses absolute timestamps and does not pause in the background.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -97,103 +109,173 @@ private struct CountdownView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Local race starts in \(seconds)")
+        .accessibilityFocused($focused)
+        .onAppear { focused = true }
+    }
+}
+
+/// Structured error banner (U-01 contract, defined once here). Props:
+/// `message: String`, `retry: (() -> Void)?`. Single-speech behavior: this view
+/// never posts an announcement; the owning screen moves focus to the banner per
+/// the U-06 state-to-focus map (focus or announcement, never both).
+struct RaceErrorBanner: View {
+    let message: String
+    var retry: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(Color.raceDanger)
+                .accessibilityHidden(true)
+            Text(message)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let retry {
+                Button("Retry", action: retry)
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+            }
+        }
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(Color.raceDanger)
+        .multilineTextAlignment(.leading)
+        .padding(14)
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.raceDanger, lineWidth: 1.5)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
 private struct RaceView: View {
     @Bindable var model: TutorialModel
-    @Binding var hapticsEnabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // U-06 + R-01/F1: invalid/incomplete draft -> focus error banner
+    // (announcement off). A per-submit generation mints a fresh focus value
+    // so an identical-error resubmit refires (same-value assignment would
+    // coalesce and never move focus).
+    @AccessibilityFocusState private var errorFocus: Int?
+    @State private var errorGeneration = 0
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Local tutorial")
-                            .font(.headline)
-                        Text("Clue-free opponent progress")
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Local tutorial")
+                                .font(.headline)
+                            Text("Clue-free opponent progress")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
+                            .font(.headline.monospacedDigit())
+                            .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
+                    }
+                    .padding(.horizontal)
+
+                    OpponentStrip(opponents: model.opponents)
+                    BoardView(
+                        rows: model.board.rows,
+                        draft: model.board.draft,
+                        isPlaying: model.board.status == .playing
+                    )
+                        .padding(.horizontal)
+                        // Subtle invalid-guess nudge; fully suppressed under
+                        // Reduce Motion (banner + existing haptics only).
+                        .offset(x: (model.errorMessage != nil && !reduceMotion) ? 6 : 0)
+                        .animation(reduceMotion ? nil : .snappy, value: model.errorMessage)
+
+                    if let error = model.errorMessage {
+                        RaceErrorBanner(message: error)
+                            .padding(.horizontal)
+                            .accessibilityFocused($errorFocus, equals: errorGeneration)
+                            .onAppear { errorFocus = errorGeneration }
+                    } else {
+                        Text("Type a five-letter word from the tutorial list.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
-                        .font(.headline.monospacedDigit())
-                        .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
                 }
-                .padding(.horizontal)
-
-                OpponentStrip(opponents: model.opponents)
-                BoardView(
-                    rows: model.board.rows,
-                    draft: model.board.draft,
-                    isPlaying: model.board.status == .playing
-                )
-                    .padding(.horizontal)
-
-                if let error = model.errorMessage {
-                    Text(error)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                } else {
-                    Text("Type a five-letter word from the tutorial list.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                KeyboardView(model: model)
-                Toggle("Haptics", isOn: $hapticsEnabled)
-                    .font(.callout)
-                    .padding(.horizontal)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 620)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.vertical, 12)
-            .frame(maxWidth: 620)
-            .frame(maxWidth: .infinity)
+
+            KeyboardView(model: model) {
+                errorGeneration += 1
+                errorFocus = model.errorMessage != nil ? errorGeneration : nil
+            }
+            .padding(.vertical, 8)
+            .background(Color.racePage)
+            .overlay(alignment: .top) {
+                Color.raceLine.frame(height: 1)
+            }
         }
     }
 }
 
+/// Split-time opponent rows. Shows only already-visible live fields (avatar,
+/// name, accepted count `n/6`, connection presentation, coarse state) in stable
+/// roster order. Never position, placement, gap-as-rank, exact timing, words,
+/// feedback, or keyboard state.
 private struct OpponentStrip: View {
     let opponents: [OpponentProgress]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(opponents) { opponent in
-                    HStack(spacing: 10) {
-                        Image(systemName: opponent.avatarSymbol)
-                            .frame(width: 42, height: 42)
-                            .background(Color.raceCoral.opacity(0.16), in: Circle())
-                            .foregroundStyle(Color.raceIndigo)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(opponent.name).font(.headline)
-                            Text("\(opponent.acceptedGuessCount) / 6 guesses")
+        VStack(spacing: 8) {
+            ForEach(opponents) { opponent in
+                HStack(spacing: 12) {
+                    Image(systemName: opponent.avatarSymbol)
+                        .font(.headline)
+                        .frame(width: 42, height: 42)
+                        .background(Color.raceInset, in: Circle())
+                        .foregroundStyle(Color.raceIndigo)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(opponent.name).font(.headline)
+                        HStack(spacing: 6) {
+                            Text("\(opponent.acceptedGuessCount)/6")
                                 .font(.subheadline.monospacedDigit())
+                                .fixedSize(horizontal: true, vertical: false)
                                 .contentTransition(.numericText())
-                            Label(
-                                opponent.state.spokenDescription.capitalized,
-                                systemImage: opponent.state == .playing
-                                    ? "hourglass" : "flag.checkered"
-                            )
-                            .font(.caption.weight(.semibold))
+                            Image(systemName: opponent.isConnected ? "wifi" : "wifi.slash")
+                                .font(.caption2.bold())
+                                .foregroundStyle(opponent.isConnected ? Color.raceTeal : Color.raceDanger)
+                                .accessibilityHidden(true)
+                            Text(opponent.isConnected ? "Connected" : "Disconnected")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(12)
-                    .frame(minWidth: 180, alignment: .leading)
-                    .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(Color.raceIndigo.opacity(0.35), lineWidth: 1.5)
-                    }
-                    .animation(reduceMotion ? nil : .snappy, value: opponent.acceptedGuessCount)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(opponent.accessibilityLabel)
+                    Spacer()
+                    Label(
+                        opponent.state.spokenDescription.capitalized,
+                        systemImage: opponent.state == .playing
+                            ? "hourglass" : "flag.checkered"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.raceInset, in: Capsule())
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.raceLine, lineWidth: 1.5)
+                }
+                .animation(reduceMotion ? nil : .snappy, value: opponent.acceptedGuessCount)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(opponent.accessibilityLabel)
             }
-            .padding(.horizontal)
         }
+        .padding(.horizontal)
     }
 }
 
@@ -251,20 +333,33 @@ struct TileView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 10)
                 .fill(fillColor)
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(borderColor, lineWidth: isHighContrast ? 3 : 1.5)
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(borderColor, lineWidth: borderWidth)
+            // Lane-edge signature: a bold leading edge carries feedback meaning
+            // alongside the symbol and accessible label, never color alone.
+            if feedback != nil {
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.white)
+                        .frame(width: 5)
+                        .padding(.vertical, 7)
+                        .padding(.leading, 5)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                }
+            }
             if let letter {
                 Text(String(letter).uppercased())
                     .font(.title2)
-                    .fontWeight(legibilityWeight == .bold ? .black : .bold)
-                    .foregroundStyle(feedback == nil ? Color.primary : Color.white)
+                    .fontWeight(isDraft || legibilityWeight == .bold ? .black : .bold)
+                    .foregroundStyle(feedback == nil ? Color.raceInk : Color.white)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if let feedback {
                 Image(systemName: feedback.symbolName)
-                    .font(.caption2.bold())
+                    .font(.system(size: 12, weight: .black))
                     .foregroundStyle(.white)
                     .padding(6)
             }
@@ -275,7 +370,7 @@ struct TileView: View {
     }
 
     private var fillColor: Color {
-        guard let feedback else { return isDraft ? .white.opacity(0.85) : .white.opacity(0.45) }
+        guard let feedback else { return isDraft ? Color.raceCard : Color.raceInset }
         switch feedback {
         case .absent: return Color.raceTeal
         case .present: return Color.raceCoral
@@ -285,9 +380,14 @@ struct TileView: View {
 
     private var borderColor: Color {
         if isHighContrast { return .black }
-        return feedback == nil
-            ? Color.raceIndigo.opacity(isDraft ? 0.65 : 0.22)
-            : Color.white.opacity(0.9)
+        if feedback != nil { return .white }
+        return isDraft ? Color.raceLineEmphasis : Color.raceLine
+    }
+
+    private var borderWidth: CGFloat {
+        if isHighContrast { return 3 }
+        if feedback != nil { return 1.5 }
+        return isDraft ? 2.5 : 1.5
     }
 
     private var accessibilityLabel: String {
@@ -303,12 +403,16 @@ struct TileView: View {
 
 private struct KeyboardView: View {
     @Bindable var model: TutorialModel
+    var onSubmitAttempt: () -> Void = {}
 
     var body: some View {
         LetterKeyboardView(
             keyboard: model.board.keyboard,
             typeLetter: model.typeLetter,
-            submit: model.submitGuess,
+            submit: {
+                model.submitGuess()
+                onSubmitAttempt()
+            },
             delete: model.deleteLetter
         )
     }
@@ -384,16 +488,16 @@ struct KeyboardKey: View {
                     .font(.callout.bold())
                 if let feedback {
                     Image(systemName: feedback.symbolName)
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 11, weight: .black))
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 48)
-            .foregroundStyle(feedback == nil ? Color.primary : Color.white)
-            .background(fillColor, in: RoundedRectangle(cornerRadius: 8))
+            .foregroundStyle(feedback == nil ? Color.raceInk : Color.white)
+            .background(fillColor, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        isHighContrast ? Color.black : Color.raceIndigo.opacity(0.4),
+                        isHighContrast ? Color.black : Color.raceLine,
                         lineWidth: isHighContrast ? 2.5 : 1
                     )
             }
@@ -405,7 +509,7 @@ struct KeyboardKey: View {
 
     private var fillColor: Color {
         switch feedback {
-        case .none: .white.opacity(0.85)
+        case .none: Color.raceCard
         case .absent: Color.raceTeal
         case .present: Color.raceCoral
         case .correct: Color.raceIndigo
@@ -424,14 +528,29 @@ private extension View {
     func keyboardActionStyle() -> some View {
         buttonStyle(.plain)
             .foregroundStyle(.white)
-            .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
             .frame(minWidth: 44)
             .contentShape(Rectangle())
     }
 }
 
+/// U-06 reveal focus (one speech owner per transition, never both):
+/// reveal answer -> focus answer capsule on appear; animated rows -> focus each
+/// completed row, then the summary; Reduce Motion -> full state immediately,
+/// focus the answer first, manual traversal answer -> boards -> rows -> summary.
+enum RevealFocus: Hashable {
+    case answer
+    case row(Int)
+    case summary
+}
+
 private struct RevealView: View {
     @Bindable var model: TutorialModel
+    @AccessibilityFocusState private var focus: RevealFocus?
+
+    private var totalRevealRows: Int {
+        model.revealBoards.reduce(0) { $0 + $1.rows.count }
+    }
 
     var body: some View {
         ScrollView {
@@ -442,9 +561,11 @@ private struct RevealView: View {
                     .font(.title2.bold())
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
-                    .background(Color.raceCoral.opacity(0.18), in: Capsule())
+                    .background(Color.raceInset, in: Capsule())
+                    .accessibilityFocused($focus, equals: .answer)
 
                 ForEach(Array(model.revealBoards.enumerated()), id: \.element.id) { index, board in
+                    let base = model.revealBoards.prefix(index).reduce(0) { $0 + $1.rows.count }
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(board.name).font(.headline)
@@ -452,18 +573,24 @@ private struct RevealView: View {
                             Text(board.result)
                                 .font(.subheadline.weight(.semibold))
                         }
+                        .accessibilityElement(children: .combine)
                         ForEach(
                             Array(board.rows.prefix(model.visibleRows(in: index)).enumerated()),
                             id: \.offset
-                        ) { _, row in
+                        ) { rowOffset, row in
                             RevealRowView(row: row)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("\(board.name), row \(rowOffset + 1)")
+                                .accessibilityFocused($focus, equals: .row(base + rowOffset))
                         }
                     }
                     .padding()
-                    .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("\(board.name), \(board.result)")
+                    .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.raceLine, lineWidth: 1.5)
+                    }
                 }
 
                 if model.revealSummaryVisible {
@@ -471,10 +598,12 @@ private struct RevealView: View {
                         .font(.headline)
                         .multilineTextAlignment(.center)
                         .padding()
-                        .background(Color.raceIndigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                        .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+                        .accessibilityFocused($focus, equals: .summary)
                     Button("Replay tutorial") { model.replay() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
+                        .frame(minHeight: 44)
                 }
             }
             .frame(maxWidth: 560)
@@ -482,6 +611,24 @@ private struct RevealView: View {
             .frame(maxWidth: .infinity)
         }
         .animation(model.prefersReducedMotion ? nil : .easeOut(duration: 0.25), value: model.visibleRevealRowCount)
+        .onAppear {
+            if model.prefersReducedMotion {
+                focus = .answer
+            } else if totalRevealRows == 0, model.revealSummaryVisible {
+                focus = .summary
+            }
+        }
+        .onChange(of: model.visibleRevealRowCount) {
+            guard !model.prefersReducedMotion else { return }
+            if model.revealSummaryVisible, model.visibleRevealRowCount >= totalRevealRows {
+                focus = .summary
+            } else if model.visibleRevealRowCount > 0 {
+                focus = .row(model.visibleRevealRowCount - 1)
+            }
+        }
+        .onChange(of: model.prefersReducedMotion) {
+            if model.prefersReducedMotion { focus = .answer }
+        }
     }
 }
 
@@ -504,8 +651,79 @@ private struct RevealRowView: View {
 }
 
 extension Color {
-    static let raceBackground = Color(red: 0.96, green: 0.94, blue: 0.99)
-    static let raceIndigo = Color(red: 0.24, green: 0.20, blue: 0.58)
-    static let raceCoral = Color(red: 0.78, green: 0.31, blue: 0.20)
-    static let raceTeal = Color(red: 0.05, green: 0.42, blue: 0.47)
+    // Race adaptive tokens (U-01 frozen shape). Light/dark hexes in comments.
+    // Surfaces: racePage light #F7F2E9 / dark #141222; raceCard light #FFFFFF /
+    // dark #232040; raceInset light #ECE5D8 / dark #171627. Borders-only depth
+    // on app-owned surfaces; native Form/.alert/sheets stay system-owned.
+    // Ink: raceInk light #1C1A24 / dark #F5F2EA; raceInkSecondary light #4E4B57 /
+    // dark #C9C5D6; raceInkTertiary light #6F6C77 / dark #A8A4B8.
+    // Lines: raceLine light #D8D2C4 / dark #3A3654; raceLineSoft light #E5DFD2 /
+    // dark #2B2942; raceLineEmphasis light #3D3394 / dark #B7B0FF.
+    // Hues (no green/yellow): raceIndigo light #3D3394 / dark #7B74E8;
+    // raceCoral light #C74F33 / dark #E0704F; raceTeal light #0D6B78 / dark
+    // #3A9AA8. Feedback fills keep white labels at >=3:1 in both appearances.
+    // raceDanger light #B3261E / dark #FFB4A8.
+    // Radius scale (frozen, enforced by literals in views): control 10, card 18,
+    // sheet 26; Circle avatars and Capsule bars/answer pill excepted. Spacing
+    // base 4pt (4/8/12/16/20/24). Type roles scale with Dynamic Type; no fixed
+    // 92/56/44pt without .minimumScaleFactor or scaled-metric equivalents.
+    private static func raceDynamic(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
+
+    static let racePage: Color = raceDynamic(
+        light: UIColor(red: 0.968, green: 0.949, blue: 0.914, alpha: 1),
+        dark: UIColor(red: 0.078, green: 0.071, blue: 0.133, alpha: 1)
+    )
+    static let raceCard: Color = raceDynamic(
+        light: UIColor(red: 1, green: 1, blue: 1, alpha: 1),
+        dark: UIColor(red: 0.137, green: 0.125, blue: 0.251, alpha: 1)
+    )
+    static let raceInset: Color = raceDynamic(
+        light: UIColor(red: 0.925, green: 0.898, blue: 0.847, alpha: 1),
+        dark: UIColor(red: 0.090, green: 0.086, blue: 0.153, alpha: 1)
+    )
+    static let raceInk: Color = raceDynamic(
+        light: UIColor(red: 0.110, green: 0.102, blue: 0.141, alpha: 1),
+        dark: UIColor(red: 0.961, green: 0.949, blue: 0.918, alpha: 1)
+    )
+    static let raceInkSecondary: Color = raceDynamic(
+        light: UIColor(red: 0.306, green: 0.294, blue: 0.341, alpha: 1),
+        dark: UIColor(red: 0.788, green: 0.773, blue: 0.839, alpha: 1)
+    )
+    static let raceInkTertiary: Color = raceDynamic(
+        light: UIColor(red: 0.435, green: 0.424, blue: 0.467, alpha: 1),
+        dark: UIColor(red: 0.659, green: 0.643, blue: 0.722, alpha: 1)
+    )
+    static let raceLine: Color = raceDynamic(
+        light: UIColor(red: 0.847, green: 0.824, blue: 0.769, alpha: 1),
+        dark: UIColor(red: 0.227, green: 0.212, blue: 0.329, alpha: 1)
+    )
+    static let raceLineSoft: Color = raceDynamic(
+        light: UIColor(red: 0.898, green: 0.875, blue: 0.824, alpha: 1),
+        dark: UIColor(red: 0.169, green: 0.161, blue: 0.259, alpha: 1)
+    )
+    static let raceLineEmphasis: Color = raceDynamic(
+        light: UIColor(red: 0.239, green: 0.200, blue: 0.580, alpha: 1),
+        dark: UIColor(red: 0.718, green: 0.690, blue: 1.0, alpha: 1)
+    )
+    static let raceBackground: Color = racePage
+    static let raceIndigo: Color = raceDynamic(
+        light: UIColor(red: 0.239, green: 0.200, blue: 0.580, alpha: 1),
+        dark: UIColor(red: 0.482, green: 0.455, blue: 0.910, alpha: 1)
+    )
+    static let raceCoral: Color = raceDynamic(
+        light: UIColor(red: 0.780, green: 0.310, blue: 0.200, alpha: 1),
+        dark: UIColor(red: 0.878, green: 0.439, blue: 0.310, alpha: 1)
+    )
+    static let raceTeal: Color = raceDynamic(
+        light: UIColor(red: 0.051, green: 0.420, blue: 0.470, alpha: 1),
+        dark: UIColor(red: 0.227, green: 0.604, blue: 0.659, alpha: 1)
+    )
+    static let raceDanger: Color = raceDynamic(
+        light: UIColor(red: 0.702, green: 0.149, blue: 0.118, alpha: 1),
+        dark: UIColor(red: 1.0, green: 0.706, blue: 0.659, alpha: 1)
+    )
 }
