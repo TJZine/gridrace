@@ -57,9 +57,14 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
         try FileManager.default.removeItem(at: progressURL)
     }
 
-    func resetLocalData() throws {
-        guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
+    /// Removes only this store's guest Daily progress/history files.
+    /// Never removes the containing directory, so sibling `Accounts/<uuid>`
+    /// caches sharing the GridRace root are preserved.
+    func resetGuestDailyData() throws {
+        for url in [progressURL, historyURL] {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
     }
 
     private func prepareDirectory() throws {
