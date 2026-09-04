@@ -480,9 +480,10 @@ request for one stops the line for controller approval and High-tier proof.
 | Avatar proof (independent oracle) | Python cross-check of `AvatarSwatch` literals + `avatarSymbols` vs `AccountTests` expectations | 8/8 swatches ≥3:1 vs white (min 5.37); all 5 seed-index expectations match; symbol snapshot identical |
 | R-01 final review | Fresh read-only subagent (no writes), full diff packet | 3 findings (1 medium, 2 low), all accepted and fixed; 1 no-issue assumption rejected with direct controller evidence |
 | R-01 fix inspection | Targeted diff inspection of the changed seam + `swiftc -parse` + `git diff --check` | Clean; no second reviewer cycle per runbook |
-| iOS tests (focused + full) | BLOCKED — `xcodebuild … test` needs unsandboxed Simulator + package cache; `require_escalated` denied (approval disabled) | NOT RUN. Named follow-up: maintainer runs full suite on the provisioned SE (`id=3B9C2E52-7815-4056-8966-BBA6532D23DA`) and iPad (`id=55637EFA-7E16-4A37-9D64-7B5DE9C8FD8C`) per plan commands |
-| Debug + Release builds | BLOCKED — same sandbox denial (`xcodebuild -showdestinations` fails; CoreSimulator + SwiftPM cache `Operation not permitted`) | NOT RUN. Same named follow-up with the rediscovered/provided destination IDs |
-| Manual evidence matrix | BLOCKED — no simulator, screenshot, or VoiceOver instrumentation available in-session | NOT PERFORMED. Rows (light/dark, AX5, contrast, Bold, Reduce Motion on/off, transcripts, grayscale, SE portrait/landscape, iPad, board legibility) recorded as unavailable; same follow-up owner |
+| iOS tests (full suite, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-test test` | exit 0, TEST SUCCEEDED; 78 tests executed, 1 skipped (existing local-Supabase integration test, credentials not configured), 0 failures; xcresult `/tmp/GridRaceDerivedData-test/Logs/Test/Test-GridRace-2026.09.04_11-22-34--0400.xcresult` |
+| Debug build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-debug clean build` | exit 0, BUILD SUCCEEDED |
+| Release build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-release clean build` | exit 0, BUILD SUCCEEDED |
+| Manual evidence matrix | Device/Simulator visual + VoiceOver inspection per Next action | NOT PERFORMED. Rows (light/dark, AX5, contrast, Bold, Reduce Motion on/off, transcripts, grayscale, SE portrait AX5+Bold+Contrast combined, SE landscape, native-iPad orientation, board legibility) remain genuinely unperformed; sole remaining blocker |
 | Word pack gate | `python3 scripts/check_word_pack.py` — word surfaces untouched | NOT RUN with reason recorded (no word-pack/vector/source change) |
 
 # Commit record
@@ -493,7 +494,8 @@ request for one stops the line for controller approval and High-tier proof.
 | 0e4a749 | `feat(tutorial): pin keyboard, lane-edge tiles, split-time opponents, reveal focus` | U-01/U-02/U-04/U-06/R-01 implementation in `Views.swift` |
 | e38b235 | `feat(daily): refresh home, game, statistics, help, and settings` | U-03/U-06/R-01 implementation in `DailyViews.swift` + `GameRulesTests.swift` |
 | 7d574fb | `feat(account): refresh account presentation and avatar palette` | U-05/U-06/R-01 implementation in `AccountView.swift` + `AccountTests.swift` |
-| this commit | `docs(plan): record UI refresh implementation, review, and verification` | Implementation + R-01 + verification record; plan stays Active pending blocked Xcode gates |
+| c539dcb | `docs(plan): record UI refresh implementation, review, and verification` | Implementation + R-01 + verification record; plan stayed Active pending Xcode gates |
+| this commit | `docs(plan): record successful iOS verification` | Post-c539dcb test + Debug/Release verification record; plan stays Active pending manual visual/VoiceOver matrix |
 
 # Blockers
 
@@ -505,6 +507,11 @@ request for one stops the line for controller approval and High-tier proof.
   these device + OS values with orientation + content-size per row
   (UI-RT-08/09).
 - External Apple-provider/device proof remains out of scope (per NOW.md).
+- Post-c539dcb Xcode verification: CLEARED. Full test suite plus clean Debug and
+  Release builds on the provisioned iPhone SE
+  (`id=3B9C2E52-7815-4056-8966-BBA6532D23DA`) all exited 0 (see Verification
+  record). Sole remaining blocker: the manual visual and VoiceOver matrix is
+  genuinely unperformed (see Next action).
 
 # Stop and ask (extends runbook; adjudicated additions marked *)
 
@@ -528,29 +535,24 @@ request for one stops the line for controller approval and High-tier proof.
 
 # Next action
 
-Implementation (U-01..U-06) and R-01 adjudication are complete; plan stays
-Active because the Xcode verification gap needs maintainer input (stop
-condition: unowned required verification gap). Maintainer follow-up in an
-unsandboxed shell, using the provisioned destination IDs recorded in Blockers:
-
-```bash
-git status --short
-xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-test test
-xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-debug clean build
-xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-release clean build
-```
-
-then the manual evidence matrix rows (light/dark, AX5, Increased Contrast,
+Implementation (U-01..U-06) and R-01 adjudication are complete, and the
+post-c539dcb iOS verification is green (full suite TEST SUCCEEDED plus clean
+Debug and Release BUILD SUCCEEDED on the provisioned iPhone SE
+`id=3B9C2E52-7815-4056-8966-BBA6532D23DA`; see Verification record). Plan stays
+Active because the manual visual and VoiceOver matrix is still genuinely
+unperformed — this is the sole remaining next action and blocker. Complete
+the manual evidence matrix rows (light/dark, AX5, Increased Contrast,
 Bold Text, Reduce Motion on/off, VoiceOver transcripts ×4, grayscale,
 SE portrait AX5+Bold+Contrast combined, SE landscape, native-iPad
-orientation, landscape board legibility). Only when tests + both builds are
-green and the matrix is filled may the plan be set Historical with the
-closeout commit hash. Do not push.
+orientation, landscape board legibility), recording device + OS + orientation
++ content-size per row. Only when the matrix is filled may the plan be set
+Historical with the closeout commit hash. Do not push.
 
 # Closeout checklist
 
 - [x] All units accepted with file-scoped diffs inspected (U-01..U-06 + R-01 fixes).
-- [ ] iOS tests (by name) + Debug/Release builds green; manual matrix rows filled — BLOCKED in-session (sandbox); named maintainer follow-up in Next action.
+- [x] iOS tests (by name) + Debug/Release builds green post-c539dcb (78 executed, 1 skipped, 0 failures; both clean builds BUILD SUCCEEDED; see Verification record).
+- [ ] Manual visual and VoiceOver matrix rows filled — NOT PERFORMED; sole remaining blocker and next action.
 - [x] Review findings adjudicated (done: 24/24 across three reviews — 21 pre-implementation + R01-F1/F2/F3); accepted R-01 fixes re-inspected (targeted diff + parse + `git diff --check`).
 - [x] `TODO.md` active-plan link points here; backlog candidates untouched; no stale references.
-- [ ] Status set Historical with closeout commit hash in handoff; no push — stays Active until the blocked gates above are green.
+- [ ] Status set Historical with closeout commit hash in handoff; no push — stays Active until the manual matrix above is filled.
