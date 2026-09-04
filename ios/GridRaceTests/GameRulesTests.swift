@@ -136,6 +136,14 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(failed.status, .failed)
     }
 
+    func testExcessGuessRepeatVectorMatchesCanonicalFeedback() {
+        // Canonical vector `excess-guess-repeat`: answer `grape`, guess `apple`.
+        XCTAssertEqual(
+            GameRules.evaluate(answer: "grape", guess: "apple"),
+            [.present, .present, .absent, .absent, .correct]
+        )
+    }
+
     func testKeyboardEvidenceNeverDowngrades() {
         var keyboard = KeyboardState()
         keyboard.observe(GuessRow(word: "civic", feedback: [.absent, .absent, .absent, .absent, .absent]))

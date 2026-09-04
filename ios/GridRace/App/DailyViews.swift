@@ -75,7 +75,7 @@ struct DailyHomeView: View {
 
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
+            Color.racePage.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
                     brandHeader
@@ -89,8 +89,6 @@ struct DailyHomeView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .navigationTitle("Home")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 NavigationLink(value: AppRoute.help) {
@@ -138,7 +136,7 @@ struct DailyHomeView: View {
                 }
                 Spacer()
                 MiniRaceGrid(rows: model.game.rows)
-                    .frame(width: 86)
+                    .frame(width: 82)
             }
 
             NavigationLink(value: AppRoute.daily) {
@@ -158,31 +156,38 @@ struct DailyHomeView: View {
             }
         }
         .padding(20)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(Color.raceIndigo.opacity(0.18), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
         }
         .accessibilityElement(children: .contain)
     }
 
     private var statisticsStrip: some View {
-        HStack(spacing: 0) {
-            HomeMetric(value: "\(model.displayedCurrentStreak)", label: "Current streak")
-            Divider().frame(height: 44)
-            HomeMetric(value: "\(model.history.statistics.solvePercentage)%", label: "Solved")
-            Divider().frame(height: 44)
-            HomeMetric(value: "\(model.history.statistics.gamesPlayed)", label: "Played")
+        NavigationLink(value: AppRoute.statistics) {
+            HStack(spacing: 0) {
+                HomeMetric(value: "\(model.displayedCurrentStreak)", label: "Current streak")
+                Divider().frame(height: 44)
+                HomeMetric(value: "\(model.history.statistics.solvePercentage)%", label: "Solved")
+                Divider().frame(height: 44)
+                HomeMetric(value: "\(model.history.statistics.gamesPlayed)", label: "Played")
+            }
+            .padding(.vertical, 14)
+            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 14)
-        .background(Color.raceIndigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
-        .accessibilityElement(children: .contain)
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows your Daily Classic statistics")
     }
 
     private var secondaryRoutes: some View {
         VStack(spacing: 10) {
-            NavigationLink(value: AppRoute.statistics) {
-                HomeRouteLabel(title: "Statistics", subtitle: "Streaks and guess distribution", symbol: "chart.bar.fill")
+            NavigationLink(value: AppRoute.help) {
+                HomeRouteLabel(title: "How to play", subtitle: "Rules and tile evidence", symbol: "questionmark.circle")
+            }
+            NavigationLink(value: AppRoute.settings) {
+                HomeRouteLabel(title: "Settings", subtitle: "Haptics, contrast, Hard Mode", symbol: "gearshape")
             }
             NavigationLink(value: AppRoute.tutorial) {
                 HomeRouteLabel(title: "Practice race", subtitle: "Revisit the local tutorial", symbol: "figure.run")
@@ -200,7 +205,7 @@ struct DailyHomeView: View {
                     Image(systemName: account.isSignedIn ? "person.crop.circle" : "person.crop.circle.badge.plus")
                         .font(.title2)
                         .frame(width: 48, height: 48)
-                        .background(Color.raceIndigo.opacity(0.1), in: Circle())
+                        .background(Color.raceInset, in: Circle())
                         .foregroundStyle(Color.raceIndigo)
                         .accessibilityHidden(true)
                 }
@@ -220,7 +225,11 @@ struct DailyHomeView: View {
                     .foregroundStyle(.tertiary)
             }
             .padding(14)
-            .background(Color.white.opacity(0.58), in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.raceLine, lineWidth: 1.5)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -230,20 +239,20 @@ struct DailyHomeView: View {
 
 private struct MiniRaceGrid: View {
     let rows: [GuessRow]
-    private let columns = Array(repeating: GridItem(.fixed(12), spacing: 3), count: 5)
+    private let columns = Array(repeating: GridItem(.fixed(14), spacing: 3), count: 5)
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 3) {
             ForEach(0..<30, id: \.self) { index in
                 let row = index / 5
                 let column = index % 5
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: 3)
                     .fill(color(row: row, column: column))
-                    .frame(width: 12, height: 12)
+                    .frame(width: 14, height: 14)
                     .overlay {
                         if rows.indices.contains(row) {
                             Image(systemName: rows[row].feedback[column].symbolName)
-                                .font(.system(size: 5, weight: .black))
+                                .font(.system(size: 7, weight: .black))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -253,7 +262,7 @@ private struct MiniRaceGrid: View {
     }
 
     private func color(row: Int, column: Int) -> Color {
-        guard rows.indices.contains(row) else { return Color.raceIndigo.opacity(0.12) }
+        guard rows.indices.contains(row) else { return Color.raceLineSoft }
         switch rows[row].feedback[column] {
         case .absent: return Color.raceTeal
         case .present: return Color.raceCoral
@@ -286,7 +295,7 @@ private struct HomeRouteLabel: View {
             Image(systemName: symbol)
                 .font(.headline)
                 .frame(width: 42, height: 42)
-                .background(Color.raceIndigo.opacity(0.1), in: Circle())
+                .background(Color.raceInset, in: Circle())
                 .foregroundStyle(Color.raceIndigo)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
@@ -298,48 +307,79 @@ private struct HomeRouteLabel: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(14)
-        .background(Color.white.opacity(0.58), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
+        }
         .contentShape(Rectangle())
     }
+}
+
+/// U-06 state-to-focus map (one speech owner per transition, never both):
+/// terminal result -> focus result header (announcement off; focus speaks
+/// exactly once). Draft-error focus uses a per-submit generation below.
+enum DailyGameFocus: Hashable {
+    case resultHeader
 }
 
 struct DailyGameView: View {
     @Bindable var model: DailyClassicModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var acceptsHardwareInput: Bool
+    @AccessibilityFocusState private var axFocus: DailyGameFocus?
+    // R-01/F1 + F3: every submit mints a fresh error-focus value so an
+    // identical-error resubmit refires, and clearing resolves to nil so no
+    // stale target survives (same-value assignment would never move focus).
+    @AccessibilityFocusState private var errorFocus: Int?
+    @State private var errorGeneration = 0
+
+    private func noteSubmit() {
+        errorGeneration += 1
+        errorFocus = model.errorMessage != nil ? errorGeneration : nil
+    }
 
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 12) {
-                    puzzleHeader
-                    BoardView(
-                        rows: model.game.rows,
-                        draft: model.game.draft,
-                        isPlaying: !model.game.isComplete,
-                        highContrast: model.settings.highContrastEnabled
-                    )
-                    .padding(.horizontal)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
-
-                    statusMessage
-
-                    if model.game.isComplete {
-                        resultPanel
-                    } else {
-                        LetterKeyboardView(
-                            keyboard: model.game.keyboard,
-                            typeLetter: { model.typeLetter($0) },
-                            submit: { model.submitGuess() },
-                            delete: { model.deleteLetter() },
+            Color.racePage.ignoresSafeArea()
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        puzzleHeader
+                        BoardView(
+                            rows: model.game.rows,
+                            draft: model.game.draft,
+                            isPlaying: !model.game.isComplete,
                             highContrast: model.settings.highContrastEnabled
                         )
+                        .padding(.horizontal)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
+
+                        statusMessage
+
+                        if model.game.isComplete {
+                            resultPanel
+                        }
+                    }
+                    .frame(maxWidth: 620)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                }
+
+                if !model.game.isComplete {
+                    LetterKeyboardView(
+                        keyboard: model.game.keyboard,
+                        typeLetter: { model.typeLetter($0) },
+                        submit: { model.submitGuess(); noteSubmit() },
+                        delete: { model.deleteLetter() },
+                        highContrast: model.settings.highContrastEnabled
+                    )
+                    .padding(.vertical, 8)
+                    .background(Color.racePage)
+                    .overlay(alignment: .top) {
+                        Color.raceLine.frame(height: 1)
                     }
                 }
-                .frame(maxWidth: 620)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity)
             }
         }
         .navigationTitle("Daily Classic")
@@ -357,6 +397,7 @@ struct DailyGameView: View {
         .onAppear { acceptsHardwareInput = true }
         .onKeyPress(.return) {
             model.submitGuess()
+            noteSubmit()
             return .handled
         }
         .onKeyPress(.delete) {
@@ -374,20 +415,18 @@ struct DailyGameView: View {
         .sensoryFeedback(trigger: model.resultEvent) { _, _ in
             model.settings.hapticsEnabled ? .success : nil
         }
-        .onChange(of: model.hapticEvent) { _, _ in
-            if let error = model.errorMessage {
-                UIAccessibility.post(notification: .announcement, argument: error)
+        .onChange(of: model.errorMessage) {
+            // Covers non-submit error sources (save/record failures); submit
+            // errors are focused per-submit via noteSubmit above.
+            if model.errorMessage != nil {
+                errorGeneration += 1
+                errorFocus = errorGeneration
+            } else {
+                errorFocus = nil
             }
         }
         .onChange(of: model.resultEvent) { _, _ in
-            guard let completion = model.game.completion else { return }
-            let outcome = completion.outcome == .solved
-                ? "Solved in \(completion.guessCount) guesses."
-                : "Daily puzzle failed."
-            UIAccessibility.post(
-                notification: .announcement,
-                argument: "\(outcome) The answer was \(model.puzzle.answer.uppercased())."
-            )
+            if model.game.isComplete { axFocus = .resultHeader }
         }
     }
 
@@ -407,12 +446,9 @@ struct DailyGameView: View {
     @ViewBuilder
     private var statusMessage: some View {
         if let error = model.errorMessage {
-            Label(error, systemImage: "exclamationmark.circle.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.red)
-                .multilineTextAlignment(.center)
+            RaceErrorBanner(message: error)
                 .padding(.horizontal)
-                .accessibilityElement(children: .combine)
+                .accessibilityFocused($errorFocus, equals: errorGeneration)
         } else if !model.game.isComplete {
             Text(model.game.progress.hardModeEnabled
                 ? "Hard Mode: revealed clues must be reused."
@@ -422,17 +458,30 @@ struct DailyGameView: View {
         }
     }
 
+    private var resultHeaderLabel: String {
+        guard let completion = model.game.completion else { return "Daily result." }
+        if completion.outcome == .solved {
+            return "Solved in \(completion.guessCount) guesses. The answer was \(model.puzzle.answer.uppercased())."
+        }
+        return "Daily puzzle failed. The answer was \(model.puzzle.answer.uppercased())."
+    }
+
     private var resultPanel: some View {
         VStack(spacing: 14) {
             Image(systemName: model.game.completion?.outcome == .solved
-                ? "flag.checkered.2.crossed" : "flag.fill")
+                ? "flag.checkered.2.crossed" : "lock.fill")
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(Color.raceIndigo)
                 .accessibilityHidden(true)
-            Text(model.game.completion?.outcome == .solved ? "Finish line!" : "Race complete")
+            Text(model.game.completion?.outcome == .solved ? "Solved" : "Not solved")
                 .font(.title2.bold())
+                .accessibilityFocused($axFocus, equals: .resultHeader)
+                .accessibilityLabel(resultHeaderLabel)
             Text("The answer was \(model.puzzle.answer.uppercased()).")
                 .font(.headline)
+            Text("Locked result.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
             if let result = model.game.completedResult {
                 ShareLink(item: DailyClassicShare.text(for: result)) {
                     Label("Share result", systemImage: "square.and.arrow.up")
@@ -449,10 +498,10 @@ struct DailyGameView: View {
         }
         .padding(18)
         .frame(maxWidth: 440)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 22))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
-            RoundedRectangle(cornerRadius: 22)
-                .stroke(Color.raceIndigo.opacity(0.18), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
         }
         .padding(.horizontal, 20)
         .accessibilityElement(children: .contain)
@@ -487,16 +536,14 @@ struct DailyStatisticsView: View {
 
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
+            Color.racePage.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 22) {
-                    Text("Your Daily Race")
-                        .font(.largeTitle.bold())
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         StatisticCard(value: model.history.statistics.gamesPlayed, label: "Played")
-                        StatisticCard(value: model.history.statistics.solvePercentage, label: "Solve %")
-                        StatisticCard(value: model.displayedCurrentStreak, label: "Current streak")
-                        StatisticCard(value: model.history.statistics.longestStreak, label: "Best streak")
+                        StatisticCard(value: model.history.statistics.solvePercentage, label: "Solved")
+                        StatisticCard(value: model.displayedCurrentStreak, label: "Streak")
+                        StatisticCard(value: model.history.statistics.longestStreak, label: "Best")
                     }
                     GuessDistributionView(distribution: model.history.statistics.guessDistribution)
                     todayResult
@@ -525,7 +572,7 @@ struct DailyStatisticsView: View {
             }
             .padding(18)
             .frame(maxWidth: .infinity)
-            .background(Color.raceIndigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
         } else {
             ContentUnavailableView(
                 "Today's result is waiting",
@@ -546,7 +593,11 @@ private struct StatisticCard: View {
             Text(label).font(.subheadline).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 96)
-        .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -566,15 +617,17 @@ private struct GuessDistributionView: View {
                     GeometryReader { proxy in
                         let count = distribution[guess, default: 0]
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.raceIndigo.opacity(0.1))
+                            Capsule().fill(Color.raceInset)
                             Capsule().fill(Color.raceIndigo)
-                                .frame(width: max(24, proxy.size.width * CGFloat(count) / CGFloat(maximum)))
+                                .frame(width: max(32, proxy.size.width * CGFloat(count) / CGFloat(maximum)))
                         }
                         .overlay(alignment: .leading) {
                             Text("\(count)")
                                 .font(.caption2.bold().monospacedDigit())
                                 .foregroundStyle(.white)
                                 .padding(.leading, 8)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
                     .frame(height: 24)
@@ -584,7 +637,11 @@ private struct GuessDistributionView: View {
             }
         }
         .padding(18)
-        .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 20))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
+        }
     }
 }
 
@@ -629,7 +686,7 @@ struct DailySettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color.raceBackground)
+        .background(Color.racePage)
         .navigationTitle("Settings")
     }
 }
@@ -637,7 +694,7 @@ struct DailySettingsView: View {
 struct DailyHelpView: View {
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
+            Color.racePage.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Reach the finish in six")
@@ -655,6 +712,12 @@ struct DailyHelpView: View {
                     FeedbackExample(
                         letter: "C", feedback: .absent,
                         title: "Not in the answer", detail: "The minus means this C is not used. Repeated letters are counted exactly."
+                    )
+                    DuplicateLetterExample(
+                        guess: "APPLE",
+                        feedback: [.present, .present, .absent, .absent, .correct],
+                        title: "Same letter twice",
+                        detail: "In APPLE against GRAPE, the first P is present, the second P is absent, and E is exact."
                     )
                     Divider()
                     Label("One puzzle is shared worldwide each UTC day.", systemImage: "globe.americas.fill")
@@ -685,6 +748,41 @@ private struct FeedbackExample: View {
                 Text(title).font(.headline)
                 Text(detail).font(.callout).foregroundStyle(.secondary)
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Fourth Help example: one five-tile row rendering the canonical duplicate
+/// vector `excess-guess-repeat` (answer `grape`, guess `apple`, feedback
+/// `[present, present, absent, absent, correct]`). The five feedback values are
+/// fixed literals matching the vector; this view performs no evaluation and
+/// makes no assertion.
+private struct DuplicateLetterExample: View {
+    let guess: String
+    let feedback: [Feedback]
+    let title: String
+    let detail: String
+
+    var body: some View {
+        // R-01/F2: the guess and its five fixed feedback values are paired
+        // literals at the single call site; trap in Debug if ever mismatched.
+        assert(guess.count == 5 && feedback.count == 5, "DuplicateLetterExample needs 5 letters and 5 feedback values")
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            HStack(spacing: 5) {
+                ForEach(0..<feedback.count, id: \.self) { position in
+                    let index = guess.index(guess.startIndex, offsetBy: position)
+                    TileView(
+                        letter: guess[index],
+                        feedback: feedback[position],
+                        isDraft: false,
+                        emptyLabel: ""
+                    )
+                    .frame(width: 52, height: 52)
+                }
+            }
+            Text(detail).font(.callout).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
