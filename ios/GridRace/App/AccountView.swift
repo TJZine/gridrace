@@ -16,6 +16,8 @@ struct AccountView: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingImportConfirmation = false
     @State private var actionTask: Task<Void, Never>?
+    // U-06: conflict choice -> focus conflict heading (no duplicate announce).
+    @AccessibilityFocusState private var conflictFocused: Bool
     #if DEBUG
     @State private var localEmail = ""
     @State private var localPassword = ""
@@ -23,7 +25,7 @@ struct AccountView: View {
 
     var body: some View {
         ZStack {
-            Color.raceBackground.ignoresSafeArea()
+            Color.racePage.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
                     if !model.isConfigured {
@@ -116,6 +118,7 @@ struct AccountView: View {
                         run { await model.signInForLocalTesting(email: email, password: password) }
                     }
                     .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking)
                 }
                 .textFieldStyle(.roundedBorder)
@@ -124,7 +127,11 @@ struct AccountView: View {
             #endif
         }
         .padding(24)
-        .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
+        }
     }
 
     @ViewBuilder
@@ -139,13 +146,22 @@ struct AccountView: View {
                         .font(.title2.bold())
                     Label("Signed in", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.secondary)
+                    Text("Your email is never shown to other players.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                     Button("Edit profile") { editingProfile = true }
                         .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity)
-            .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 24))
+            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.raceLine, lineWidth: 1.5)
+            }
 
             if let syncMessage {
                 syncCard(syncMessage)
@@ -163,10 +179,12 @@ struct AccountView: View {
 
             VStack(spacing: 12) {
                 Button("Sign out") { run { await model.signOut() } }
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .disabled(model.isWorking)
                 Button("Delete account", role: .destructive) {
                     showingDeleteConfirmation = true
                 }
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(model.isWorking)
             }
             .frame(maxWidth: .infinity)
@@ -176,6 +194,7 @@ struct AccountView: View {
                 Text("Loading your profile")
                 Button("Try again") { run { await model.retryProfile() } }
                     .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .disabled(model.isWorking)
             }
             .frame(maxWidth: .infinity, minHeight: 180)
@@ -191,8 +210,18 @@ struct AccountView: View {
                 .textContentType(.nickname)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityHint("Use 2 to 16 letters, numbers, spaces, apostrophes, or hyphens")
+            // Enabled state and message derive from the single authoritative
+            // `PlayerProfile.normalizedDisplayName` validator; no second ruleset.
+            if PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil {
+                Text("Use 2–16 letters, numbers, spaces, apostrophes, or hyphens.")
+                    .font(.callout)
+                    .foregroundStyle(Color.raceDanger)
+                    .multilineTextAlignment(.center)
+            }
             Button("Try another avatar") { model.randomizeAvatar() }
                 .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(model.isWorking)
             HStack {
                 if !isInitialSetup {
                     Button("Cancel") {
@@ -200,6 +229,7 @@ struct AccountView: View {
                         model.avatarSeedDraft = model.profile?.avatarSeed ?? model.avatarSeedDraft
                         editingProfile = false
                     }
+                    .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 Button("Save") {
                     run {
@@ -208,7 +238,11 @@ struct AccountView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.isWorking)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(
+                    model.isWorking
+                        || PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil
+                )
             }
         }
     }
@@ -221,9 +255,11 @@ struct AccountView: View {
                     .accessibilityHidden(true)
                 Text(message)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityFocused($conflictFocused)
                 if let retrySync {
                     Button("Retry", action: retrySync)
                         .buttonStyle(.bordered)
+                        .frame(minHeight: 44)
                 }
             }
             if let useCloudAttempt, let keepDeviceAttempt {
@@ -238,22 +274,22 @@ struct AccountView: View {
             }
         }
         .padding(16)
-        .background(Color.raceIndigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+        .onAppear {
+            if useCloudAttempt != nil { conflictFocused = true }
+        }
+        .onChange(of: useCloudAttempt == nil) { _, isNil in
+            // Assign (not only set) so a reappearing conflict refires focus.
+            conflictFocused = !isNil
+        }
     }
 
     private func errorCard(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .accessibilityHidden(true)
-            Text(message)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 10) {
+            RaceErrorBanner(message: message)
             Button("Dismiss") { model.clearError() }
-                .font(.callout)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .padding(14)
-        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
-        .accessibilityElement(children: .contain)
     }
 
     private func handleAppleAuthorization(_ result: Result<ASAuthorization, Error>) {
@@ -282,25 +318,52 @@ struct AccountView: View {
     }
 }
 
+/// Explicit per-index avatar background swatch. Fixed sRGB values keep white
+/// symbols at >=3:1 in both appearances.
+struct AvatarSwatch: Equatable, Sendable {
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    var color: Color {
+        Color(red: red, green: green, blue: blue)
+    }
+}
+
 struct PlayerAvatarView: View {
     let seed: String
     var size: CGFloat = 56
 
-    private let symbols = [
+    /// Frozen seed-to-symbol mapping. Do not reorder or remove entries:
+    /// persisted seeds must resolve to the same symbol.
+    static let avatarSymbols = [
         "hare.fill", "tortoise.fill", "bird.fill", "fish.fill",
         "ladybug.fill", "pawprint.fill", "leaf.fill", "bolt.fill"
     ]
 
+    /// Explicit per-index backgrounds, each >=3:1 against white.
+    static let avatarSwatches = [
+        AvatarSwatch(red: 0.239, green: 0.200, blue: 0.580),
+        AvatarSwatch(red: 0.051, green: 0.420, blue: 0.470),
+        AvatarSwatch(red: 0.698, green: 0.227, blue: 0.122),
+        AvatarSwatch(red: 0.478, green: 0.310, blue: 0.639),
+        AvatarSwatch(red: 0.651, green: 0.141, blue: 0.310),
+        AvatarSwatch(red: 0.357, green: 0.357, blue: 0.839),
+        AvatarSwatch(red: 0.541, green: 0.353, blue: 0.000),
+        AvatarSwatch(red: 0.200, green: 0.255, blue: 0.333),
+    ]
+
+    static func paletteIndex(for seed: String) -> Int {
+        seed.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) % avatarSymbols.count }
+    }
+
     var body: some View {
-        let index = seed.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) % symbols.count }
-        Image(systemName: symbols[index])
+        let index = Self.paletteIndex(for: seed)
+        Image(systemName: Self.avatarSymbols[index])
             .font(.system(size: size * 0.42, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(
-                Color(hue: Double(index) / Double(symbols.count), saturation: 0.62, brightness: 0.72),
-                in: Circle()
-            )
+            .background(Self.avatarSwatches[index].color, in: Circle())
             .accessibilityLabel("Generated player avatar")
     }
 }

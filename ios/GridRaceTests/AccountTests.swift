@@ -46,6 +46,50 @@ final class PlayerProfileTests: XCTestCase {
     }
 }
 
+final class PlayerAvatarPaletteTests: XCTestCase {
+    func testSeedToSymbolMappingIsStable() {
+        // Snapshot of the frozen mapping: order and hash must not change,
+        // or persisted seeds would resolve to different symbols.
+        XCTAssertEqual(
+            PlayerAvatarView.avatarSymbols,
+            [
+                "hare.fill", "tortoise.fill", "bird.fill", "fish.fill",
+                "ladybug.fill", "pawprint.fill", "leaf.fill", "bolt.fill",
+            ]
+        )
+        XCTAssertEqual(PlayerAvatarView.avatarSwatches.count, PlayerAvatarView.avatarSymbols.count)
+        XCTAssertEqual(PlayerAvatarView.paletteIndex(for: "seed"), 1)
+        XCTAssertEqual(PlayerAvatarView.paletteIndex(for: "avatar-seed"), 5)
+        XCTAssertEqual(PlayerAvatarView.paletteIndex(for: ""), 0)
+        XCTAssertEqual(PlayerAvatarView.paletteIndex(for: "Alex"), 6)
+        XCTAssertEqual(PlayerAvatarView.paletteIndex(for: "a"), 1)
+    }
+
+    func testEveryBackgroundMeetsWhiteContrast() {
+        for swatch in PlayerAvatarView.avatarSwatches {
+            XCTAssertGreaterThanOrEqual(
+                Self.contrastAgainstWhite(
+                    red: swatch.red,
+                    green: swatch.green,
+                    blue: swatch.blue
+                ),
+                3.0,
+                "swatch (\(swatch.red), \(swatch.green), \(swatch.blue))"
+            )
+        }
+    }
+
+    private static func contrastAgainstWhite(red: Double, green: Double, blue: Double) -> Double {
+        let luminance =
+            0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
+        return 1.05 / (luminance + 0.05)
+    }
+
+    private static func linearize(_ component: Double) -> Double {
+        component <= 0.04045 ? component / 12.92 : pow((component + 0.055) / 1.055, 2.4)
+    }
+}
+
 final class SupabaseAccountConfigurationTests: XCTestCase {
     func testMissingOrMalformedConfigurationDisablesAccounts() {
         XCTAssertNil(SupabaseAccountService.Configuration(urlString: nil, publishableKey: "key"))
