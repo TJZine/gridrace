@@ -126,11 +126,14 @@ Public rows contain no answer. The secret-bearing `private` schema has no grant 
 anonymous or authenticated roles. A separate narrowly executable RLS-helper schema
 may answer membership predicates without granting access to private words or round
 secrets. Normal clients receive safe column grants: opponent timing, efficiency,
-placement, and member auth identifiers are available only through the conditional
-snapshot after reveal.
+and placement are not available through the base match row and are returned only
+by the conditional snapshot after reveal; member auth identifiers and the
+exact-action `matches.updated_at` timestamp remain unavailable to authenticated
+clients.
 
-Every canonical change touches the safe public match revision. Phase 3 Realtime
-subscribes only to that roster-authorized row and emits a refresh signal, avoiding
+Every canonical change transactionally increments the timestamp-free monotonic
+`matches.revision`. Phase 3 Realtime publishes only that roster-authorized row's
+timing-free column projection and emits a refresh signal, avoiding
 secret or timing-bearing change payloads. A snapshot remains mandatory after the
 signal.
 

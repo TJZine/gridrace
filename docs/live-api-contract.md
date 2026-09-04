@@ -282,9 +282,13 @@ that contradict state, or a player/board mismatch.
 
 ## Realtime and recovery
 
-The public `matches` row contains no private clue data and has an `updated_at`
-revision signal. Every relevant command touches it after committing canonical
-member, round, player, or guess changes. The iOS Realtime service subscribes only to
+The public `matches` row contains no private clue data and carries a
+timestamp-free monotonically increasing `revision` signal. Every canonical
+command transactionally increments it after committing member, round, player, or
+guess changes; idempotent replays perform no write and leave it untouched. The
+exact-action `updated_at` timestamp is service-only: authenticated clients hold
+no `SELECT` grant on it and the Realtime publication column list excludes it, so
+it can be neither selected nor received. The iOS Realtime service subscribes only to
 the current rostered match row and emits `Void`; it never treats payload data or
 delivery order as state.
 
