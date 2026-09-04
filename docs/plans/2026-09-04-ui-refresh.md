@@ -1,8 +1,18 @@
-Status: Active
+Status: Historical
 Scope: Daily Classic + tutorial UI mechanics and visual design refresh (no rules/backend change)
 Owner: Primary orchestrator
 Started: 2026-09-04
 Last updated: 2026-09-04
+
+# Supersession
+
+Superseded on 2026-09-04 by
+[`2026-09-04-adversarial-remediation.md`](2026-09-04-adversarial-remediation.md)
+at maintainer direction so the repository can address higher-risk synchronization,
+data-safety, privacy, and delivery findings. Static implementation and automated
+verification remain complete. The formal visual and VoiceOver matrix was not marked
+complete and is intentionally preserved below as a revalidation item; supersession
+does not claim that evidence passed.
 
 # Goal
 
@@ -588,21 +598,12 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
 
 # Next action
 
-Implementation and R-01/R-02/R-03 code adjudication are complete through
-`a01ee0c`. Final verification is green: 79 tests passed, one existing
-credential-dependent integration test skipped, zero failed; clean Debug SE
-and Release native-iPad builds succeeded. Plan stays Active because U-06's
-formal manual visual and VoiceOver matrix is still genuinely unperformed —
-this is the sole remaining next action and blocker.
-Post-293b897 partial simulator smoke is recorded above but counts as PARTIAL
-evidence only. Complete the remaining formal matrix observations (VoiceOver
-transcripts for invalid, solve/fail, stable reveal, and Reduce Motion reveal;
-separate staged visual reveal; grayscale; confirmed Bold Text combined case;
-SE landscape and full scrolling/target audit; iPad landscape; account/stats/
-help/settings full passes), recording
-device + OS + orientation + content-size per row. Only when the matrix is
-filled may the plan be set Historical with the closeout commit hash. Do not
-push.
+This plan is superseded. Re-run and record the preserved formal visual and
+VoiceOver matrix before UI production signoff: invalid, solve/fail, stable reveal,
+Reduce Motion reveal, staged visual reveal, grayscale, confirmed Bold Text combined
+case, SE landscape and scrolling/target audit, iPad landscape, and the complete
+account/statistics/help/settings passes. Record device, OS, orientation, and content
+size for every row. Do not infer a pass from the partial smoke evidence.
 
 # Closeout checklist
 
@@ -611,4 +612,4 @@ push.
 - [ ] Formal manual visual and VoiceOver matrix rows filled — NOT PERFORMED (post-293b897 partial simulator smoke recorded as PARTIAL evidence only); sole remaining blocker and next action.
 - [x] All documented code-review findings adjudicated and closed across the plan red-team, R-01, and Muse remediation re-reviews; final tutorial/Daily/account/integration reviewers found no remaining static code defect.
 - [x] `TODO.md` active-plan link points here; backlog candidates untouched; no stale references.
-- [ ] Status set Historical with closeout commit hash in handoff; no push — stays Active until the manual matrix above is filled.
+- [x] Status set Historical by explicit supersession; the unperformed formal matrix remains a future revalidation item and is not claimed as passed.

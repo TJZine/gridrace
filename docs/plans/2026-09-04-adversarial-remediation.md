@@ -1,0 +1,130 @@
+Status: Active
+Scope: Adversarial review remediation for synchronization, data safety, backend privacy, verification, and delivery controls
+Owner: Primary orchestrator
+Started: 2026-09-04
+Last updated: 2026-09-04
+
+# Goal
+
+Implement and verify the ten adjudicated GridRace findings without broadening the
+product or introducing speculative architecture. Muse Code Spark 1.3 agents at
+`xhigh` reasoning work in isolated Git worktrees and create focused conventional
+commits. The primary orchestrator reviews, integrates, verifies, and retains each
+Muse session for follow-up until its slice is accepted.
+
+# Current snapshot
+
+- Review verdicts: five Accept, four Accept with modification, one Defer.
+- Authenticated Daily/account-deletion production signoff is blocked by GR-01..05.
+- Live multiplayer remains paused; GR-06..08 must close before reactivation.
+- GR-09 is a horizon defect but is included at maintainer direction.
+- GR-10 has no tracked workflow; GitHub reports the default branch unprotected.
+- The superseded UI plan retains an unperformed formal visual/VoiceOver matrix for
+  later revalidation; this plan does not claim or alter that evidence.
+
+# Invariants and implementation policy
+
+- Preserve every product boundary in `AGENTS.md` and the engineering runbook.
+- Ponytail full: fix root causes at existing seams, use native/current facilities,
+  add no dependency or generalized framework, and leave one focused runnable proof
+  for every non-trivial branch or failure mode.
+- Durable local/cloud state, RLS, privacy, idempotency, cancellation, and deletion
+  safety may not be simplified away.
+- Use forward migrations only. Do not rewrite migration history.
+- Each Muse agent commits only its assigned slice. It does not edit this plan,
+  stage unrelated files, push, or change remote repository settings.
+- The orchestrator cherry-picks/integrates commits serially, resolves shared
+  contracts, runs canonical gates, and records evidence.
+
+# Work units
+
+| Unit | Findings | Boundary | Dependency | Status |
+| --- | --- | --- | --- | --- |
+| U-01 Sync convergence | GR-01, GR-02, GR-04 | `DailySync.swift`, `DailyAccountCoordinator.swift`, directly required account callback/store code, `DailySyncTests.swift`, `AccountTests.swift` | — | Ready |
+| U-02 Guest recovery | GR-03 | `DailyClassicModel.swift`, `GridRaceApp.swift`, `DailyClassicModelTests.swift` | — | Ready |
+| U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Ready |
+| U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Ready |
+| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Ready |
+| U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Ready |
+| U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Ready |
+| U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
+| R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | Pending |
+| C-01 Closeout | all | plan, final gates, commit record | R-01 | Pending |
+
+# Integration order and serialization
+
+1. Integrate U-01, U-02, and U-03 after isolated review.
+2. Integrate U-04, then U-05, then U-06 because migrations, database tests,
+   authority docs, and the runbook are serialized surfaces.
+3. Rebase or freshly dispatch U-07 after U-01 so its tests target the final sync seam.
+4. Dispatch U-08 only after every command it invokes is proved locally.
+5. Run one fresh integrated review, remediate through the original Muse sessions,
+   then execute the complete affected gate set.
+
+# Acceptance and verification
+
+- GR-01: locally durable progress/results converge without pending metadata; ignored
+  conflicts do not re-upload.
+- GR-02: immutable identity excludes Hard Mode; mismatched-mode attempts never hide
+  a longer attempt or silently combine divergent non-empty attempts.
+- GR-03: guest reset removes only guest Daily files and preserves every account path.
+- GR-04: cancellation/stale responses cannot clear newer pending work or recreate a
+  deleted account cache; deletion cannot hang indefinitely on transport cooperation.
+- GR-05: word-pack, seed check, seed write, and clean seed diff all pass.
+- GR-06: authenticated roster members cannot select or receive exact action timing;
+  canonical idempotent mutations increment only a safe revision signal.
+- GR-07: all six handlers pass fmt/lint/check/test with success, malformed input,
+  auth/build/identifier, RPC mapping, typed database error, and malformed-envelope
+  coverage appropriate to each handler.
+- GR-08: SQL and Swift reject inconsistent v1 identity tuples and out-of-range days.
+- GR-09: a 1,001-result pull returns every result exactly once in stable order.
+- GR-10: a minimal workflow runs only proved commands; branch-protection mutation is
+  not authorized by this code task and remains an explicit external follow-up.
+
+Canonical proof includes structural Git checks, Python word/seed determinism, rules
+and Edge Deno gates, clean Supabase reset/pgTAP/lint, focused and full iOS tests,
+Debug build, and denial-path inspection. Rediscover simulator destinations before
+Xcode execution. Record unavailable external credentials or hosted behavior exactly.
+
+# Stop conditions
+
+- A second active plan appears.
+- A Muse slice touches another slice's assigned paths without orchestrator approval.
+- A proposed fix changes game rules, scoring, share semantics, or product scope.
+- A migration would require rewriting deployed history or a privacy/RLS denial cannot
+  be proved.
+- A new dependency, generalized persistence/sync framework, or remote settings change
+  becomes necessary.
+
+# Decision log
+
+| ID | Decision | Rationale |
+| --- | --- | --- |
+| REM-01 | Supersede UI plan without claiming its matrix passed | Preserves evidence honesty while unblocking higher-risk remediation |
+| REM-02 | Keep GR-01/02/04 together | They share reconciliation, metadata, cancellation, and deletion lifecycle seams |
+| REM-03 | Use forward migrations with preassigned filenames | Prevents worktree collision and preserves deployed history |
+| REM-04 | Implement GR-09 now | Maintainer explicitly requested all adjudicated issues despite its horizon priority |
+| REM-05 | Do not mutate GitHub branch settings | Repository implementation does not imply authority for external administrative state |
+
+# Muse sessions and commit record
+
+| Unit | Session | Worktree/branch | Commit | Status |
+| --- | --- | --- | --- | --- |
+| U-01 | Pending | Pending | Pending | Not dispatched |
+| U-02 | Pending | Pending | Pending | Not dispatched |
+| U-03 | Pending | Pending | Pending | Not dispatched |
+| U-04 | Pending | Pending | Pending | Not dispatched |
+| U-05 | Pending | Pending | Pending | Not dispatched |
+| U-06 | Pending | Pending | Pending | Not dispatched |
+| U-07 | Pending | Pending | Pending | Not dispatched |
+| U-08 | Pending | Pending | Pending | Not dispatched |
+
+# Verification record
+
+No implementation gate has been credited yet. Baseline evidence belongs to the
+adjudication report and must be rerun against the integrated result.
+
+# Next action
+
+Commit this plan checkpoint, dispatch U-01 through U-05 in isolated Muse worktrees,
+retain their session IDs, and review each returned commit before integration.
