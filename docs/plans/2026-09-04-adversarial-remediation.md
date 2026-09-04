@@ -40,11 +40,11 @@ Muse session for follow-up until its slice is accepted.
 
 | Unit | Findings | Boundary | Dependency | Status |
 | --- | --- | --- | --- | --- |
-| U-01 Sync convergence | GR-01, GR-02, GR-04 | `DailySync.swift`, `DailyAccountCoordinator.swift`, directly required account callback/store code, `DailySyncTests.swift`, `AccountTests.swift` | — | Ready |
-| U-02 Guest recovery | GR-03 | `DailyClassicModel.swift`, `GridRaceApp.swift`, `DailyClassicModelTests.swift` | — | Ready |
-| U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Ready |
-| U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Ready |
-| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Ready |
+| U-01 Sync convergence | GR-01, GR-02, GR-04 | `DailySync.swift`, `DailyAccountCoordinator.swift`, directly required account callback/store code, `DailySyncTests.swift`, `AccountTests.swift` | — | In progress |
+| U-02 Guest recovery | GR-03 | `DailyClassicModel.swift`, `GridRaceApp.swift`, `DailyClassicModelTests.swift` | — | Accepted |
+| U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Accepted |
+| U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Dispatched; paused |
+| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Dispatched; paused |
 | U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Ready |
 | U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Ready |
 | U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
@@ -110,21 +110,23 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 
 | Unit | Session | Worktree/branch | Commit | Status |
 | --- | --- | --- | --- | --- |
-| U-01 | Pending | Pending | Pending | Not dispatched |
-| U-02 | Pending | Pending | Pending | Not dispatched |
-| U-03 | Pending | Pending | Pending | Not dispatched |
-| U-04 | Pending | Pending | Pending | Not dispatched |
-| U-05 | Pending | Pending | Pending | Not dispatched |
+| U-01 | `01a06dd2-71fe-7992-9759-caba8fee138f` | `.muse/worktrees/20260904-c922` | Pending | Follow-up simplification and tests running |
+| U-02 | `01a06dd2-71e6-7493-8611-32fb5e01de38` | `.muse/worktrees/20260904-8e26` | `5296fdb` (integrated as `85f1484`) | Accepted; session retained |
+| U-03 | `01a06dd2-71ef-7140-9c8c-9c2c4d30f70d` | `.muse/worktrees/20260904-113d` | `f54b589` (integrated as `2a49631`) | Accepted; session retained |
+| U-04 | `01a06dd2-7227-72e1-886c-a7828f012b2c` | `.muse/worktrees/20260904-972f` | Pending | Paused after provider retries; session retained |
+| U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | Pending | Paused after provider retries; session retained |
 | U-06 | Pending | Pending | Pending | Not dispatched |
 | U-07 | Pending | Pending | Pending | Not dispatched |
 | U-08 | Pending | Pending | Pending | Not dispatched |
 
 # Verification record
 
-No implementation gate has been credited yet. Baseline evidence belongs to the
-adjudication report and must be rerun against the integrated result.
+- U-02: reviewed the three-file commit and ran the canonical simulator-focused
+  `DailyClassicModelTests`: 11 tests passed, including the new scoped-reset proof.
+- U-03: reviewed the two-file commit; `check_word_pack.py`, `check:seed`,
+  `generate:seed`, and a clean `supabase/seed.sql` diff all passed.
 
 # Next action
 
-Commit this plan checkpoint, dispatch U-01 through U-05 in isolated Muse worktrees,
-retain their session IDs, and review each returned commit before integration.
+Finish and review U-01, then resume U-04 and U-05 serially. Retain every session for
+follow-up until integrated verification accepts its slice.
