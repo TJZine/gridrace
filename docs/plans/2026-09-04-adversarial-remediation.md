@@ -44,8 +44,8 @@ Muse session for follow-up until its slice is accepted.
 | U-02 Guest recovery | GR-03 | `DailyClassicModel.swift`, `GridRaceApp.swift`, `DailyClassicModelTests.swift` | — | Accepted |
 | U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Accepted |
 | U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Accepted |
-| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | In progress |
-| U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Ready |
+| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Accepted |
+| U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Blocked on Muse quota reset |
 | U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Ready |
 | U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
 | R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | Pending |
@@ -114,8 +114,8 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | U-02 | `01a06dd2-71e6-7493-8611-32fb5e01de38` | `.muse/worktrees/20260904-8e26` | `5296fdb` (integrated as `85f1484`) | Accepted; session retained |
 | U-03 | `01a06dd2-71ef-7140-9c8c-9c2c4d30f70d` | `.muse/worktrees/20260904-113d` | `f54b589` (integrated as `2a49631`) | Accepted; session retained |
 | U-04 | `01a06dd2-7227-72e1-886c-a7828f012b2c` | `.muse/worktrees/20260904-972f` | `eddad03` (integrated as `f0b7b5f`) | Accepted after docs follow-up; session retained |
-| U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | Pending | Resumed; implementation running |
-| U-06 | Pending | Pending | Pending | Not dispatched |
+| U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | `6b07074` (integrated as `ddde194`) | Accepted after test-name follow-up; session retained |
+| U-06 | `01a06e0e-592c-70e0-9299-54be34b87361` | `.muse/worktrees/20260904-7c02` | Pending | Clean worktree retained; provider quota reset due 2026-09-05 00:08:25Z |
 | U-07 | Pending | Pending | Pending | Not dispatched |
 | U-08 | Pending | Pending | Pending | Not dispatched |
 
@@ -130,8 +130,13 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   a mode-conflict correction, canonical `DailySyncTests` and `AccountTests` pass.
 - U-04: clean Supabase reset passed; all four pgTAP files passed (190 assertions);
   local public/private lint completed with only pre-existing historical warnings.
+- U-05: reviewed the six-handler test expansion and runbook command; from
+  `supabase/functions`, fmt checked 14 files, lint checked 13 files, explicit type
+  checking passed, and all 89 Edge tests passed. The root-level Deno invocation is
+  intentionally non-canonical because it does not discover the functions import map.
 
 # Next action
 
-Finish and review U-05, then dispatch U-06 and U-07 from the integrated U-01/U-04
-state. Retain every session for follow-up until integrated verification accepts it.
+Resume U-06 after the recorded Muse quota reset, then dispatch U-07 from its
+integrated result. Retain every session for follow-up until integrated verification
+accepts it.
