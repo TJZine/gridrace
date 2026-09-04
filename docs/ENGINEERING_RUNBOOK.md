@@ -134,6 +134,23 @@ deno fmt --check rules/typescript
 deno lint rules/typescript
 deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
 deno test --allow-read rules/typescript/evaluator_test.ts
+deno fmt --check supabase/functions
+deno lint supabase/functions
+deno check --config supabase/functions/deno.json \
+  supabase/functions/_shared/command.ts \
+  supabase/functions/create-match/index.ts \
+  supabase/functions/create-match/index_test.ts \
+  supabase/functions/join-match/index.ts \
+  supabase/functions/join-match/index_test.ts \
+  supabase/functions/start-match/index.ts \
+  supabase/functions/start-match/index_test.ts \
+  supabase/functions/submit-guess/index.ts \
+  supabase/functions/submit-guess/index_test.ts \
+  supabase/functions/match-snapshot/index.ts \
+  supabase/functions/match-snapshot/index_test.ts \
+  supabase/functions/delete-account/index.ts \
+  supabase/functions/delete-account/index_test.ts
+deno test --config supabase/functions/deno.json supabase/functions/
 supabase db reset
 supabase test db
 supabase db lint --local --schema public,private --level warning --fail-on error
@@ -172,11 +189,11 @@ Expected gate families are:
 | iOS build and tests | Proved above for the checked-in `GridRace` project and scheme | Rediscover the destination UUID when the supported local simulator changes. |
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
 | Supabase local stack | Pinned local CLI start, reset-from-zero, database lint, and database tests | Migrations and seed rebuild a clean local database; pgTAP/RLS tests pass, including negative users. |
-| Edge Functions | Supabase function-specific Deno gates | Phase 1 proves only the pure TypeScript evaluator commands above; no Edge Function exists. |
+| Edge Functions | Proved above for the six checked-in command handlers and their tests | Run from the repository root with the explicit `--config supabase/functions/deno.json` shown above; `fmt` and `lint` need no config. |
 | Word pack | `python3 scripts/check_word_pack.py` | Proved locally against the curated source and deterministic manifest. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
-Exact Supabase, database, Edge Function, and CI command spellings remain undefined
+Exact Supabase, database, and CI command spellings remain undefined
 until those surfaces exist. Never invent them in a plan or CI workflow. Record a
 missing gate as “not available” or “documented only,” not passed.
 
