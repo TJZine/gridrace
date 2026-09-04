@@ -110,14 +110,14 @@ live Blind Race arrive.
 | Unit | Owner | Boundary | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | U-00 Plan + baseline proof | Controller | this plan + `docs/TODO.md` link maintenance | — | Complete |
-| U-01 Design tokens + theming | Controller (serial) | `Views.swift` `Color` extension only; no new file, no `.pbxproj` change | U-00 | Pending |
-| U-02 Game surface components | Worker A | `Views.swift` only (`BoardView`/`TileView`/`LetterKeyboardView`/`KeyboardKey`, new `RaceErrorBanner` definition, tutorial `RaceView` pinning) | U-01 | Pending |
-| U-03 Home/game-application/stats/help/settings | Worker B | `DailyViews.swift` + `GridRaceTests/GameRulesTests.swift` only (applies U-01 tokens + U-02 banner contract in `DailyGameView`, Home, statistics, settings, help) | U-01 | Pending |
-| U-04 Tutorial/opponents/reveal | Worker C | `Views.swift` only (intro, countdown presentation, opponent strip, reveal; consumes U-02 banner; serial after U-02) | U-01 + U-02 | Pending |
-| U-05 Account + avatar | Worker D | `AccountView.swift` + `GridRaceTests/AccountTests.swift` only | U-01 | Pending |
-| U-06 Accessibility + device sweep | Controller | serial fix-ups in owning unit's files only, one file at a time | U-02..U-05 | Pending |
-| R-01 Final independent review | Fresh reviewer | read-only + plan | U-06 | Pending |
-| C-01 Closeout | Controller | plan, TODO link fix, commits | R-01 | Pending |
+| U-01 Design tokens + theming | Controller (serial) | `Views.swift` `Color` extension only; no new file, no `.pbxproj` change | U-00 | Complete |
+| U-02 Game surface components | Controller (Wave 1, serial) | `Views.swift` only (`BoardView`/`TileView`/`LetterKeyboardView`/`KeyboardKey`, new `RaceErrorBanner` definition, tutorial `RaceView` pinning) | U-01 | Complete |
+| U-03 Home/game-application/stats/help/settings | Controller (Wave 1, serial) | `DailyViews.swift` + `GridRaceTests/GameRulesTests.swift` only (applies U-01 tokens + U-02 banner contract in `DailyGameView`, Home, statistics, settings, help) | U-01 | Complete |
+| U-04 Tutorial/opponents/reveal | Controller (serial after U-02) | `Views.swift` only (intro, countdown presentation, opponent strip, reveal; consumes U-02 banner; serial after U-02) | U-01 + U-02 | Complete |
+| U-05 Account + avatar | Controller (Wave 1, serial) | `AccountView.swift` + `GridRaceTests/AccountTests.swift` only | U-01 | Complete |
+| U-06 Accessibility + device sweep | Controller | serial fix-ups in owning unit's files only, one file at a time | U-02..U-05 | Complete |
+| R-01 Final independent review | Fresh read-only reviewer (subagent, no writes) | read-only + plan | U-06 | Complete |
+| C-01 Closeout | Controller | plan, TODO link fix, commits | R-01 | In progress |
 
 Disjoint-write rule: Wave 1 (U-02, U-03, U-05) holds strictly disjoint path
 sets (`Views.swift`; `DailyViews.swift` + `GameRulesTests.swift`;
@@ -436,6 +436,28 @@ request for one stops the line for controller approval and High-tier proof.
 | RR-03 | Medium | Build commands | Debug/Release gates were not copy-pasteable exact command shapes | Risk/verification section | accepted | Added complete Debug and Release example commands with configuration, destination, and derived-data path | Rediscovered IDs substituted and both commands exit zero |
 | RR-04 | Medium | Acceptance language | Subjective copy criteria remained after UI-RT-16 | U-03/U-04/U-05 acceptance | accepted | Frozen strings are byte-for-byte; other changed copy requires explicit old → new rows | Controller compares exact outputs and rejects unlisted semantic changes |
 | RR-05 | Medium | Tracking/checkpoint | Untracked plan was omitted from ordinary Git diff checks; evidence/next action were stale | Verification record, commit record, next action | accepted | Record no-index + TODO checks, then stage explicit docs paths, run cached gates, and create the documentation checkpoint before implementation | Verification record + commit record contain exact results; handoff reports commit hash |
+| R01-F1 | Medium | `Views.swift` RaceView error focus + `DailyViews.swift` DailyGameView error focus | Repeat/identical-error submit may not refocus the banner: focus set only on appear/same-value assignment, which coalesces and never moves focus | Diff hunks: RaceView banner `.accessibilityFocused($errorFocused)` + `.onAppear`; DailyViews `.onChange` same-value set; traced against `TutorialModel.submitGuess`/`DailyClassicModel.typeLetter` error-nil semantics | accepted | Per-submit focus generation (`errorGeneration`/`errorFocus`, `noteSubmit` on both submit paths incl. hardware Return; generation bump in `onChange` for non-submit errors); `KeyboardView.onSubmitAttempt` hook | `swiftc -parse` clean on all touched files; targeted diff inspection of the changed seam; full Xcode focus proof pending unsandboxed run (see Verification record) |
+| R01-F2 | Low | `DailyViews.swift` DuplicateLetterExample | `ForEach(0..<feedback.count)` indexes `guess` without a length guard; latent (paired 5/5 literals at the single call site) | Diff hunk `guess.index(guess.startIndex, offsetBy: position)` with fixed `guess: "APPLE"`, 5 feedback literals | accepted | `assert(guess.count == 5 && feedback.count == 5)` documenting the coupling (Debug-only, zero behavior change) | Parse-clean; inspection of the single call site |
+| R01-F3 | Low | `DailyViews.swift` DailyGameView error focus + `AccountView.swift` conflict focus | Focus target never cleared when the error/conflict clears, leaving a stale target so the next set is a same-value no-op | Diff hunks `.onChange` without nil-reset branches | accepted | Nil-reset on clear in DailyGameView (superseded by generation pattern) and assign (`conflictFocused = !isNil`) in AccountView | Parse-clean; inspection; full proof pending unsandboxed run |
+| R01-N1 | — | Reviewer assumptions (no issue) | Tile/keyboard `highContrast` defaults, `visibleRevealRowCount` global order, untouched `onKeyPress`/models/share | 2-batch cap; truncated diff | rejected (no issue) | Controller verified directly: `highContrast` defaults exist; `TutorialModel.visibleRows`/`advanceReveal` partition one global counter in board order; `git diff --quiet` proves `TutorialModel`/`DailyClassicModel`/`AccountModel`/`AccountSession`/`GameRules`/`DailyClassic` untouched | Verification record scope/frozen rows |
+
+# Copy-change ledger (old → new; frozen rule/share/sync/privacy copy otherwise byte-for-byte)
+
+| Location | Old | New | Notes |
+| --- | --- | --- | --- |
+| Daily result title (solved) | `Finish line!` | `Solved` | Neutral wording per DEC-UI-11; single flag use kept |
+| Daily result title (failed) | `Race complete` | `Not solved` | Neutral wording per DEC-UI-11 |
+| Daily result caption | (none) | `Locked result.` | Immutability wording; failed icon `flag.fill` → `lock.fill` |
+| Statistics cards | `Solve %` / `Current streak` / `Best streak` | `Solved` / `Streak` / `Best` | 2×2 timing-card naming; values unchanged |
+| Statistics heading | In-content `Your Daily Race` (largeTitle) | (removed; nav `Statistics` retained) | Inline-title treatment |
+| Home routes | `Statistics` row | `How to play` + `Settings` rows | Statistics reached via tappable strip; toolbar icons now duplicates only |
+| Home nav title | `Home` | (removed; brand header retained) | Brand/nav de-duplication |
+| Opponent count | `N / 6 guesses` | `n/6` + `Connected`/`Disconnected` | Split-time rows; `accessibilityLabel` contract unchanged |
+| Help | (3 examples) | + `Same letter twice` / `In APPLE against GRAPE, the first P is present, the second P is absent, and E is exact.` | 4th multi-tile instance description of vector `excess-guess-repeat`; no rule rewording |
+| Tutorial intro | `Haptics` toggle (intro + race) | `Haptics and contrast live in Settings` link (intro only) | Single haptics source; Settings owns the toggle |
+| Account profile | (none) | `Your email is never shown to other players.` | Exact required reassurance line, signed-in profile only |
+| Result header speech | `UIAccessibility.post` announcement | Focused header label (`Solved in N guesses…` / `Daily puzzle failed…` + answer) | Single-speech via focus; same words, spoken once |
+| Reveal rows | Board container label only | Per-row `name, row N` labels + answer/summary focus | Staged-row focus order per U-06 map |
 
 # Verification record
 
@@ -450,19 +472,38 @@ request for one stops the line for controller approval and High-tier proof.
 | Active-plan uniqueness | `rg -l '^Status: Active$' docs/plans` | Exactly `docs/plans/2026-09-04-ui-refresh.md` |
 | TODO link | Inspect `docs/TODO.md` active-plan link; backlog lines unchanged | Links this plan; backlog unchanged |
 | Independent checkpoint audit | Fresh read-only subagent inspected RR-01..RR-05 closure, ownership, commands, accessibility, copy, and product boundaries | No remaining content blocker; proceed to controller-owned staged checks and documentation commit |
+| Implementation scope | `git status --short`; `git diff --name-only` filtered against the 5 allowed code paths | Only `docs/plans/2026-09-04-ui-refresh.md`, `Views/DailyViews/AccountView.swift`, `GameRulesTests/AccountTests.swift` modified; no `.pbxproj`, model, persistence, sync, rule, or contract file touched |
+| Frozen contracts | `rg` frozen-string counts; `git diff --quiet` on `DailyClassic` (share), `TutorialModel`, `DailyClassicModel`, `AccountModel`, `AccountSession`, `GameRules` | Hard Mode footers, Daily/tutorial guidance, email line present; share generator and all models byte-identical |
+| Opacity migration | `rg 'white\.opacity\|raceIndigo\.opacity\|raceCoral\.opacity\|foregroundStyle\(\.red\)'` on the three view files | Zero hits in all three files |
+| Syntax | `swiftc -parse` on all five touched code files (run twice: post-implementation and post-R-01 fixes) | `PARSE_OK` on all five, both runs |
+| Vector proof (real code) | Compile `ios/GridRace/App/GameRules.swift` + harness calling `GameRules.evaluate(answer: "grape", guess: "apple")` | `[1, 1, 0, 0, 2]` = canonical `excess-guess-repeat` feedback; `HARNESS_PASS` |
+| Avatar proof (independent oracle) | Python cross-check of `AvatarSwatch` literals + `avatarSymbols` vs `AccountTests` expectations | 8/8 swatches ≥3:1 vs white (min 5.37); all 5 seed-index expectations match; symbol snapshot identical |
+| R-01 final review | Fresh read-only subagent (no writes), full diff packet | 3 findings (1 medium, 2 low), all accepted and fixed; 1 no-issue assumption rejected with direct controller evidence |
+| R-01 fix inspection | Targeted diff inspection of the changed seam + `swiftc -parse` + `git diff --check` | Clean; no second reviewer cycle per runbook |
+| iOS tests (focused + full) | BLOCKED — `xcodebuild … test` needs unsandboxed Simulator + package cache; `require_escalated` denied (approval disabled) | NOT RUN. Named follow-up: maintainer runs full suite on the provisioned SE (`id=3B9C2E52-7815-4056-8966-BBA6532D23DA`) and iPad (`id=55637EFA-7E16-4A37-9D64-7B5DE9C8FD8C`) per plan commands |
+| Debug + Release builds | BLOCKED — same sandbox denial (`xcodebuild -showdestinations` fails; CoreSimulator + SwiftPM cache `Operation not permitted`) | NOT RUN. Same named follow-up with the rediscovered/provided destination IDs |
+| Manual evidence matrix | BLOCKED — no simulator, screenshot, or VoiceOver instrumentation available in-session | NOT PERFORMED. Rows (light/dark, AX5, contrast, Bold, Reduce Motion on/off, transcripts, grayscale, SE portrait/landscape, iPad, board legibility) recorded as unavailable; same follow-up owner |
+| Word pack gate | `python3 scripts/check_word_pack.py` — word surfaces untouched | NOT RUN with reason recorded (no word-pack/vector/source change) |
 
 # Commit record
 
 | Commit | Purpose | Status |
 | --- | --- | --- |
-| this commit | `docs: finalize UI refresh implementation plan` | Complete documentation checkpoint before implementation |
+| 9685472 | `docs: finalize UI refresh implementation plan` | Complete documentation checkpoint before implementation |
+| 0e4a749 | `feat(tutorial): pin keyboard, lane-edge tiles, split-time opponents, reveal focus` | U-01/U-02/U-04/U-06/R-01 implementation in `Views.swift` |
+| e38b235 | `feat(daily): refresh home, game, statistics, help, and settings` | U-03/U-06/R-01 implementation in `DailyViews.swift` + `GameRulesTests.swift` |
+| 7d574fb | `feat(account): refresh account presentation and avatar palette` | U-05/U-06/R-01 implementation in `AccountView.swift` + `AccountTests.swift` |
+| this commit | `docs(plan): record UI refresh implementation, review, and verification` | Implementation + R-01 + verification record; plan stays Active pending blocked Xcode gates |
 
 # Blockers
 
-- Pre-implementation: provision one exact iPhone SE simulator + one exact
-  native-iPad device/orientation and record their `-showdestinations` lines in
-  U-06 evidence; without them the combined-case matrix cannot execute
-  (UI-RT-08/09). Owner: controller.
+- Pre-implementation simulator provisioning: CLEARED 2026-09-04 by controller.
+  Provisioned exact destinations (from `-showdestinations`):
+  - `iPhone SE (3rd generation) on iOS 26.5 with id=3B9C2E52-7815-4056-8966-BBA6532D23DA`
+  - `native iPad (A16) on iOS 26.5 with id=55637EFA-7E16-4A37-9D64-7B5DE9C8FD8C`
+  Recorded here before product implementation; U-06 evidence rows must carry
+  these device + OS values with orientation + content-size per row
+  (UI-RT-08/09).
 - External Apple-provider/device proof remains out of scope (per NOW.md).
 
 # Stop and ask (extends runbook; adjudicated additions marked *)
@@ -487,14 +528,29 @@ request for one stops the line for controller approval and High-tier proof.
 
 # Next action
 
-Controller provisions the exact SE + native-iPad simulators, records their
-`-showdestinations` lines, then dispatches U-01. No implementation begins while
-either simulator blocker remains.
+Implementation (U-01..U-06) and R-01 adjudication are complete; plan stays
+Active because the Xcode verification gap needs maintainer input (stop
+condition: unowned required verification gap). Maintainer follow-up in an
+unsandboxed shell, using the provisioned destination IDs recorded in Blockers:
+
+```bash
+git status --short
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-test test
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-debug clean build
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-release clean build
+```
+
+then the manual evidence matrix rows (light/dark, AX5, Increased Contrast,
+Bold Text, Reduce Motion on/off, VoiceOver transcripts ×4, grayscale,
+SE portrait AX5+Bold+Contrast combined, SE landscape, native-iPad
+orientation, landscape board legibility). Only when tests + both builds are
+green and the matrix is filled may the plan be set Historical with the
+closeout commit hash. Do not push.
 
 # Closeout checklist
 
-- [ ] All units accepted with file-scoped diffs inspected.
-- [ ] iOS tests (by name) + Debug/Release builds green; manual matrix rows filled.
-- [x] Review findings adjudicated (done: 21/21 across two reviews); accepted plan fixes re-inspected before the documentation checkpoint.
+- [x] All units accepted with file-scoped diffs inspected (U-01..U-06 + R-01 fixes).
+- [ ] iOS tests (by name) + Debug/Release builds green; manual matrix rows filled — BLOCKED in-session (sandbox); named maintainer follow-up in Next action.
+- [x] Review findings adjudicated (done: 24/24 across three reviews — 21 pre-implementation + R01-F1/F2/F3); accepted R-01 fixes re-inspected (targeted diff + parse + `git diff --check`).
 - [x] `TODO.md` active-plan link points here; backlog candidates untouched; no stale references.
-- [ ] Status set Historical with closeout commit hash in handoff; no push.
+- [ ] Status set Historical with closeout commit hash in handoff; no push — stays Active until the blocked gates above are green.
