@@ -468,6 +468,7 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
 | R02-F6 | Medium | Tracking | U-06 was marked complete while formal matrix remained unperformed | Status table vs verification/closeout | accepted/fixed | U-06 restored to In progress until the formal matrix is recorded | Active plan retained |
 | R03-F1 | High | VoiceOver reveal cadence | 350ms focus changes and fixed 1s delay interrupted speech | Fresh remediation review | accepted; plan corrected | DEC-UI-15 stable VoiceOver traversal replaces animated auto-focus | Three independent reviewers found code clean after correction |
 | R03-F2 | Low | Account error invariant | Repeated `errorMessage`/`errorEvent` pairings could drift; exact retry path lacked proof | Ponytail + final integration review | accepted/fixed | Central `presentError(_:)` plus repeated same-message profile-load test | Focused test and full suite green |
+| R03-F3 | Low | Avatar test isolation | Swift 6 warned that nonisolated XCTest methods accessed MainActor-isolated SwiftUI statics | Final clean build output | accepted/fixed | Annotated `PlayerAvatarPaletteTests` with `@MainActor`, matching existing test-file practice | Focused avatar tests + final full suite green without the warning |
 
 # Copy-change ledger (old → new; frozen rule/share/sync/privacy copy otherwise byte-for-byte)
 
@@ -513,7 +514,7 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
 | iOS tests (full suite, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-test test` | exit 0, TEST SUCCEEDED; 78 tests executed, 1 skipped (existing local-Supabase integration test, credentials not configured), 0 failures; xcresult `/tmp/GridRaceDerivedData-test/Logs/Test/Test-GridRace-2026.09.04_11-22-34--0400.xcresult` |
 | Debug build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-debug clean build` | exit 0, BUILD SUCCEEDED |
 | Release build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-release clean build` | exit 0, BUILD SUCCEEDED |
-| iOS tests (final post-b2ba2b6) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-ui-final-test test -quiet`; summary via `xcresulttool` | Passed: 79 tests, 1 existing local-Supabase credential-dependent skip, 0 failures; total 80; xcresult `/tmp/GridRaceDerivedData-ui-final-test/Logs/Test/Test-GridRace-2026.09.04_12-13-57--0400.xcresult` |
+| iOS tests (final post-a01ee0c) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-ui-final-test test -quiet`; summary via `xcresulttool` | Passed: 79 tests, 1 existing local-Supabase credential-dependent skip, 0 failures; total 80; avatar test isolation warning absent; xcresult `/tmp/GridRaceDerivedData-ui-final-test/Logs/Test/Test-GridRace-2026.09.04_12-24-35--0400.xcresult` |
 | Debug build (final post-b2ba2b6) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-ui-final-debug clean build -quiet` | exit 0, clean BUILD SUCCEEDED |
 | Release build (final post-b2ba2b6) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=55637EFA-7E16-4A37-9D64-7B5DE9C8FD8C' -derivedDataPath /tmp/GridRaceDerivedData-ui-final-release clean build -quiet` | exit 0, clean BUILD SUCCEEDED on native iPad simulator |
 | Manual evidence matrix (formal) | Device/Simulator visual + VoiceOver inspection per Next action | NOT PERFORMED as a formal matrix. Rows (VoiceOver transcripts for invalid, solve/fail, stable reveal, and Reduce Motion reveal; separate staged visual reveal; grayscale; confirmed Bold Text combined case; SE landscape/full scrolling/target audit; iPad landscape; account/stats/help/settings passes) remain genuinely unperformed; sole remaining blocker. Partial smoke below is not matrix evidence |
@@ -536,7 +537,9 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
 | b2ba2b6 | `fix(ui): close accessibility review gaps` | Muse xhigh remediation + independent re-review: all static code findings closed; observer-only AccountModel event covered by regression test |
 | 36a6816 | `feat(docs): add review context documentation` | Concurrently created/pushed generated `.codex/cache` files; non-product cache commit, corrected without rewriting history |
 | daa9042 | `chore(repo): untrack generated review cache` | Removed generated cache from tracking per review-context-loader policy; recoverable from 36a6816 |
-| this commit | `docs(plan): record UI remediation and re-review` | Plan reconciliation, final automated evidence, and DEC-UI-15; stays Active pending formal manual matrix |
+| 3bc167f | `docs(plan): record UI remediation and re-review` | Plan reconciliation, final automated evidence, and DEC-UI-15; stays Active pending formal manual matrix |
+| a01ee0c | `test(account): isolate avatar tests to main actor` | Removed Swift 6 actor-isolation warnings in avatar tests; focused and full suites green |
+| this commit | `docs(plan): record final warning cleanup` | Records warning-free final suite and commit; stays Active pending formal manual matrix |
 
 # Blockers
 
@@ -548,9 +551,10 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
   these device + OS values with orientation + content-size per row
   (UI-RT-08/09).
 - External Apple-provider/device proof remains out of scope (per NOW.md).
-- Post-b2ba2b6 Xcode verification: CLEARED. Final suite passed 79 tests with
+- Post-a01ee0c Xcode verification: CLEARED. Final suite passed 79 tests with
   one existing credential-dependent integration skip and zero failures; clean
-  Debug SE and Release native-iPad builds exited 0 (see Verification record).
+  Debug SE and Release native-iPad builds from the production-code checkpoint
+  exited 0 (see Verification record).
   Sole remaining blocker: the formal manual visual and VoiceOver matrix is
   genuinely unperformed (see Next action).
 - Post-293b897 partial simulator smoke: RECORDED, not a matrix pass (see
@@ -584,8 +588,8 @@ placement); 1 was newly discovered (#7 explicit percent-unit rendering); and
 
 # Next action
 
-Implementation and R-01/R-02/R-03 code adjudication are complete at
-`b2ba2b6`. Final verification is green: 79 tests passed, one existing
+Implementation and R-01/R-02/R-03 code adjudication are complete through
+`a01ee0c`. Final verification is green: 79 tests passed, one existing
 credential-dependent integration test skipped, zero failed; clean Debug SE
 and Release native-iPad builds succeeded. Plan stays Active because U-06's
 formal manual visual and VoiceOver matrix is still genuinely unperformed —
@@ -603,7 +607,7 @@ push.
 # Closeout checklist
 
 - [x] All implementation/remediation units accepted with file-scoped diffs inspected; U-06 remains open only for formal observation.
-- [x] Final iOS tests + Debug/Release builds green post-b2ba2b6 (79 passed, 1 skipped, 0 failures; both clean builds succeeded; see Verification record).
+- [x] Final iOS tests post-a01ee0c plus Debug/Release builds for the production-code checkpoint are green (79 passed, 1 skipped, 0 failures; both clean builds succeeded; see Verification record).
 - [ ] Formal manual visual and VoiceOver matrix rows filled — NOT PERFORMED (post-293b897 partial simulator smoke recorded as PARTIAL evidence only); sole remaining blocker and next action.
 - [x] All documented code-review findings adjudicated and closed across the plan red-team, R-01, and Muse remediation re-reviews; final tutorial/Daily/account/integration reviewers found no remaining static code defect.
 - [x] `TODO.md` active-plan link points here; backlog candidates untouched; no stale references.
