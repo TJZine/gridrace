@@ -483,7 +483,10 @@ request for one stops the line for controller approval and High-tier proof.
 | iOS tests (full suite, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-test test` | exit 0, TEST SUCCEEDED; 78 tests executed, 1 skipped (existing local-Supabase integration test, credentials not configured), 0 failures; xcresult `/tmp/GridRaceDerivedData-test/Logs/Test/Test-GridRace-2026.09.04_11-22-34--0400.xcresult` |
 | Debug build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-debug clean build` | exit 0, BUILD SUCCEEDED |
 | Release build (clean, post-c539dcb) | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Release -destination 'platform=iOS Simulator,id=3B9C2E52-7815-4056-8966-BBA6532D23DA' -derivedDataPath /tmp/GridRaceDerivedData-build-release clean build` | exit 0, BUILD SUCCEEDED |
-| Manual evidence matrix | Device/Simulator visual + VoiceOver inspection per Next action | NOT PERFORMED. Rows (light/dark, AX5, contrast, Bold, Reduce Motion on/off, transcripts, grayscale, SE portrait AX5+Bold+Contrast combined, SE landscape, native-iPad orientation, board legibility) remain genuinely unperformed; sole remaining blocker |
+| Manual evidence matrix (formal) | Device/Simulator visual + VoiceOver inspection per Next action | NOT PERFORMED as a formal matrix. Rows (VoiceOver transcripts ×4, solve/fail and reveal flows, grayscale, Reduce Motion on/off, confirmed Bold Text combined case, SE landscape and full scrolling/target audit, iPad landscape, account/stats/help/settings full passes) remain genuinely unperformed; sole remaining blocker. Partial smoke below is not matrix evidence |
+| Partial simulator smoke (post-293b897, SE portrait) | Provisioned iPhone SE (3rd generation), iOS 26.5, `id=3B9C2E52-7815-4056-8966-BBA6532D23DA`, portrait. Home rendered in standard light appearance. Then, with content_size `accessibility-extra-extra-extra-large`, increase_contrast enabled, and appearance dark (each confirmed via simctl), Home rendered with the header and Daily card visible | PARTIAL smoke only. Not a matrix pass: no scrolling/target audit, no landscape, no VoiceOver transcript, no solve/fail or reveal flow |
+| Partial simulator smoke (post-293b897, SE Bold Text caveat) | `BoldTextEnabled` simulator preference was written | NOT independently confirmed — the combined Bold Text case is NOT claimed as passed and remains in the open matrix |
+| Partial simulator smoke (post-293b897, native iPad portrait) | Native iPad (A16), iOS 26.5, `id=55637EFA-7E16-4A37-9D64-7B5DE9C8FD8C`, portrait, standard light. Home, tutorial intro, countdown, and active tutorial race visually inspected through the Simulator. Accessibility state exposed explicit Home routes, the countdown label, both opponents with only name/count/coarse state/connection, the board, guidance, and the keyboard. The active-race screenshot showed both opponents and the keyboard visibly pinned at the bottom | PARTIAL smoke only. Not a matrix pass: no iPad landscape, no solve/fail or reveal flow, no VoiceOver transcript, no account/stats/help/settings full pass |
 | Word pack gate | `python3 scripts/check_word_pack.py` — word surfaces untouched | NOT RUN with reason recorded (no word-pack/vector/source change) |
 
 # Commit record
@@ -495,7 +498,8 @@ request for one stops the line for controller approval and High-tier proof.
 | e38b235 | `feat(daily): refresh home, game, statistics, help, and settings` | U-03/U-06/R-01 implementation in `DailyViews.swift` + `GameRulesTests.swift` |
 | 7d574fb | `feat(account): refresh account presentation and avatar palette` | U-05/U-06/R-01 implementation in `AccountView.swift` + `AccountTests.swift` |
 | c539dcb | `docs(plan): record UI refresh implementation, review, and verification` | Implementation + R-01 + verification record; plan stayed Active pending Xcode gates |
-| this commit | `docs(plan): record successful iOS verification` | Post-c539dcb test + Debug/Release verification record; plan stays Active pending manual visual/VoiceOver matrix |
+| 293b897 | `docs(plan): record successful iOS verification` | Post-c539dcb test + Debug/Release verification record; plan stays Active pending manual visual/VoiceOver matrix |
+| this commit | `docs(plan): record partial simulator smoke evidence` | Post-293b897 PARTIAL simulator smoke only (SE portrait standard-light + AX-large/contrast/dark Home; unconfirmed Bold Text preference; iPad portrait Home/intro/countdown/active-race inspection); plan stays Active pending the formal matrix |
 
 # Blockers
 
@@ -510,8 +514,15 @@ request for one stops the line for controller approval and High-tier proof.
 - Post-c539dcb Xcode verification: CLEARED. Full test suite plus clean Debug and
   Release builds on the provisioned iPhone SE
   (`id=3B9C2E52-7815-4056-8966-BBA6532D23DA`) all exited 0 (see Verification
-  record). Sole remaining blocker: the manual visual and VoiceOver matrix is
-  genuinely unperformed (see Next action).
+  record). Sole remaining blocker: the formal manual visual and VoiceOver
+  matrix is genuinely unperformed (see Next action).
+- Post-293b897 partial simulator smoke: RECORDED, not a matrix pass (see
+  Verification record). SE portrait standard-light Home plus AX-large /
+  contrast / dark Home with header and Daily card visible; iPad portrait
+  Home, intro, countdown, and active tutorial race inspected with both
+  opponents and pinned keyboard visible. `BoldTextEnabled` was written but
+  not independently confirmed, so the combined Bold Text case is not
+  claimed. Does not clear the formal-matrix blocker.
 
 # Stop and ask (extends runbook; adjudicated additions marked *)
 
@@ -539,20 +550,22 @@ Implementation (U-01..U-06) and R-01 adjudication are complete, and the
 post-c539dcb iOS verification is green (full suite TEST SUCCEEDED plus clean
 Debug and Release BUILD SUCCEEDED on the provisioned iPhone SE
 `id=3B9C2E52-7815-4056-8966-BBA6532D23DA`; see Verification record). Plan stays
-Active because the manual visual and VoiceOver matrix is still genuinely
-unperformed — this is the sole remaining next action and blocker. Complete
-the manual evidence matrix rows (light/dark, AX5, Increased Contrast,
-Bold Text, Reduce Motion on/off, VoiceOver transcripts ×4, grayscale,
-SE portrait AX5+Bold+Contrast combined, SE landscape, native-iPad
-orientation, landscape board legibility), recording device + OS + orientation
-+ content-size per row. Only when the matrix is filled may the plan be set
-Historical with the closeout commit hash. Do not push.
+Active because the formal manual visual and VoiceOver matrix is still
+genuinely unperformed — this is the sole remaining next action and blocker.
+Post-293b897 partial simulator smoke is recorded above but counts as PARTIAL
+evidence only. Complete the remaining formal matrix observations (VoiceOver
+transcripts ×4, solve/fail and reveal flows, grayscale, Reduce Motion on/off,
+confirmed Bold Text combined case, SE landscape and full scrolling/target
+audit, iPad landscape, account/stats/help/settings full passes), recording
+device + OS + orientation + content-size per row. Only when the matrix is
+filled may the plan be set Historical with the closeout commit hash. Do not
+push.
 
 # Closeout checklist
 
 - [x] All units accepted with file-scoped diffs inspected (U-01..U-06 + R-01 fixes).
 - [x] iOS tests (by name) + Debug/Release builds green post-c539dcb (78 executed, 1 skipped, 0 failures; both clean builds BUILD SUCCEEDED; see Verification record).
-- [ ] Manual visual and VoiceOver matrix rows filled — NOT PERFORMED; sole remaining blocker and next action.
+- [ ] Formal manual visual and VoiceOver matrix rows filled — NOT PERFORMED (post-293b897 partial simulator smoke recorded as PARTIAL evidence only); sole remaining blocker and next action.
 - [x] Review findings adjudicated (done: 24/24 across three reviews — 21 pre-implementation + R01-F1/F2/F3); accepted R-01 fixes re-inspected (targeted diff + parse + `git diff --check`).
 - [x] `TODO.md` active-plan link points here; backlog candidates untouched; no stale references.
 - [ ] Status set Historical with closeout commit hash in handoff; no push — stays Active until the manual matrix above is filled.
