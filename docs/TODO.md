@@ -2,7 +2,7 @@
 
 > Non-authoritative backlog. These are candidates, not approved plans, current
 > status, or product contracts. Track current work only in the one active file under
-> [`docs/plans/`](plans/); today that is the [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md).
+> [`docs/plans/`](plans/); today that is the [Daily UI Mechanics and Design Refresh Plan](plans/2026-09-04-ui-refresh.md).
 > Before starting a candidate, use the planning depth required by the engineering
 > runbook. Promote it into a dated plan only when durable tracking is warranted; then
 > remove or revise the candidate here.
