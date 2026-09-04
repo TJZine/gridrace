@@ -40,11 +40,11 @@ Muse session for follow-up until its slice is accepted.
 
 | Unit | Findings | Boundary | Dependency | Status |
 | --- | --- | --- | --- | --- |
-| U-01 Sync convergence | GR-01, GR-02, GR-04 | `DailySync.swift`, `DailyAccountCoordinator.swift`, directly required account callback/store code, `DailySyncTests.swift`, `AccountTests.swift` | — | In progress |
+| U-01 Sync convergence | GR-01, GR-02, GR-04 | `DailySync.swift`, `DailyAccountCoordinator.swift`, directly required account callback/store code, `DailySyncTests.swift`, `AccountTests.swift` | — | Accepted |
 | U-02 Guest recovery | GR-03 | `DailyClassicModel.swift`, `GridRaceApp.swift`, `DailyClassicModelTests.swift` | — | Accepted |
 | U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Accepted |
-| U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Dispatched; paused |
-| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Dispatched; paused |
+| U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Accepted |
+| U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | In progress |
 | U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Ready |
 | U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Ready |
 | U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
@@ -110,11 +110,11 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 
 | Unit | Session | Worktree/branch | Commit | Status |
 | --- | --- | --- | --- | --- |
-| U-01 | `01a06dd2-71fe-7992-9759-caba8fee138f` | `.muse/worktrees/20260904-c922` | Pending | Follow-up simplification and tests running |
+| U-01 | `01a06dd2-71fe-7992-9759-caba8fee138f` | `.muse/worktrees/20260904-c922` | `f9b31d6` (integrated as `0d16f4b`) | Accepted after three follow-ups; session retained |
 | U-02 | `01a06dd2-71e6-7493-8611-32fb5e01de38` | `.muse/worktrees/20260904-8e26` | `5296fdb` (integrated as `85f1484`) | Accepted; session retained |
 | U-03 | `01a06dd2-71ef-7140-9c8c-9c2c4d30f70d` | `.muse/worktrees/20260904-113d` | `f54b589` (integrated as `2a49631`) | Accepted; session retained |
-| U-04 | `01a06dd2-7227-72e1-886c-a7828f012b2c` | `.muse/worktrees/20260904-972f` | Pending | Paused after provider retries; session retained |
-| U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | Pending | Paused after provider retries; session retained |
+| U-04 | `01a06dd2-7227-72e1-886c-a7828f012b2c` | `.muse/worktrees/20260904-972f` | `eddad03` (integrated as `f0b7b5f`) | Accepted after docs follow-up; session retained |
+| U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | Pending | Resumed; implementation running |
 | U-06 | Pending | Pending | Pending | Not dispatched |
 | U-07 | Pending | Pending | Pending | Not dispatched |
 | U-08 | Pending | Pending | Pending | Not dispatched |
@@ -125,8 +125,13 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   `DailyClassicModelTests`: 11 tests passed, including the new scoped-reset proof.
 - U-03: reviewed the two-file commit; `check_word_pack.py`, `check:seed`,
   `generate:seed`, and a clean `supabase/seed.sql` diff all passed.
+- U-01: primary review rejected the first commit for non-compiling async XCTest
+  autoclosures and a lifecycle check/write race. After same-session remediation and
+  a mode-conflict correction, canonical `DailySyncTests` and `AccountTests` pass.
+- U-04: clean Supabase reset passed; all four pgTAP files passed (190 assertions);
+  local public/private lint completed with only pre-existing historical warnings.
 
 # Next action
 
-Finish and review U-01, then resume U-04 and U-05 serially. Retain every session for
-follow-up until integrated verification accepts its slice.
+Finish and review U-05, then dispatch U-06 and U-07 from the integrated U-01/U-04
+state. Retain every session for follow-up until integrated verification accepts it.
