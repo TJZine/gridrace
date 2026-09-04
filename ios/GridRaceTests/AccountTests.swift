@@ -66,6 +66,7 @@ final class PlayerProfileTests: XCTestCase {
     }
 }
 
+@MainActor
 final class PlayerAvatarPaletteTests: XCTestCase {
     func testSeedToSymbolMappingIsStable() {
         // Snapshot of the frozen mapping: order and hash must not change,
