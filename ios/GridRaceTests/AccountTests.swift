@@ -419,3 +419,187 @@ private final class AccountServiceMock: AccountServicing {
 private enum TestError: Error {
     case failed
 }
+
+final class DailySyncLifecycleTests: XCTestCase {
+    func testFreshLifecyclePermitsPendingMarks() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let engine = DailySyncEngine(
+            userID: userID,
+            store: store,
+            remote: UnavailableDailyRemote(),
+            lifecycle: DailySyncLifecycle()
+        )
+        try store.save(DailyClassicProgress(
+            puzzleID: "daily-classic-2026-08-31",
+            puzzleNumber: 1,
+            puzzleDay: 20_696,
+            wordPackID: "test-v1",
+            scheduleVersion: 1,
+            hardModeEnabled: false,
+            acceptedGuesses: [],
+            draft: "",
+            completion: nil
+        ))
+
+        try await engine.markProgressPending()
+        try await engine.markResultPending("daily-classic-2026-08-31")
+
+        let metadata = try store.loadSyncMetadata()
+        XCTAssertTrue(metadata.pendingProgress)
+        XCTAssertEqual(metadata.pendingResultPuzzleIDs, ["daily-classic-2026-08-31"])
+    }
+
+    func testInvalidatedLifecycleBlocksMarksWithoutRecreatingCache() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let lifecycle = DailySyncLifecycle()
+        let engine = DailySyncEngine(
+            userID: userID,
+            store: store,
+            remote: UnavailableDailyRemote(),
+            lifecycle: lifecycle
+        )
+        lifecycle.invalidate()
+        XCTAssertTrue(lifecycle.isInvalidated)
+        lifecycle.invalidate()
+
+        await XCTAssertThrowsCancellation(try await engine.markProgressPending())
+        await XCTAssertThrowsCancellation(try await engine.markResultPending("puzzle"))
+        await XCTAssertThrowsCancellation(try await engine.markAllLocalDataPending())
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory.path))
+    }
+
+    func testPerformRunsWorkExactlyOnceWhileValid() throws {
+        let lifecycle = DailySyncLifecycle()
+        var runs = 0
+        try lifecycle.performThrowingIfValid { runs += 1 }
+        XCTAssertEqual(runs, 1)
+        XCTAssertFalse(lifecycle.isInvalidated)
+    }
+
+    func testPerformNeverRunsWorkAfterInvalidation() throws {
+        let lifecycle = DailySyncLifecycle()
+        lifecycle.invalidate()
+        var runs = 0
+        XCTAssertThrowsError(try lifecycle.performThrowingIfValid { runs += 1 }) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(runs, 0)
+    }
+
+    func testPerformPropagatesWorkErrorsAndReleasesTheLock() throws {
+        struct Boom: Error {}
+        let lifecycle = DailySyncLifecycle()
+        XCTAssertThrowsError(try lifecycle.performThrowingIfValid { throw Boom() }) { error in
+            XCTAssertTrue(error is Boom)
+        }
+        var runs = 0
+        try lifecycle.performThrowingIfValid { runs += 1 }
+        XCTAssertEqual(runs, 1)
+        XCTAssertFalse(lifecycle.isInvalidated)
+    }
+
+    func testConcurrentMutationsAndInvalidationLoseNothing() async {
+        let lifecycle = DailySyncLifecycle()
+        let completed = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for _ in 0..<64 {
+                group.addTask {
+                    do {
+                        try lifecycle.performThrowingIfValid {}
+                        return true
+                    } catch is CancellationError {
+                        return false
+                    } catch {
+                        XCTFail("Unexpected error \(error)")
+                        return false
+                    }
+                }
+            }
+            lifecycle.invalidate()
+            var count = 0
+            for await ran in group {
+                if ran { count += 1 }
+            }
+            return count
+        }
+        XCTAssertGreaterThanOrEqual(completed, 0)
+        XCTAssertLessThanOrEqual(completed, 64)
+        var lateRuns = 0
+        do {
+            try lifecycle.performThrowingIfValid { lateRuns += 1 }
+            XCTFail("Expected CancellationError")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        XCTAssertEqual(lateRuns, 0)
+    }
+
+    func testDeletedCacheReadsAsEmptyWithoutRecreation() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        var history = DailyClassicHistory()
+        XCTAssertTrue(history.record(DailyCompletedResult(
+            puzzleID: "daily-classic-2026-08-31",
+            puzzleNumber: 1,
+            puzzleDay: 20_696,
+            wordPackID: "test-v1",
+            scheduleVersion: 1,
+            guesses: [DailyGuess(
+                word: "stone",
+                feedback: Array(repeating: .correct, count: 5),
+                acceptedAt: Date(timeIntervalSince1970: 1_788_134_401)
+            )],
+            outcome: .solved,
+            guessCount: 1,
+            completedAt: Date(timeIntervalSince1970: 1_788_134_500)
+        )))
+        try store.save(history)
+
+        try store.deleteAccountCache()
+
+        XCTAssertTrue(try store.loadHistory().completedResults.isEmpty)
+        XCTAssertNil(try store.loadProgress())
+        XCTAssertEqual(try store.loadSyncMetadata(), DailySyncMetadata())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory.path))
+    }
+
+    private func XCTAssertThrowsCancellation(
+        _ expression: @autoclosure () async throws -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            try await expression()
+            XCTFail("Expected CancellationError", file: file, line: line)
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error \(error)", file: file, line: line)
+        }
+    }
+}
+
+private actor UnavailableDailyRemote: DailySyncRemote {
+    func pull() async throws -> DailyCloudSnapshot {
+        throw DailySyncRemoteError.unavailable
+    }
+
+    func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {
+        throw DailySyncRemoteError.unavailable
+    }
+
+    func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {
+        throw DailySyncRemoteError.unavailable
+    }
+}

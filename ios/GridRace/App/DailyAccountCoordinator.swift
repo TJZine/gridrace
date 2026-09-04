@@ -11,6 +11,7 @@ final class DailyAccountCoordinator {
     private let accountStoreFactory: (UUID) throws -> AccountDailyClassicStore
     private var accountStore: AccountDailyClassicStore?
     private var syncEngine: DailySyncEngine?
+    private var syncLifecycle: DailySyncLifecycle?
     private var currentUserID: UUID?
     private var activationUserID: UUID?
     private var syncTask: Task<Void, Never>?
@@ -51,6 +52,7 @@ final class DailyAccountCoordinator {
     }
 
     isolated deinit {
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
     }
 
@@ -60,6 +62,7 @@ final class DailyAccountCoordinator {
 
     func sessionChanged(to userID: UUID?) {
         guard userID != currentUserID else { return }
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
         guard let userID else {
             activateGuest()
@@ -70,6 +73,7 @@ final class DailyAccountCoordinator {
 
     private func activateAccount(_ userID: UUID) {
         guard let accountService else { return }
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
 
         if activationUserID != userID {
@@ -90,21 +94,25 @@ final class DailyAccountCoordinator {
         activationUserID = userID
         currentUserID = nil
         syncEngine = nil
+        syncLifecycle = nil
         accountStore = nil
         conflicts = []
         canImportGuestHistory = false
 
         do {
             let store = try accountStoreFactory(userID)
+            let lifecycle = DailySyncLifecycle()
             let engine = DailySyncEngine(
                 userID: userID,
                 store: store,
-                remote: accountService.makeDailySyncRemote()
+                remote: accountService.makeDailySyncRemote(),
+                lifecycle: lifecycle
             )
             let accountDaily = try DailyClassicModel(pack: dailyPack, store: store)
             let metadata = try store.loadSyncMetadata()
             accountStore = store
             syncEngine = engine
+            syncLifecycle = lifecycle
             currentUserID = userID
             activationUserID = nil
             daily = accountDaily
@@ -251,10 +259,12 @@ final class DailyAccountCoordinator {
     }
 
     private func activateGuest() {
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
         currentUserID = nil
         activationUserID = nil
         syncEngine = nil
+        syncLifecycle = nil
         accountStore = nil
         conflicts = []
         syncStatus = .idle
@@ -265,6 +275,9 @@ final class DailyAccountCoordinator {
     }
 
     private func deleteLocalAccount(_ userID: UUID) throws {
+        if currentUserID == userID || activationUserID == userID {
+            syncLifecycle?.invalidate()
+        }
         syncTask?.cancel()
         let store = try accountStoreFactory(userID)
         try store.deleteAccountCache()

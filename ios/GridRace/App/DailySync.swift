@@ -291,10 +291,9 @@ enum DailySyncReconciler {
         for incomingResult in incomingResults.sorted(by: resultOrder) {
             guard isValid(incomingResult) else { throw DailySyncError.invalidCloudData }
             if let localProgress,
-               localProgress.puzzleID == incomingResult.puzzleID,
+               sameIdentity(localProgress, incomingResult),
                history.result(for: incomingResult.puzzleID) == nil,
-               !(samePuzzle(localProgress, incomingResult)
-                    && isPrefix(localProgress.acceptedGuesses, of: incomingResult.guesses)) {
+               !isCompatibleProgress(localProgress, with: incomingResult) {
                 conflicts.append(.progress(
                     puzzleID: localProgress.puzzleID,
                     local: localProgress,
@@ -330,7 +329,18 @@ enum DailySyncReconciler {
 
         if let active = progress,
            let completed = history.result(for: active.puzzleID) {
-            if samePuzzle(active, completed)
+            if sameIdentity(active, completed),
+               active.hardModeEnabled != completed.hardModeEnabled {
+                if active.acceptedGuesses.isEmpty {
+                    progress = DailyClassicProgress(result: completed)
+                } else if !activeRepresents(active, result: completed) {
+                    conflicts.append(.progress(
+                        puzzleID: active.puzzleID,
+                        local: active,
+                        cloud: DailyClassicProgress(result: completed)
+                    ))
+                }
+            } else if samePuzzle(active, completed)
                 && isPrefix(active.acceptedGuesses, of: completed.guesses) {
                 progress = DailyClassicProgress(result: completed)
             } else if !activeRepresents(active, result: completed) {
@@ -352,9 +362,20 @@ enum DailySyncReconciler {
     ) -> DailyClassicProgress? {
         guard let local else { return cloud }
         guard let cloud else { return local }
-        guard samePuzzle(local, cloud) else {
+        guard sameIdentity(local, cloud) else {
             // There is one active-progress slot. UTC puzzle day deterministically wins.
             return local.puzzleDay >= cloud.puzzleDay ? local : cloud
+        }
+        if local.hardModeEnabled != cloud.hardModeEnabled {
+            if local.acceptedGuesses.isEmpty != cloud.acceptedGuesses.isEmpty {
+                var selected = local.acceptedGuesses.isEmpty ? cloud : local
+                selected.draft = local.draft
+                return selected
+            }
+            if !local.acceptedGuesses.isEmpty {
+                conflicts.append(.progress(puzzleID: local.puzzleID, local: local, cloud: cloud))
+            }
+            return local
         }
 
         if isPrefix(local.acceptedGuesses, of: cloud.acceptedGuesses) {
@@ -370,27 +391,54 @@ enum DailySyncReconciler {
         return local
     }
 
+    /// Compatibility of active progress with an incoming completed result for the
+    /// same immutable puzzle identity. A non-empty result dominates empty progress
+    /// even when Hard Mode differs; divergent non-empty mismatched-mode attempts
+    /// are never silently combined.
+    private static func isCompatibleProgress(
+        _ progress: DailyClassicProgress,
+        with result: DailyCompletedResult
+    ) -> Bool {
+        guard sameIdentity(progress, result) else { return true }
+        if progress.hardModeEnabled != result.hardModeEnabled {
+            return progress.acceptedGuesses.isEmpty
+        }
+        return samePuzzle(progress, result)
+            && isPrefix(progress.acceptedGuesses, of: result.guesses)
+    }
+
     private static func resultOrder(_ lhs: DailyCompletedResult, _ rhs: DailyCompletedResult) -> Bool {
         if lhs.puzzleDay != rhs.puzzleDay { return lhs.puzzleDay < rhs.puzzleDay }
         return lhs.puzzleID < rhs.puzzleID
     }
 
-    static func samePuzzle(_ lhs: DailyClassicProgress, _ rhs: DailyClassicProgress) -> Bool {
+    /// Immutable puzzle identity. Hard Mode is attempt configuration and is excluded.
+    static func sameIdentity(_ lhs: DailyClassicProgress, _ rhs: DailyClassicProgress) -> Bool {
         lhs.puzzleID == rhs.puzzleID
             && lhs.puzzleNumber == rhs.puzzleNumber
             && lhs.puzzleDay == rhs.puzzleDay
             && lhs.wordPackID == rhs.wordPackID
             && lhs.scheduleVersion == rhs.scheduleVersion
-            && lhs.hardModeEnabled == rhs.hardModeEnabled
     }
 
-    static func samePuzzle(_ progress: DailyClassicProgress, _ result: DailyCompletedResult) -> Bool {
+    /// Immutable puzzle identity. Hard Mode is attempt configuration and is excluded.
+    static func sameIdentity(
+        _ progress: DailyClassicProgress,
+        _ result: DailyCompletedResult
+    ) -> Bool {
         progress.puzzleID == result.puzzleID
             && progress.puzzleNumber == result.puzzleNumber
             && progress.puzzleDay == result.puzzleDay
             && progress.wordPackID == result.wordPackID
             && progress.scheduleVersion == result.scheduleVersion
-            && progress.hardModeEnabled == result.hardModeEnabled
+    }
+
+    static func samePuzzle(_ lhs: DailyClassicProgress, _ rhs: DailyClassicProgress) -> Bool {
+        sameIdentity(lhs, rhs) && lhs.hardModeEnabled == rhs.hardModeEnabled
+    }
+
+    static func samePuzzle(_ progress: DailyClassicProgress, _ result: DailyCompletedResult) -> Bool {
+        sameIdentity(progress, result) && progress.hardModeEnabled == result.hardModeEnabled
     }
 
     static func isPrefix(_ shorter: [DailyGuess], of longer: [DailyGuess]) -> Bool {
@@ -477,41 +525,79 @@ protocol DailySyncRemote: Sendable {
     func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome
 }
 
+/// Synchronous invalidation token for an account sync lifecycle. The coordinator
+/// invalidates the token before deleting the UUID-scoped cache so late
+/// engine writes suspended in transport observe invalidity without any hang.
+final class DailySyncLifecycle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var invalidatedFlag = false
+
+    func invalidate() {
+        lock.lock()
+        defer { lock.unlock() }
+        invalidatedFlag = true
+    }
+
+    var isInvalidated: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return invalidatedFlag
+    }
+
+    /// Runs a synchronous filesystem mutation while holding the lifecycle
+    /// lock, making the validity check atomic with the write: `invalidate()`
+    /// either completes fully before the mutation runs or the mutation throws
+    /// `CancellationError` instead of running. The lock is never held across
+    /// an await; callers check `Task` cancellation separately.
+    func performThrowingIfValid(_ work: () throws -> Void) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !invalidatedFlag else { throw CancellationError() }
+        try work()
+    }
+}
+
 actor DailySyncEngine {
     private let userID: UUID
     private let store: AccountDailyClassicStore
     private let remote: any DailySyncRemote
     private let now: @Sendable () -> Date
+    private let lifecycle: DailySyncLifecycle
 
     init(
         userID: UUID,
         store: AccountDailyClassicStore,
         remote: any DailySyncRemote,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        lifecycle: DailySyncLifecycle = DailySyncLifecycle()
     ) {
         precondition(store.userID == userID)
         self.userID = userID
         self.store = store
         self.remote = remote
         self.now = now
+        self.lifecycle = lifecycle
     }
 
     func markProgressPending() throws {
+        try Task.checkCancellation()
         var metadata = try store.loadSyncMetadata()
         metadata.pendingProgress = true
         if let puzzleID = try store.loadProgress()?.puzzleID {
             metadata.ignoredProgress.remove(puzzleID)
         }
-        try store.save(metadata)
+        try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
     func markResultPending(_ puzzleID: String) throws {
+        try Task.checkCancellation()
         var metadata = try store.loadSyncMetadata()
         metadata.pendingResultPuzzleIDs.insert(puzzleID)
-        try store.save(metadata)
+        try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
     func markAllLocalDataPending() throws {
+        try Task.checkCancellation()
         var metadata = try store.loadSyncMetadata()
         if let progress = try store.loadProgress() {
             metadata.pendingProgress = progress.completion == nil
@@ -523,12 +609,13 @@ actor DailySyncEngine {
         )
         metadata.ignoredProgress = []
         metadata.ignoredResults = []
-        try store.save(metadata)
+        try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
     /// Copies guest data into the account cache without modifying the guest store.
     /// Call `synchronize()` after the player confirms the import.
     func stageGuestImport(from guestStore: any DailyClassicStoring) throws -> DailySyncStatus {
+        try Task.checkCancellation()
         let reconciliation = try DailySyncReconciler.reconcile(
             localProgress: store.loadProgress(),
             localHistory: store.loadHistory(),
@@ -547,7 +634,7 @@ actor DailySyncEngine {
         metadata.pendingResultPuzzleIDs.formUnion(
             reconciliation.history.completedResults.map(\.puzzleID)
         )
-        try store.save(metadata)
+        try lifecycle.performThrowingIfValid { try store.save(metadata) }
 
         let importConflicts: [DailySyncConflict] = reconciliation.conflicts.map { conflict in
             switch conflict {
@@ -566,17 +653,18 @@ actor DailySyncEngine {
         _ conflict: DailySyncConflict,
         with resolution: DailyProgressConflictResolution
     ) throws {
+        try Task.checkCancellation()
         var metadata = try store.loadSyncMetadata()
         switch conflict {
         case .progress(let puzzleID, let local, let cloud):
             switch resolution {
             case .useCloud:
-                try store.save(cloud)
+                try lifecycle.performThrowingIfValid { try store.save(cloud) }
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.remove(puzzleID)
                 metadata.ignoredResults.remove(puzzleID)
             case .keepDevice:
-                try store.save(local)
+                try lifecycle.performThrowingIfValid { try store.save(local) }
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.insert(puzzleID)
                 if cloud.completion != nil { metadata.ignoredResults.insert(puzzleID) }
@@ -587,22 +675,22 @@ actor DailySyncEngine {
             case .useCloud:
                 var history = try store.loadHistory()
                 guard history.replace(cloud) else { throw DailySyncError.invalidLocalData }
-                try store.save(history)
+                try lifecycle.performThrowingIfValid { try store.save(history) }
                 metadata.ignoredResults.remove(puzzleID)
                 selected = cloud
             case .keepDevice:
                 var history = try store.loadHistory()
                 guard history.replace(local) else { throw DailySyncError.invalidLocalData }
-                try store.save(history)
+                try lifecycle.performThrowingIfValid { try store.save(history) }
                 metadata.ignoredResults.insert(puzzleID)
                 selected = local
             }
             if try store.loadProgress()?.puzzleID == puzzleID {
-                try store.save(DailyClassicProgress(result: selected))
+                try lifecycle.performThrowingIfValid { try store.save(DailyClassicProgress(result: selected)) }
             }
             metadata.pendingResultPuzzleIDs.remove(puzzleID)
         }
-        try store.save(metadata)
+        try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
     func status() throws -> DailySyncStatus {
@@ -628,61 +716,130 @@ actor DailySyncEngine {
             )
             guard owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
 
+            let localProgressBefore = try store.loadProgress()
+            let localHistoryBefore = try store.loadHistory()
             let reconciliation = try DailySyncReconciler.reconcile(
-                localProgress: store.loadProgress(),
-                localHistory: store.loadHistory(),
+                localProgress: localProgressBefore,
+                localHistory: localHistoryBefore,
                 cloud: cloud
             )
-            try save(reconciliation)
+            try Task.checkCancellation()
+            try saveIfChanged(
+                reconciliation,
+                oldProgress: localProgressBefore,
+                oldHistory: localHistoryBefore
+            )
             guard reconciliation.conflicts.isEmpty else {
                 return .conflict(reconciliation.conflicts)
             }
 
-            var metadata = try store.loadSyncMetadata()
-            var conflicts: [DailySyncConflict] = []
-            for puzzleID in metadata.pendingResultPuzzleIDs.sorted() {
-                try Task.checkCancellation()
-                guard let result = reconciliation.history.result(for: puzzleID) else {
-                    throw DailySyncError.invalidLocalData
+            // Derive upload work from durable reconciled state so valid local
+            // progress/results converge even when pending metadata was never written.
+            // Explicitly ignored puzzle IDs are never reuploaded. Exact cloud matches
+            // skip uploads and local writes unless an explicit pending marker requires
+            // an idempotent confirmation write.
+            let cloudResultsByID = Dictionary(
+                uniqueKeysWithValues: cloud.importedResults.map { ($0.puzzleID, $0) }
+            )
+            let localResultsByID = Dictionary(
+                uniqueKeysWithValues: reconciliation.history.completedResults.map {
+                    ($0.puzzleID, $0)
                 }
-                let outcome = try await remote.importResult(DailyImportedResultUploadDTO(result))
-                try handle(
-                    outcome,
-                    local: result,
-                    metadata: &metadata,
-                    conflicts: &conflicts
-                )
-                try store.save(metadata)
+            )
+            var resultsToUpload: [DailyCompletedResult] = []
+            for puzzleID in Set(localResultsByID.keys)
+                .union(existingMetadata.pendingResultPuzzleIDs).sorted() {
+                if existingMetadata.ignoredResults.contains(puzzleID) { continue }
+                guard let localResult = localResultsByID[puzzleID] else { continue }
+                if let cloudResult = cloudResultsByID[puzzleID],
+                   DailySyncReconciler.sameImportedPayload(cloudResult.domain, localResult),
+                   !existingMetadata.pendingResultPuzzleIDs.contains(puzzleID) {
+                    continue
+                }
+                resultsToUpload.append(localResult)
+            }
+            resultsToUpload.sort {
+                if $0.puzzleDay != $1.puzzleDay { return $0.puzzleDay < $1.puzzleDay }
+                return $0.puzzleID < $1.puzzleID
             }
 
-            if metadata.pendingProgress {
-                try Task.checkCancellation()
-                if let progress = try store.loadProgress(), progress.completion == nil {
-                    let revision = cloud.progress?.puzzleID == progress.puzzleID
-                        ? cloud.progress?.revision
-                        : nil
-                    let outcome = try await remote.pushProgress(
-                        DailyProgressUploadDTO(progress: progress, expectedRevision: revision)
-                    )
-                    try handle(
-                        outcome,
-                        local: progress,
-                        metadata: &metadata,
-                        conflicts: &conflicts
-                    )
+            var needsProgressPass = false
+            if let active = reconciliation.progress, active.completion == nil,
+               !existingMetadata.ignoredProgress.contains(active.puzzleID) {
+                if let cloudProgress = cloud.progress,
+                   cloudProgress.puzzleID == active.puzzleID {
+                    let exact = isExactProgressMatch(local: active, cloud: cloudProgress)
+                    needsProgressPass = !exact || existingMetadata.pendingProgress
                 } else {
-                    metadata.pendingProgress = false
+                    needsProgressPass = true
                 }
+            }
+
+            var conflicts: [DailySyncConflict] = []
+            for uploaded in resultsToUpload {
+                try Task.checkCancellation()
+                let outcome = try await remote.importResult(DailyImportedResultUploadDTO(uploaded))
+                try Task.checkCancellation()
+                try handleResultOutcomeFresh(outcome, uploaded: uploaded, conflicts: &conflicts)
+            }
+
+            // The derivation snapshot is uploaded; the handler re-reads current
+            // state and drops the response when newer local work arrived first.
+            if needsProgressPass,
+               let upload = reconciliation.progress,
+               upload.completion == nil {
+                try Task.checkCancellation()
+                let revision = cloud.progress?.puzzleID == upload.puzzleID
+                    ? cloud.progress?.revision : nil
+                let outcome = try await remote.pushProgress(
+                    DailyProgressUploadDTO(progress: upload, expectedRevision: revision)
+                )
+                try Task.checkCancellation()
+                try handleProgressOutcomeFresh(
+                    outcome,
+                    uploaded: upload,
+                    conflicts: &conflicts
+                )
             }
 
             guard conflicts.isEmpty else {
-                try store.save(metadata)
                 return .conflict(conflicts)
             }
 
+            // Converge metadata in one fresh write: drop stale markers, clear
+            // exact matches, stamp success. The snapshot is re-read here with
+            // no await before the save, so newer pending work cannot be clobbered.
+            // The save itself runs inside the lifecycle lock (see
+            // performThrowingIfValid), so invalidation cannot land mid-write.
+            try Task.checkCancellation()
+            var finalMetadata = try store.loadSyncMetadata()
+            let currentHistory = try store.loadHistory()
+            for pendingID in finalMetadata.pendingResultPuzzleIDs.sorted() {
+                if finalMetadata.ignoredResults.contains(pendingID) { continue }
+                guard let local = currentHistory.result(for: pendingID) else {
+                    finalMetadata.pendingResultPuzzleIDs.remove(pendingID)
+                    continue
+                }
+                if let cloudResult = cloudResultsByID[pendingID],
+                   DailySyncReconciler.sameImportedPayload(cloudResult.domain, local) {
+                    finalMetadata.pendingResultPuzzleIDs.remove(pendingID)
+                }
+            }
+            if finalMetadata.pendingProgress {
+                let current = try store.loadProgress()
+                if current == nil || current?.completion != nil {
+                    finalMetadata.pendingProgress = false
+                } else if let current,
+                          !finalMetadata.ignoredProgress.contains(current.puzzleID),
+                          let cloudProgress = cloud.progress,
+                          cloudProgress.puzzleID == current.puzzleID,
+                          isExactProgressMatch(local: current, cloud: cloudProgress) {
+                    finalMetadata.pendingProgress = false
+                }
+            }
             let date = now()
-            metadata.lastSuccessfulSyncAt = date
-            try store.save(metadata)
+            finalMetadata.lastSuccessfulSyncAt = date
+            try lifecycle.performThrowingIfValid { try store.save(finalMetadata) }
             return .synced(date)
         } catch is CancellationError {
             throw CancellationError()
@@ -697,10 +854,9 @@ actor DailySyncEngine {
         }
     }
 
-    private func handle(
+    private func handleResultOutcomeFresh(
         _ outcome: DailyResultImportOutcome,
-        local: DailyCompletedResult,
-        metadata: inout DailySyncMetadata,
+        uploaded: DailyCompletedResult,
         conflicts: inout [DailySyncConflict]
     ) throws {
         switch outcome {
@@ -709,67 +865,112 @@ actor DailySyncEngine {
                   DailySyncReconciler.isValid(remoteResult.domain) else {
                 throw DailySyncError.invalidCloudData
             }
-            if DailySyncReconciler.sameImportedPayload(remoteResult.domain, local) {
-                metadata.pendingResultPuzzleIDs.remove(local.puzzleID)
+            let current = try store.loadHistory().result(for: uploaded.puzzleID)
+            guard let current else {
+                try removeResultPendingFresh(uploaded.puzzleID)
+                return
+            }
+            guard DailySyncReconciler.sameImportedPayload(current, uploaded) else { return }
+            if DailySyncReconciler.sameImportedPayload(remoteResult.domain, uploaded) {
+                try removeResultPendingFresh(uploaded.puzzleID)
             } else {
                 conflicts.append(.completedResult(
-                    puzzleID: local.puzzleID,
-                    local: local,
+                    puzzleID: uploaded.puzzleID,
+                    local: current,
                     cloud: remoteResult.domain
                 ))
             }
-
         case .conflict(.progress(let remoteProgress)):
             guard valid(remoteProgress) else { throw DailySyncError.invalidCloudData }
+            let current = try store.loadHistory().result(for: uploaded.puzzleID)
+            guard let current,
+                  DailySyncReconciler.sameImportedPayload(current, uploaded) else { return }
             conflicts.append(.progress(
-                puzzleID: local.puzzleID,
-                local: DailyClassicProgress(result: local),
+                puzzleID: uploaded.puzzleID,
+                local: DailyClassicProgress(result: current),
                 cloud: remoteProgress.domain
             ))
         }
     }
 
-    private func handle(
+    private func handleProgressOutcomeFresh(
         _ outcome: DailyProgressPushOutcome,
-        local: DailyClassicProgress,
-        metadata: inout DailySyncMetadata,
+        uploaded: DailyClassicProgress,
         conflicts: inout [DailySyncConflict]
     ) throws {
         switch outcome {
         case .stored(let saved):
-            guard valid(saved), sameCloudProgress(saved.domain, local) else {
+            guard valid(saved), sameCloudProgress(saved.domain, uploaded) else {
                 throw DailySyncError.invalidCloudData
             }
-            metadata.pendingProgress = false
-
+            guard let current = try store.loadProgress(),
+                  progressPayloadMatches(current, uploaded) else { return }
+            try clearProgressPendingFresh()
         case .serverAhead(let saved):
             guard valid(saved) else { throw DailySyncError.invalidCloudData }
-            let cloud = saved.domain
-            if DailySyncReconciler.samePuzzle(local, cloud),
-               DailySyncReconciler.isPrefix(local.acceptedGuesses, of: cloud.acceptedGuesses) {
-                var restored = cloud
-                restored.draft = local.draft
-                try store.save(restored)
-                metadata.pendingProgress = false
-            } else {
-                conflicts.append(.progress(puzzleID: local.puzzleID, local: local, cloud: cloud))
+            let cloudProgress = saved.domain
+            if uploaded.hardModeEnabled != cloudProgress.hardModeEnabled {
+                guard uploaded.acceptedGuesses.isEmpty,
+                      !cloudProgress.acceptedGuesses.isEmpty else {
+                    conflicts.append(.progress(
+                        puzzleID: uploaded.puzzleID,
+                        local: uploaded,
+                        cloud: cloudProgress
+                    ))
+                    return
+                }
+                guard let current = try store.loadProgress(),
+                      progressPayloadMatches(current, uploaded) else { return }
+                var restored = cloudProgress
+                restored.draft = current.draft
+                try Task.checkCancellation()
+                try lifecycle.performThrowingIfValid { try store.save(restored) }
+                try clearProgressPendingFresh()
+                return
             }
-
+            guard DailySyncReconciler.sameIdentity(uploaded, cloudProgress),
+                  DailySyncReconciler.isPrefix(
+                    uploaded.acceptedGuesses,
+                    of: cloudProgress.acceptedGuesses
+                  ) else {
+                conflicts.append(.progress(
+                    puzzleID: uploaded.puzzleID,
+                    local: uploaded,
+                    cloud: cloudProgress
+                ))
+                return
+            }
+            guard let current = try store.loadProgress(),
+                  progressPayloadMatches(current, uploaded) else { return }
+            var restored = cloudProgress
+            restored.draft = current.draft
+            try Task.checkCancellation()
+            try lifecycle.performThrowingIfValid { try store.save(restored) }
+            try clearProgressPendingFresh()
         case .completed(let saved):
             guard saved.userID == userID,
                   DailySyncReconciler.isValid(saved.domain) else {
                 throw DailySyncError.invalidCloudData
             }
             let result = saved.domain
-            guard DailySyncReconciler.samePuzzle(local, result),
-                  DailySyncReconciler.isPrefix(local.acceptedGuesses, of: result.guesses) else {
+            let compatible: Bool
+            if uploaded.hardModeEnabled != result.hardModeEnabled {
+                compatible = uploaded.acceptedGuesses.isEmpty
+                    && DailySyncReconciler.sameIdentity(uploaded, result)
+            } else {
+                compatible = DailySyncReconciler.samePuzzle(uploaded, result)
+                    && DailySyncReconciler.isPrefix(uploaded.acceptedGuesses, of: result.guesses)
+            }
+            guard compatible else {
                 conflicts.append(.progress(
-                    puzzleID: local.puzzleID,
-                    local: local,
+                    puzzleID: uploaded.puzzleID,
+                    local: uploaded,
                     cloud: DailyClassicProgress(result: result)
                 ))
                 return
             }
+            guard let current = try store.loadProgress(),
+                  progressPayloadMatches(current, uploaded) else { return }
             var history = try store.loadHistory()
             if let existing = history.result(for: result.puzzleID),
                !DailySyncReconciler.sameImportedPayload(existing, result) {
@@ -783,38 +984,101 @@ actor DailySyncEngine {
             if history.result(for: result.puzzleID) == nil, !history.record(result) {
                 throw DailySyncError.invalidCloudData
             }
-            try store.save(history)
-            try store.save(DailyClassicProgress(result: result))
-            metadata.pendingProgress = false
-
+            try Task.checkCancellation()
+            try lifecycle.performThrowingIfValid { try store.save(history) }
+            try Task.checkCancellation()
+            try lifecycle.performThrowingIfValid { try store.save(DailyClassicProgress(result: result)) }
+            try clearProgressPendingFresh()
         case .conflict(.progress(let saved)):
             guard valid(saved) else { throw DailySyncError.invalidCloudData }
+            guard let current = try store.loadProgress(),
+                  progressPayloadMatches(current, uploaded) else { return }
             conflicts.append(.progress(
-                puzzleID: local.puzzleID,
-                local: local,
+                puzzleID: uploaded.puzzleID,
+                local: uploaded,
                 cloud: saved.domain
             ))
-
         case .conflict(.completed(let saved)):
             guard saved.userID == userID,
                   DailySyncReconciler.isValid(saved.domain) else {
                 throw DailySyncError.invalidCloudData
             }
+            guard let current = try store.loadProgress(),
+                  progressPayloadMatches(current, uploaded) else { return }
             conflicts.append(.progress(
-                puzzleID: local.puzzleID,
-                local: local,
+                puzzleID: uploaded.puzzleID,
+                local: uploaded,
                 cloud: DailyClassicProgress(result: saved.domain)
             ))
         }
     }
 
     private func save(_ reconciliation: DailyReconciliation) throws {
-        try store.save(reconciliation.history)
+        try lifecycle.performThrowingIfValid { try store.save(reconciliation.history) }
         if let progress = reconciliation.progress {
-            try store.save(progress)
+            try lifecycle.performThrowingIfValid { try store.save(progress) }
         } else {
-            try store.discardProgress()
+            try lifecycle.performThrowingIfValid { try store.discardProgress() }
         }
+    }
+
+    private func saveIfChanged(
+        _ reconciliation: DailyReconciliation,
+        oldProgress: DailyClassicProgress?,
+        oldHistory: DailyClassicHistory
+    ) throws {
+        if reconciliation.history != oldHistory {
+            try Task.checkCancellation()
+            try lifecycle.performThrowingIfValid { try store.save(reconciliation.history) }
+        }
+        if reconciliation.progress != oldProgress {
+            try Task.checkCancellation()
+            if let progress = reconciliation.progress {
+                try lifecycle.performThrowingIfValid { try store.save(progress) }
+            } else if oldProgress != nil {
+                try lifecycle.performThrowingIfValid { try store.discardProgress() }
+            }
+        }
+    }
+
+    private func isExactProgressMatch(
+        local: DailyClassicProgress,
+        cloud: DailyProgressDTO
+    ) -> Bool {
+        local.puzzleID == cloud.puzzleID
+            && local.puzzleNumber == cloud.puzzleNumber
+            && local.puzzleDay == cloud.puzzleDay
+            && local.wordPackID == cloud.wordPackID
+            && local.scheduleVersion == cloud.scheduleVersion
+            && local.hardModeEnabled == cloud.hardModeEnabled
+            && local.acceptedGuesses.map(DailyGuessDTO.init) == cloud.guesses
+    }
+
+    private func progressPayloadMatches(
+        _ current: DailyClassicProgress,
+        _ uploaded: DailyClassicProgress
+    ) -> Bool {
+        DailySyncReconciler.sameIdentity(current, uploaded)
+            && current.hardModeEnabled == uploaded.hardModeEnabled
+            && current.completion == nil
+            && uploaded.completion == nil
+            && current.acceptedGuesses.map(DailyGuessDTO.init)
+                == uploaded.acceptedGuesses.map(DailyGuessDTO.init)
+    }
+
+    private func removeResultPendingFresh(_ puzzleID: String) throws {
+        var fresh = try store.loadSyncMetadata()
+        guard fresh.pendingResultPuzzleIDs.remove(puzzleID) != nil else { return }
+        try Task.checkCancellation()
+        try lifecycle.performThrowingIfValid { try store.save(fresh) }
+    }
+
+    private func clearProgressPendingFresh() throws {
+        var fresh = try store.loadSyncMetadata()
+        guard fresh.pendingProgress else { return }
+        fresh.pendingProgress = false
+        try Task.checkCancellation()
+        try lifecycle.performThrowingIfValid { try store.save(fresh) }
     }
 
     private func owns(_ cloud: DailyCloudSnapshot) -> Bool {
@@ -833,13 +1097,6 @@ actor DailySyncEngine {
         progress.userID == userID
             && progress.revision > 0
             && DailySyncReconciler.isValidActiveProgress(progress.domain)
-    }
-
-    private func cloudForm(of progress: DailyClassicProgress) -> DailyClassicProgress {
-        var cloud = progress
-        cloud.draft = ""
-        cloud.completion = nil
-        return cloud
     }
 
     private func sameCloudProgress(
