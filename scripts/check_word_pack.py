@@ -151,6 +151,15 @@ def validate_daily(pack: dict[str, object]) -> tuple[int, int]:
     return len(answers), len(accepted)
 
 
+def load_development_seed_words() -> tuple[list[str], int]:
+    """Load and validate the development pack for seed generation."""
+    pack, _ = load(PACKS / "development-en-US-v1.json")
+    validate_development(pack)
+    format_version = pack["formatVersion"]
+    require(isinstance(format_version, int), "development formatVersion must be an integer")
+    return words(pack.get("words"), "development words"), format_version
+
+
 def validate_one(
     pack_id: str,
     validator: Callable[[dict[str, object]], tuple[int, int]],
