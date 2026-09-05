@@ -32,10 +32,11 @@ enter Daily Classic files or `UserDefaults`.
 After sign-in, a small sync coordinator pulls owner-private state and continues using
 the account's local files for gameplay. It marks the current compact snapshot pending
 after an accepted row or completion and retries on sign-in, foreground, and explicit
-retry. Draft letters remain device-local. Exact records deduplicate; completion
-dominates compatible progress; a longer exact-prefix attempt advances; divergence is
-shown as a choice rather than silently combined. Statistics are always recalculated
-from the merged immutable results.
+retry. Draft letters remain device-local. Exact records deduplicate; an immutable
+completion always dominates active progress; a longer exact-prefix active attempt
+advances; divergent active attempts and distinct terminal results are shown as choices
+rather than silently combined. Statistics are always recalculated from the merged
+immutable results.
 
 `public.daily_progress` is mutable only through `sync_daily_progress` and carries a
 monotonic revision. `public.daily_imported_results` is an immutable client-originated

@@ -339,11 +339,33 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, true,
     (select guesses from daily_payloads where name = 'divergent'), null
   ) ->> 'status',
-  'conflict',
-  'divergent progress is not silently replaced by cloud completion'
+  'completed',
+  'an immutable cloud completion dominates divergent mismatched-mode progress'
+);
+select is(
+  public.sync_daily_progress(
+    'daily-classic-2026-09-05', 6, 20701, 'daily-classic-en-US-v1', 1, true,
+    (select guesses from daily_payloads where name = 'divergent'), null
+  ) ->> 'status',
+  'inserted',
+  'a divergent active attempt exists before terminal import'
+);
+select is(
+  public.import_daily_result(
+    'daily-classic-2026-09-05', 6, 20701, 'daily-classic-en-US-v1', 1, false,
+    (select guesses from daily_payloads where name = 'solved'), 'solved', 3,
+    '2026-09-05T12:03:00Z'
+  ) ->> 'status',
+  'inserted',
+  'a valid terminal result replaces divergent active progress'
+);
+select is(
+  (select count(*) from public.daily_progress where puzzle_id = 'daily-classic-2026-09-05'),
+  0::bigint,
+  'terminal import removes the superseded active attempt'
 );
 select is(
   (select count(*) from public.daily_imported_results where puzzle_id = 'daily-classic-2026-09-02'),

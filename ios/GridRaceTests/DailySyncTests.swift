@@ -244,7 +244,7 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(resolvedStatus, .idle)
     }
 
-    func testCloudProgressChoiceRemovesLocalCompletionAndDoesNotReconflict() async throws {
+    func testLocalCompletionReplacesCloudProgressAndDoesNotReconflict() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
         let local = result(words: ["stone"])
@@ -258,28 +258,32 @@ final class DailySyncTests: XCTestCase {
         let engine = fixture.engine(remote: remote)
         try await engine.markResultPending(local.puzzleID)
 
-        guard case .conflict(let conflicts) = try await engine.synchronize(),
-              let conflict = conflicts.first else {
-            return XCTFail("Expected local completion versus cloud progress conflict")
-        }
-        try await engine.resolve(conflict, with: .useCloud)
+        let status = try await engine.synchronize()
+        XCTAssertEqual(status, .synced(fixture.syncDate))
 
-        XCTAssertTrue(try fixture.store.loadHistory().completedResults.isEmpty)
-        XCTAssertEqual(try fixture.store.loadHistory().statistics, DailyStatistics())
-        XCTAssertEqual(try fixture.store.loadProgress(), cloud)
+        XCTAssertEqual(try fixture.store.loadHistory().completedResults, [local])
+        XCTAssertEqual(
+            try fixture.store.loadHistory().statistics,
+            DailyStatistics.calculate(from: [local])
+        )
+        XCTAssertEqual(try fixture.store.loadProgress(), DailyClassicProgress(result: local))
         XCTAssertFalse(try fixture.store.loadSyncMetadata().hasPendingChanges)
         let retry = try await engine.synchronize()
         let importCalls = await remote.importCallCount()
         XCTAssertEqual(retry, .synced(fixture.syncDate))
-        XCTAssertEqual(importCalls, 0)
+        XCTAssertEqual(importCalls, 1)
+        let remoteProgress = await remote.currentProgress()
+        let storedResultCount = await remote.storedResultCount()
+        XCTAssertNil(remoteProgress)
+        XCTAssertEqual(storedResultCount, 1)
     }
 
-    func testDeviceCompletionChoiceSuppressesCloudProgressAndDoesNotReconflict() async throws {
+    func testLocalCompletionDominatesCloudProgressAcrossHardModeMismatch() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
         let local = result(words: ["stone"])
         let localProgress = DailyClassicProgress(result: local)
-        let cloud = progress(words: ["civic"])
+        let cloud = progress(words: ["civic"], hardMode: true)
         try fixture.store.save(history(local))
         try fixture.store.save(localProgress)
         let remote = TestDailyRemote(
@@ -289,11 +293,8 @@ final class DailySyncTests: XCTestCase {
         let engine = fixture.engine(remote: remote)
         try await engine.markResultPending(local.puzzleID)
 
-        guard case .conflict(let conflicts) = try await engine.synchronize(),
-              let conflict = conflicts.first else {
-            return XCTFail("Expected local completion versus cloud progress conflict")
-        }
-        try await engine.resolve(conflict, with: .keepDevice)
+        let status = try await engine.synchronize()
+        XCTAssertEqual(status, .synced(fixture.syncDate))
 
         XCTAssertEqual(try fixture.store.loadHistory().completedResults, [local])
         XCTAssertEqual(try fixture.store.loadProgress(), localProgress)
@@ -301,7 +302,7 @@ final class DailySyncTests: XCTestCase {
         let retry = try await engine.synchronize()
         let importCalls = await remote.importCallCount()
         XCTAssertEqual(retry, .synced(fixture.syncDate))
-        XCTAssertEqual(importCalls, 0)
+        XCTAssertEqual(importCalls, 1)
     }
 
     @MainActor
@@ -383,11 +384,12 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(try fixture.store.loadProgress(), local)
     }
 
-    func testDivergentCloudCompletionWaitsForChoiceBeforeAffectingHistory() async throws {
+    @MainActor
+    func testDivergentCloudCompletionRemainsTerminalAndRebuildsStatistics() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
         let local = progress(words: ["crane"], draft: "A")
-        let cloud = result(words: ["civic", "stone"])
+        let cloud = result(words: ["adore"])
         try fixture.store.save(local)
         let remote = TestDailyRemote(
             userID: userID,
@@ -396,20 +398,22 @@ final class DailySyncTests: XCTestCase {
         let engine = fixture.engine(remote: remote)
         try await engine.markProgressPending()
 
-        guard case .conflict(let conflicts) = try await engine.synchronize(),
-              let conflict = conflicts.first else {
-            return XCTFail("Expected a conflict with the cloud completion")
-        }
-        XCTAssertEqual(try fixture.store.loadProgress(), local)
-        XCTAssertTrue(try fixture.store.loadHistory().completedResults.isEmpty)
-        XCTAssertEqual(try fixture.store.loadHistory().statistics.gamesPlayed, 0)
+        let status = try await engine.synchronize()
+        XCTAssertEqual(status, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), DailyClassicProgress(result: cloud))
+        XCTAssertEqual(try fixture.store.loadHistory().completedResults, [cloud])
+        XCTAssertEqual(
+            try fixture.store.loadHistory().statistics,
+            DailyStatistics.calculate(from: [cloud])
+        )
 
-        try await engine.resolve(conflict, with: .keepDevice)
-        let retryStatus = try await engine.synchronize()
-        XCTAssertEqual(retryStatus, .synced(fixture.syncDate))
-        XCTAssertEqual(try fixture.store.loadProgress(), local)
-        XCTAssertTrue(try fixture.store.loadHistory().completedResults.isEmpty)
-        XCTAssertEqual(try fixture.store.loadHistory().statistics.gamesPlayed, 0)
+        let reloaded = try DailyClassicModel(
+            pack: dailyPack(),
+            store: fixture.store,
+            now: { self.date(day: self.day, seconds: 0) }
+        )
+        XCTAssertTrue(reloaded.game.isComplete)
+        XCTAssertEqual(reloaded.history.completedResults, [cloud])
     }
 
     func testCompletedResultChoiceAlsoReplacesItsStaleBoardSnapshot() async throws {
@@ -468,6 +472,90 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(try guest.loadHistory().completedResults, [guestResult])
         let remoteProgress = await remote.currentProgress()
         XCTAssertEqual((try XCTUnwrap(remoteProgress)).guesses.map(\.domain), guestProgress.acceptedGuesses)
+    }
+
+    @MainActor
+    func testGuestSolvedRelaunchImportsTerminalProgressWithoutMutatingGuest() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guest = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let suite = "GridRaceSyncTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = date(day: day, seconds: 100)
+        var model = try DailyClassicModel(
+            pack: dailyPack(), store: guest, defaults: defaults, now: { now }
+        )
+        for letter in "adore" { model.typeLetter(letter) }
+        model.submitGuess()
+        let terminal = try XCTUnwrap(model.game.completedResult)
+        model = try DailyClassicModel(
+            pack: dailyPack(), store: guest, defaults: defaults, now: { now }
+        )
+        XCTAssertTrue(model.game.isComplete)
+        let terminalProgress = model.game.progress
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let remote = TestDailyRemote(userID: userID)
+        let engine = DailySyncEngine(userID: userID, store: store, remote: remote)
+
+        let staged = try await engine.stageGuestImport(from: guest)
+        XCTAssertEqual(staged, .pending)
+        XCTAssertNil(try store.loadProgress())
+        XCTAssertEqual(try store.loadHistory().completedResults, [terminal])
+        XCTAssertEqual(try guest.loadProgress(), terminalProgress)
+        XCTAssertEqual(try guest.loadHistory().completedResults, [terminal])
+
+        _ = try await engine.synchronize()
+        let storedResultCount = await remote.storedResultCount()
+        XCTAssertEqual(storedResultCount, 1)
+    }
+
+    @MainActor
+    func testGuestFailedRelaunchRecoversMissingHistoryIdempotently() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guest = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let suite = "GridRaceSyncTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = date(day: day, seconds: 100)
+        var model = try DailyClassicModel(
+            pack: dailyPack(), store: guest, defaults: defaults, now: { now }
+        )
+        for word in ["civic", "stone", "civic", "stone", "civic", "stone"] {
+            for letter in word { model.typeLetter(letter) }
+            model.submitGuess()
+        }
+        let terminal = try XCTUnwrap(model.game.completedResult)
+        XCTAssertEqual(terminal.outcome, .failed)
+        model = try DailyClassicModel(
+            pack: dailyPack(), store: guest, defaults: defaults, now: { now }
+        )
+        XCTAssertTrue(model.game.isComplete)
+        let terminalProgress = model.game.progress
+        try FileManager.default.removeItem(
+            at: guest.directory.appending(path: "daily-history-v1.json")
+        )
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let remote = TestDailyRemote(userID: userID)
+        let engine = DailySyncEngine(userID: userID, store: store, remote: remote)
+
+        let staged = try await engine.stageGuestImport(from: guest)
+        XCTAssertEqual(staged, .pending)
+        XCTAssertEqual(try store.loadHistory().completedResults, [terminal])
+        XCTAssertEqual(
+            try store.loadHistory().statistics,
+            DailyStatistics.calculate(from: [terminal])
+        )
+        XCTAssertEqual(try guest.loadProgress(), terminalProgress)
+        XCTAssertTrue(try guest.loadHistory().completedResults.isEmpty)
+
+        _ = try await engine.synchronize()
+        let repeatedStage = try await engine.stageGuestImport(from: guest)
+        XCTAssertEqual(repeatedStage, .pending)
+        XCTAssertEqual(try store.loadHistory().completedResults, [terminal])
+        let storedResultCount = await remote.storedResultCount()
+        XCTAssertEqual(storedResultCount, 1)
     }
 
     func testGuestImportConflictLabelsDeviceAndSyncedAttemptsForExplicitChoice() async throws {
@@ -721,7 +809,7 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(reconciliation.history.completedResults, [cloudResult])
     }
 
-    func testMismatchedModeNonEmptyProgressConflictsWithIncomingResult() throws {
+    func testMismatchedModeIncomingResultDominatesNonEmptyProgress() throws {
         let local = progress(words: ["crane"], hardMode: false)
         let cloudResult = result(words: ["civic", "stone"], hardMode: true)
         let reconciliation = try DailySyncReconciler.reconcile(
@@ -730,8 +818,9 @@ final class DailySyncTests: XCTestCase {
             incomingProgress: nil,
             incomingResults: [cloudResult]
         )
-        XCTAssertEqual(reconciliation.conflicts.count, 1)
-        XCTAssertTrue(reconciliation.history.completedResults.isEmpty)
+        XCTAssertTrue(reconciliation.conflicts.isEmpty)
+        XCTAssertEqual(reconciliation.history.completedResults, [cloudResult])
+        XCTAssertEqual(reconciliation.progress, DailyClassicProgress(result: cloudResult))
     }
 
     func testLocalProgressConvergesWithoutPendingMetadata() async throws {
@@ -1267,10 +1356,7 @@ private actor TestDailyRemote: DailySyncRemote {
 
     func pushProgress(_ upload: DailyProgressUploadDTO) throws -> DailyProgressPushOutcome {
         if let completed = results[upload.puzzleID] {
-            let local = upload.guesses.map(\.domain)
-            return DailySyncReconciler.isPrefix(local, of: completed.domain.guesses)
-                ? .completed(completed)
-                : .conflict(.completed(completed))
+            return .completed(completed)
         }
         guard let existing = progress else {
             let inserted = dto(upload, revision: 1)
@@ -1299,10 +1385,6 @@ private actor TestDailyRemote: DailySyncRemote {
                 : .conflict(.result(existing))
         }
         if let existingProgress = progress, existingProgress.puzzleID == upload.puzzleID {
-            let prefix = existingProgress.guesses.map(\.domain)
-            if !DailySyncReconciler.isPrefix(prefix, of: incoming.domain.guesses) {
-                return .conflict(.progress(existingProgress))
-            }
             progress = nil
         }
         results[upload.puzzleID] = incoming
