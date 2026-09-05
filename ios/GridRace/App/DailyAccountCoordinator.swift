@@ -147,7 +147,7 @@ final class DailyAccountCoordinator {
         schedule {
             do {
                 self.guestImportInFlight = true
-                let staged = try await engine.stageGuestImport(from: self.guestStore)
+                let staged = try engine.stageGuestImport(from: self.guestStore)
                 self.syncStatus = staged
                 if case .conflict(let found) = staged {
                     self.conflicts = found
@@ -175,7 +175,7 @@ final class DailyAccountCoordinator {
               let userID = currentUserID else { return }
         schedule {
             do {
-                try await engine.resolve(conflict, with: useCloud ? .useCloud : .keepDevice)
+                try engine.resolve(conflict, with: useCloud ? .useCloud : .keepDevice)
                 self.conflicts.removeFirst()
                 if self.conflicts.isEmpty {
                     await self.synchronize(using: engine, userID: userID)
@@ -213,9 +213,9 @@ final class DailyAccountCoordinator {
         schedule {
             do {
                 if let result = self.daily.game.completedResult {
-                    try await engine.markResultPending(result.puzzleID)
+                    try engine.markResultPending(result.puzzleID)
                 } else {
-                    try await engine.markProgressPending()
+                    try engine.markProgressPending()
                 }
                 self.syncStatus = .pending
                 await self.synchronize(using: engine, userID: userID)
