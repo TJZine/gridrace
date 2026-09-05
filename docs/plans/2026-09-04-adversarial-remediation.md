@@ -20,7 +20,8 @@ exhausted, native Codex worker/reviewer roles took over the remaining work.
 - Live multiplayer remains paused until CI, integrated review, and closeout gates
   complete; the formal hosted/credential-dependent proofs remain explicit.
 - GR-09 is a horizon defect but is included at maintainer direction.
-- GR-10 has no tracked workflow; GitHub reports the default branch unprotected.
+- GR-10 is implemented locally; the first hosted run and default-branch protection
+  remain unverified external follow-ups.
 - The superseded UI plan retains an unperformed formal visual/VoiceOver matrix for
   later revalidation; this plan does not claim or alter that evidence.
 
@@ -110,6 +111,15 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | REM-05 | Do not mutate GitHub branch settings | Repository implementation does not imply authority for external administrative state |
 | REM-06 | Replace quota-blocked Muse work with native Codex workers and reviewers | Maintainer directed the takeover; the runbook keeps implementation, review, integration, and commits separated |
 
+# Integrated review findings
+
+| ID | Severity | Disposition | Remediation and proof |
+| --- | --- | --- | --- |
+| IR-01 | High | Accept | Serialize sync-engine local reconciliation with MainActor-owned gameplay writes and add a deterministic stale-response interleaving regression. |
+| IR-02 | Medium | Accept | Give completed-local/active-cloud conflict choices stable semantics, including history/pending cleanup or explicit upload suppression, and prove immediate resync convergence for both choices. |
+| IR-03 | Medium | Accept | Revalidate both daily identity CHECK constraints after replacing their validation function and prove pre-existing invalid rows block constraint recreation. |
+| IR-04 | Low | Accept | Correct the stale GR-10 plan snapshot without claiming hosted CI or branch-protection evidence. |
+
 # Muse sessions and commit record
 
 | Unit | Session | Worktree/branch | Commit | Status |
@@ -156,6 +166,6 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 
 # Next action
 
-Run one fresh integrated read-only net-diff review across U-01..08, adjudicate any
-material findings, then record the already-completed canonical gate wave and close
-the plan without claiming hosted CI or the deferred visual/VoiceOver matrix.
+Remediate accepted integrated-review findings IR-01..03 with bounded native workers,
+run affected canonical gates, record the completed gate wave, and close the plan
+without claiming hosted CI or the deferred visual/VoiceOver matrix.
