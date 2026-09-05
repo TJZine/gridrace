@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: Remediate the remaining validated Daily persistence, synchronization, Edge request, and hosted CI findings
 Owner: Primary orchestrator
 Started: 2026-09-05
@@ -15,6 +15,8 @@ and synchronization boundaries.
 - Reviewed source is `912827c` on `dev/classic-mode`.
 - Hosted run 33959896444 passed `ios` and failed `backend` during generated-data
   verification; later backend gates were skipped.
+- Remediation run 33962713458 passed both `backend` and `ios`; every intended backend
+  verification step and the iOS test/build steps completed successfully.
 - No other plan is active and `.codex/` is pre-existing generated review context.
 
 # Invariants and decisions
@@ -40,7 +42,7 @@ and synchronization boundaries.
 | R-02 Guest recovery | Normalize terminal guest progress/results | `DailySync.swift`, `DailySyncTests.swift` | Complete |
 | R-03 Edge boundary | Bounded UTF-8 byte reader and focused tests | `_shared/command.ts`, shared Edge tests | Complete |
 | R-04 Portable CI | Split checked-in validation from source regeneration; update action runtimes | word scripts, workflow, runbook | Complete |
-| R-05 Integration | Full affected gates, adversarial net-diff review, commits, closeout | all task-owned files | In progress |
+| R-05 Integration | Full affected gates, adversarial net-diff review, commits, closeout | all task-owned files | Complete |
 
 # Finding ledger
 
@@ -76,7 +78,13 @@ transitions, a shared untrusted-input boundary, and CI. Required proof:
 
 # Commit record
 
-Pending.
+- `5cf5c13` — `docs(plan): track adversarial remediation`
+- `0b0b54e` — `fix(daily): block play when account storage fails`
+- `235f787` — `fix(daily): make completion dominate active progress`
+- `c802c7c` — `fix(edge): enforce byte-bounded request bodies`
+- `9051417` — `ci: make word-pack verification portable`
+- The documentation-only closeout commit records hosted evidence and marks this plan
+  Historical.
 
 # Verification record
 
@@ -88,16 +96,25 @@ Pending.
 - Clean local Supabase reset, 217 pgTAP assertions, and error-level database lint:
   passed. Existing extra-warning diagnostics remain outside this change.
 - Full iOS suite: 115 tests passed with the credential-gated local Supabase test
-  skipped; the changed guest relaunch tests then passed again after final tightening.
+  skipped. One simulator busy/preflight retry occurred; a clean rerun passed all 115
+  tests, including the strengthened guest relaunch coverage.
 - Clean iOS Debug build: passed.
 - Workflow YAML parsing and official action release/SHA inspection: passed.
-- Hosted workflow execution: pending the implementation push.
+- Hosted run [33962713458](https://github.com/TJZine/gridrace/actions/runs/33962713458):
+  `backend` and `ios` passed. Generated data, shared rules, Edge Functions, database,
+  iOS tests, and the clean iOS build all executed successfully.
+- Fresh task-owned net-diff review found no remaining completion downgrade, successful
+  no-op persistence, unbounded request-body read, corpus substitution, or skipped
+  hosted backend gate.
+- Manual rendering and VoiceOver traversal of the injected storage-failure screen were
+  not available in the automated environment; the view uses native labelled controls
+  and the full application compiles and tests successfully.
 
 # Closeout checklist
 
-- [ ] All accepted findings implemented with focused regression coverage.
-- [ ] Affected canonical gates and clean build pass.
-- [ ] Hosted `ios` and `backend` jobs pass through every intended step.
-- [ ] Full task-owned diff receives a fresh critical review.
-- [ ] Logical conventional commits are created and recorded.
-- [ ] Plan is marked Historical in the closeout commit.
+- [x] All accepted findings implemented with focused regression coverage.
+- [x] Affected canonical gates and clean build pass.
+- [x] Hosted `ios` and `backend` jobs pass through every intended step.
+- [x] Full task-owned diff receives a fresh critical review.
+- [x] Logical conventional commits are created and recorded.
+- [x] Plan is marked Historical in the closeout commit.

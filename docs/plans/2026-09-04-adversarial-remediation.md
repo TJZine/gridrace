@@ -18,10 +18,11 @@ exhausted, native Codex worker/reviewer roles took over the remaining work.
 - Review verdicts: five Accept, four Accept with modification, one Defer.
 - GR-01..10 are implemented and locally accepted.
 - The local CI, integrated review, remediation, and closeout gates are complete;
-  formal hosted/credential-dependent proofs remain explicit follow-ups.
+  credential-dependent proofs remain explicit follow-ups. Post-closeout hosted CI
+  evidence is recorded below.
 - GR-09 is a horizon defect but is included at maintainer direction.
-- GR-10 is implemented locally; the first hosted run and default-branch protection
-  remain unverified external follow-ups.
+- GR-10 is implemented. Hosted execution is now verified; branch protection remains
+  an explicitly excluded repository-administration follow-up.
 - The superseded UI plan retains an unperformed formal visual/VoiceOver matrix for
   later revalidation; this plan does not claim or alter that evidence.
 
@@ -162,9 +163,9 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   SHA-pinned official actions, lockfile-pinned Supabase CLI, portable simulator
   selection, finite timeouts, and no secrets, deployment, or cache. YAML parsing,
   upstream action-tag SHA checks, official runner-image inspection, and every local
-  equivalent gate passed. The fresh reviewer reported no findings. No hosted run has
-  occurred, so runner provisioning, time limits, emitted status checks, and branch
-  protection remain explicitly unverified external evidence.
+  equivalent gate passed. The fresh reviewer reported no findings. At the original
+  closeout no hosted run had occurred; the post-closeout evidence below supersedes
+  that verification gap.
 - Integrated review: one fresh independent reviewer found four actionable issues;
   all were reproduced, accepted, and remediated. Swift reconciliation now shares
   MainActor ownership with gameplay writes, completed-local/active-cloud choices
@@ -182,12 +183,23 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 
 # Remaining follow-ups
 
-- Observe the first hosted GitHub Actions run and decide which emitted checks branch
-  protection should require; repository work did not authorize remote settings.
+- Decide separately whether branch protection should require the emitted `ios` and
+  `backend` checks; the follow-up remediation explicitly excluded remote settings.
 - Run hosted Realtime subscription proof and real Apple/provider credential paths
   when those environments are available.
 - Revalidate the superseded UI plan's formal visual/VoiceOver matrix separately, as
   the maintainer requested; no pass is claimed here.
+
+# Post-closeout hosted verification
+
+- Run [33959896444](https://github.com/TJZine/gridrace/actions/runs/33959896444)
+  was the first hosted execution: `ios` passed, while `backend` failed because Ubuntu
+  lacked the checksum-pinned macOS word-pack source; later backend steps were skipped.
+- Follow-up plan `2026-09-05-remaining-adversarial-remediation.md` fixed the portable
+  verification boundary and the remaining accepted findings.
+- Run [33962713458](https://github.com/TJZine/gridrace/actions/runs/33962713458)
+  passed both `backend` and `ios`. Generated data, shared rules, Edge Functions,
+  database verification, iOS tests, and the clean iOS build all executed and passed.
 
 # Closeout
 
