@@ -19,11 +19,18 @@ struct DailyAppView: View {
             DailyHomeView(
                 model: app.daily,
                 account: app.account,
-                syncMessage: app.syncMessage
+                syncMessage: app.syncMessage,
+                isDailyPlayable: app.isDailyPlayable,
+                retryDailyStorage: { app.retrySync() }
             )
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
-                    case .daily: DailyGameView(model: app.daily)
+                    case .daily:
+                        if app.isDailyPlayable {
+                            DailyGameView(model: app.daily)
+                        } else {
+                            DailyStorageUnavailableView(retry: { app.retrySync() })
+                        }
                     case .statistics: DailyStatisticsView(model: app.daily)
                     case .account: accountDestination
                     case .settings: DailySettingsView(model: app.daily)
@@ -47,7 +54,7 @@ struct DailyAppView: View {
         .task(id: app.daily.puzzle.id) {
             let delay = max(1, app.daily.nextReset.timeIntervalSinceNow)
             try? await Task<Never, Never>.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, app.isDailyPlayable else { return }
             app.daily.refreshForCurrentDay()
         }
     }
@@ -73,6 +80,8 @@ struct DailyHomeView: View {
     @Bindable var model: DailyClassicModel
     @Bindable var account: AccountModel
     let syncMessage: String?
+    let isDailyPlayable: Bool
+    let retryDailyStorage: () -> Void
 
     var body: some View {
         ZStack {
@@ -140,13 +149,25 @@ struct DailyHomeView: View {
                     .frame(width: 82)
             }
 
-            NavigationLink(value: AppRoute.daily) {
-                Text(model.homeStatus.action)
+            if isDailyPlayable {
+                NavigationLink(value: AppRoute.daily) {
+                    Text(model.homeStatus.action)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            } else {
+                Text("Account storage must be available before this puzzle can be played.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Retry account storage", action: retryDailyStorage)
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 48)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
 
             if model.game.isComplete {
                 NextPuzzleLabel(reset: model.nextReset)
@@ -235,6 +256,24 @@ struct DailyHomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(account.isSignedIn ? "Manage your profile and synchronization" : "Sign in to save your progress")
+    }
+}
+
+private struct DailyStorageUnavailableView: View {
+    let retry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Daily storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
+        } description: {
+            Text("Retry account storage, or sign out from Account to keep playing as a guest.")
+        } actions: {
+            Button("Retry", action: retry)
+                .buttonStyle(.borderedProminent)
+            NavigationLink("Open Account", value: AppRoute.account)
+        }
+        .navigationTitle("Daily Classic")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

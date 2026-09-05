@@ -22,6 +22,7 @@ final class DailyAccountCoordinator {
     private(set) var syncStatus = DailySyncStatus.idle
     private(set) var conflicts: [DailySyncConflict] = []
     private(set) var canImportGuestHistory = false
+    private(set) var isDailyPlayable = true
 
     @ObservationIgnored
     lazy var account = AccountModel(
@@ -61,7 +62,7 @@ final class DailyAccountCoordinator {
     }
 
     func sessionChanged(to userID: UUID?) {
-        guard userID != currentUserID else { return }
+        guard userID != currentUserID || activationUserID != nil else { return }
         syncLifecycle?.invalidate()
         syncTask?.cancel()
         guard let userID else {
@@ -75,6 +76,7 @@ final class DailyAccountCoordinator {
         guard let accountService else { return }
         syncLifecycle?.invalidate()
         syncTask?.cancel()
+        isDailyPlayable = false
 
         if activationUserID != userID {
             let isolatedDate = Date(
@@ -115,6 +117,7 @@ final class DailyAccountCoordinator {
             syncLifecycle = lifecycle
             currentUserID = userID
             activationUserID = nil
+            isDailyPlayable = true
             daily = accountDaily
             configureDailyCallback()
             canImportGuestHistory = metadata.guestImportDecision == nil && hasGuestDailyData()
@@ -125,7 +128,7 @@ final class DailyAccountCoordinator {
     }
 
     func foregrounded() {
-        daily.refreshForCurrentDay()
+        if isDailyPlayable { daily.refreshForCurrentDay() }
         guard account.session != nil else { return }
         schedule {
             await self.account.refreshSession()
@@ -191,6 +194,9 @@ final class DailyAccountCoordinator {
 
     var syncMessage: String? {
         guard account.isSignedIn else { return nil }
+        if !isDailyPlayable {
+            return "Account storage is unavailable. Retry, or sign out to keep playing as a guest."
+        }
         return switch syncStatus {
         case .idle: "Ready to sync."
         case .pending: "Your progress is waiting to sync. You can keep playing."
@@ -270,6 +276,7 @@ final class DailyAccountCoordinator {
         syncStatus = .idle
         canImportGuestHistory = false
         guestImportInFlight = false
+        isDailyPlayable = true
         daily = guestDaily
         configureDailyCallback()
     }
@@ -298,8 +305,10 @@ final class DailyAccountCoordinator {
 
 private struct IsolatedDailyClassicStore: DailyClassicStoring, Sendable {
     func loadProgress() throws -> DailyClassicProgress? { nil }
-    func save(_ progress: DailyClassicProgress) throws {}
-    func discardProgress() throws {}
+    func save(_ progress: DailyClassicProgress) throws { throw StorageUnavailable() }
+    func discardProgress() throws { throw StorageUnavailable() }
     func loadHistory() throws -> DailyClassicHistory { DailyClassicHistory() }
-    func save(_ history: DailyClassicHistory) throws {}
+    func save(_ history: DailyClassicHistory) throws { throw StorageUnavailable() }
+
+    private struct StorageUnavailable: Error {}
 }

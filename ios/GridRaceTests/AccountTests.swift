@@ -160,11 +160,54 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
         XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
         XCTAssertEqual(coordinator.syncStatus, .failed(.invalidData))
+        XCTAssertFalse(coordinator.isDailyPlayable)
+        coordinator.daily.typeLetter("A")
+        XCTAssertEqual(coordinator.daily.errorMessage, "Your puzzle could not be saved. Try again.")
 
         coordinator.retrySync()
 
         XCTAssertEqual(attempts, 2)
         XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+        XCTAssertTrue(coordinator.isDailyPlayable)
+    }
+
+    func testCorruptAccountMetadataBlocksGameplayUntilSignOutRestoresGuest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceCorruptAccountTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+            urlString: "http://127.0.0.1:54321",
+            publishableKey: "local-test-key"
+        ))
+        let coordinator = try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main),
+            tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore,
+            accountService: SupabaseAccountService(configuration: configuration),
+            accountStoreFactory: { userID in
+                let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+                try FileManager.default.createDirectory(
+                    at: store.directory,
+                    withIntermediateDirectories: true
+                )
+                try Data("{".utf8).write(
+                    to: store.directory.appending(path: "daily-sync-metadata-v1.json")
+                )
+                return store
+            }
+        )
+        coordinator.daily.typeLetter("G")
+
+        coordinator.sessionChanged(to: UUID())
+
+        XCTAssertFalse(coordinator.isDailyPlayable)
+        XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+
+        coordinator.sessionChanged(to: nil)
+
+        XCTAssertTrue(coordinator.isDailyPlayable)
+        XCTAssertEqual(coordinator.daily.game.draft, "G")
     }
 }
 
