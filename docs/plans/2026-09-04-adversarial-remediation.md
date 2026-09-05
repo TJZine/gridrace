@@ -2,21 +2,23 @@ Status: Active
 Scope: Adversarial review remediation for synchronization, data safety, backend privacy, verification, and delivery controls
 Owner: Primary orchestrator
 Started: 2026-09-04
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 # Goal
 
 Implement and verify the ten adjudicated GridRace findings without broadening the
-product or introducing speculative architecture. Muse Code Spark 1.3 agents at
-`xhigh` reasoning work in isolated Git worktrees and create focused conventional
-commits. The primary orchestrator reviews, integrates, verifies, and retains each
-Muse session for follow-up until its slice is accepted.
+product or introducing speculative architecture. Bounded implementation workers use
+isolated worktrees and independent read-only reviewers challenge each completed
+slice. The primary orchestrator owns integration, commits, verification, and review
+adjudication. U-01..07 began with Muse Code Spark 1.3; after its provider quota was
+exhausted, native Codex worker/reviewer roles took over the remaining work.
 
 # Current snapshot
 
 - Review verdicts: five Accept, four Accept with modification, one Defer.
-- Authenticated Daily/account-deletion production signoff is blocked by GR-01..05.
-- Live multiplayer remains paused; GR-06..08 must close before reactivation.
+- GR-01..09 are implemented and locally accepted through U-07.
+- Live multiplayer remains paused until CI, integrated review, and closeout gates
+  complete; the formal hosted/credential-dependent proofs remain explicit.
 - GR-09 is a horizon defect but is included at maintainer direction.
 - GR-10 has no tracked workflow; GitHub reports the default branch unprotected.
 - The superseded UI plan retains an unperformed formal visual/VoiceOver matrix for
@@ -31,8 +33,9 @@ Muse session for follow-up until its slice is accepted.
 - Durable local/cloud state, RLS, privacy, idempotency, cancellation, and deletion
   safety may not be simplified away.
 - Use forward migrations only. Do not rewrite migration history.
-- Each Muse agent commits only its assigned slice. It does not edit this plan,
-  stage unrelated files, push, or change remote repository settings.
+- Prior Muse agents committed only their assigned slices. Native Codex workers follow
+  the runbook: they edit only assigned paths and never stage, commit, push, or change
+  tracking or remote repository settings.
 - The orchestrator cherry-picks/integrates commits serially, resolves shared
   contracts, runs canonical gates, and records evidence.
 
@@ -45,8 +48,8 @@ Muse session for follow-up until its slice is accepted.
 | U-03 Seed tooling | GR-05 | `check_word_pack.py`, `generate_supabase_seed.py`, `package.json`, seed-focused tests/docs only | — | Accepted |
 | U-04 Realtime privacy | GR-06 | `202609040001_match_revision_signal.sql`, a new focused pgTAP file, live privacy/API/architecture docs | — | Accepted |
 | U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Accepted |
-| U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Blocked on Muse quota reset |
-| U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Ready |
+| U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Accepted |
+| U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Accepted |
 | U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
 | R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | Pending |
 | C-01 Closeout | all | plan, final gates, commit record | R-01 | Pending |
@@ -58,8 +61,8 @@ Muse session for follow-up until its slice is accepted.
    authority docs, and the runbook are serialized surfaces.
 3. Rebase or freshly dispatch U-07 after U-01 so its tests target the final sync seam.
 4. Dispatch U-08 only after every command it invokes is proved locally.
-5. Run one fresh integrated review, remediate through the original Muse sessions,
-   then execute the complete affected gate set.
+5. Run one fresh integrated review, remediate accepted findings through bounded
+   native workers, then execute the complete affected gate set.
 
 # Acceptance and verification
 
@@ -105,6 +108,7 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | REM-03 | Use forward migrations with preassigned filenames | Prevents worktree collision and preserves deployed history |
 | REM-04 | Implement GR-09 now | Maintainer explicitly requested all adjudicated issues despite its horizon priority |
 | REM-05 | Do not mutate GitHub branch settings | Repository implementation does not imply authority for external administrative state |
+| REM-06 | Replace quota-blocked Muse work with native Codex workers and reviewers | Maintainer directed the takeover; the runbook keeps implementation, review, integration, and commits separated |
 
 # Muse sessions and commit record
 
@@ -115,8 +119,8 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | U-03 | `01a06dd2-71ef-7140-9c8c-9c2c4d30f70d` | `.muse/worktrees/20260904-113d` | `f54b589` (integrated as `2a49631`) | Accepted; session retained |
 | U-04 | `01a06dd2-7227-72e1-886c-a7828f012b2c` | `.muse/worktrees/20260904-972f` | `eddad03` (integrated as `f0b7b5f`) | Accepted after docs follow-up; session retained |
 | U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | `6b07074` (integrated as `ddde194`) | Accepted after test-name follow-up; session retained |
-| U-06 | `01a06e0e-592c-70e0-9299-54be34b87361` | `.muse/worktrees/20260904-7c02` | Pending | Clean worktree retained; provider quota reset due 2026-09-05 00:08:25Z |
-| U-07 | Pending | Pending | Pending | Not dispatched |
+| U-06 | `01a06e0e-592c-70e0-9299-54be34b87361` | `.muse/worktrees/20260904-7c02` | `e991dd7` (integrated as `ecf7ae4`) | Accepted; session retained |
+| U-07 | Muse `01a06ef9-4ccf-7b43-9425-d07b8b51c5db`; Codex `/root/u07_worker`; review `/root/u07_reviewer` | `.muse/worktrees/20260904-cc66` | `e565580` (integrated as `85764de`) | Accepted after native takeover; reviewer reported no findings |
 | U-08 | Pending | Pending | Pending | Not dispatched |
 
 # Verification record
@@ -134,9 +138,17 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   `supabase/functions`, fmt checked 14 files, lint checked 13 files, explicit type
   checking passed, and all 89 Edge tests passed. The root-level Deno invocation is
   intentionally non-canonical because it does not discover the functions import map.
+- U-06: reviewed the SQL/Swift identity diff; clean Supabase reset, five pgTAP files
+  with 212 assertions, and database lint passed. The focused iOS identity suite passed
+  65 tests with one expected local-credentials skip after one unrelated flaky
+  cancellation test passed in isolation and on a full rerun.
+- U-07: the native worker replaced the interrupted offset patch with strict
+  `(puzzle_day, puzzle_id)` keyset pagination and a 1,001-result drift regression.
+  The fresh reviewer reported no actionable findings. Primary focused proof passed,
+  then all 38 `DailySyncTests` passed with one expected local-credentials skip.
 
 # Next action
 
-Resume U-06 after the recorded Muse quota reset, then dispatch U-07 from its
-integrated result. Retain every session for follow-up until integrated verification
-accepts it.
+Implement U-08 with a bounded native worker after proving its fresh-runner bootstrap
+commands, then run one fresh integrated read-only review and the complete canonical
+closeout gate set.
