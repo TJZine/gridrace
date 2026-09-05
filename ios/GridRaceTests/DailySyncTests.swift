@@ -244,6 +244,77 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(resolvedStatus, .idle)
     }
 
+    func testCloudProgressChoiceRemovesLocalCompletionAndDoesNotReconflict() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let local = result(words: ["stone"])
+        let cloud = progress(words: ["civic"])
+        try fixture.store.save(history(local))
+        try fixture.store.save(DailyClassicProgress(result: local))
+        let remote = TestDailyRemote(
+            userID: userID,
+            progress: progressDTO(cloud, userID: userID)
+        )
+        let engine = fixture.engine(remote: remote)
+        try await engine.markResultPending(local.puzzleID)
+
+        guard case .conflict(let conflicts) = try await engine.synchronize(),
+              let conflict = conflicts.first else {
+            return XCTFail("Expected local completion versus cloud progress conflict")
+        }
+        try await engine.resolve(conflict, with: .useCloud)
+
+        XCTAssertTrue(try fixture.store.loadHistory().completedResults.isEmpty)
+        XCTAssertEqual(try fixture.store.loadHistory().statistics, DailyStatistics())
+        XCTAssertEqual(try fixture.store.loadProgress(), cloud)
+        XCTAssertFalse(try fixture.store.loadSyncMetadata().hasPendingChanges)
+        let retry = try await engine.synchronize()
+        let importCalls = await remote.importCallCount()
+        XCTAssertEqual(retry, .synced(fixture.syncDate))
+        XCTAssertEqual(importCalls, 0)
+    }
+
+    func testDeviceCompletionChoiceSuppressesCloudProgressAndDoesNotReconflict() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let local = result(words: ["stone"])
+        let localProgress = DailyClassicProgress(result: local)
+        let cloud = progress(words: ["civic"])
+        try fixture.store.save(history(local))
+        try fixture.store.save(localProgress)
+        let remote = TestDailyRemote(
+            userID: userID,
+            progress: progressDTO(cloud, userID: userID)
+        )
+        let engine = fixture.engine(remote: remote)
+        try await engine.markResultPending(local.puzzleID)
+
+        guard case .conflict(let conflicts) = try await engine.synchronize(),
+              let conflict = conflicts.first else {
+            return XCTFail("Expected local completion versus cloud progress conflict")
+        }
+        try await engine.resolve(conflict, with: .keepDevice)
+
+        XCTAssertEqual(try fixture.store.loadHistory().completedResults, [local])
+        XCTAssertEqual(try fixture.store.loadProgress(), localProgress)
+        XCTAssertFalse(try fixture.store.loadSyncMetadata().hasPendingChanges)
+        let retry = try await engine.synchronize()
+        let importCalls = await remote.importCallCount()
+        XCTAssertEqual(retry, .synced(fixture.syncDate))
+        XCTAssertEqual(importCalls, 0)
+    }
+
+    @MainActor
+    func testFreshLocalReconciliationRunsOnGameplayActor() throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
+
+        // This synchronous call compiles only while engine reconciliation and
+        // DailyClassicModel writes share MainActor ownership.
+        XCTAssertEqual(try engine.status(), .idle)
+    }
+
     func testCompatibleCompletionDominatesProgressAndStatisticsStayDerived() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
@@ -504,14 +575,14 @@ final class DailySyncTests: XCTestCase {
         let secondEngine = second.engine(remote: secondService.makeDailySyncRemote())
         let empty = progress(words: [])
         try first.store.save(empty)
-        try await firstEngine.markProgressPending()
+        try firstEngine.markProgressPending()
         let emptyStatus = try await firstEngine.synchronize()
         guard case .synced = emptyStatus else {
             return XCTFail("The empty progress status was \(safeName(emptyStatus))")
         }
         let accepted = progress(words: ["civic"])
         try first.store.save(accepted)
-        try await firstEngine.markProgressPending()
+        try firstEngine.markProgressPending()
         let firstProgressStatus = try await firstEngine.synchronize()
         guard case .synced = firstProgressStatus else {
             return XCTFail("The first client progress status was \(safeName(firstProgressStatus))")
@@ -527,7 +598,7 @@ final class DailySyncTests: XCTestCase {
 
         let completed = result(words: ["civic", "stone"])
         try first.store.save(history(completed))
-        try await firstEngine.markResultPending(completed.puzzleID)
+        try firstEngine.markResultPending(completed.puzzleID)
         guard case .synced = try await firstEngine.synchronize() else {
             return XCTFail("The first client did not synchronize completion")
         }
@@ -541,12 +612,12 @@ final class DailySyncTests: XCTestCase {
         let firstAttempt = progress(day: nextDay, words: ["civic"])
         let secondAttempt = progress(day: nextDay, words: ["crane"])
         try first.store.save(firstAttempt)
-        try await firstEngine.markProgressPending()
+        try firstEngine.markProgressPending()
         guard case .synced = try await firstEngine.synchronize() else {
             return XCTFail("The first divergent attempt was not stored")
         }
         try second.store.save(secondAttempt)
-        try await secondEngine.markProgressPending()
+        try secondEngine.markProgressPending()
         guard case .conflict = try await secondEngine.synchronize() else {
             return XCTFail("Divergent real-client progress did not produce a conflict")
         }
@@ -749,7 +820,7 @@ final class DailySyncTests: XCTestCase {
         try await engine.markResultPending(first.puzzleID)
 
         let syncTask = Task { try await engine.synchronize() }
-        guard await waitForImportSuspension(remote) else { return }
+        guard await Self.waitForImportSuspension(remote) else { return }
         var combined = try fixture.store.loadHistory()
         XCTAssertTrue(combined.record(second))
         try fixture.store.save(combined)
@@ -765,25 +836,36 @@ final class DailySyncTests: XCTestCase {
         XCTAssertFalse(try fixture.store.loadSyncMetadata().hasPendingChanges)
     }
 
-    func testNewGuessesDuringSuspendedPushAreNeitherOverwrittenNorCleared() async throws {
+    @MainActor
+    func testGameplayWriteDuringSuspendedPushIsNeitherOverwrittenNorCleared() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
         try fixture.store.save(progress(words: ["civic"]))
+        let suite = "GridRaceSyncTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = try DailyClassicModel(
+            pack: dailyPack(),
+            store: fixture.store,
+            defaults: defaults,
+            now: { self.fixedDate(100) }
+        )
         let remote = GateRemote(userID: userID)
         let engine = fixture.engine(remote: remote)
-        try await engine.markProgressPending()
+        try engine.markProgressPending()
 
         let syncTask = Task { try await engine.synchronize() }
-        guard await waitForPushSuspension(remote) else { return }
-        let advanced = progress(words: ["civic", "stone"])
-        try fixture.store.save(advanced)
+        guard await Self.waitForPushSuspension(remote) else { return }
+        for letter in "stone" { model.typeLetter(letter) }
+        model.submitGuess()
+        let advanced = model.game.progress
         let pushUpload = await remote.lastPushUpload()
         let upload = try XCTUnwrap(pushUpload)
         await remote.completePush(with: .stored(remote.storedProgress(for: upload, revision: 1)))
 
         let pushStatus = try await syncTask.value
         XCTAssertEqual(pushStatus, .synced(fixture.syncDate))
-        XCTAssertEqual(try fixture.store.loadProgress()?.acceptedGuesses, advanced.acceptedGuesses)
+        XCTAssertEqual(try fixture.store.loadProgress(), advanced)
         XCTAssertTrue(try fixture.store.loadSyncMetadata().pendingProgress)
     }
 
@@ -797,7 +879,7 @@ final class DailySyncTests: XCTestCase {
         try await engine.markProgressPending()
 
         let syncTask = Task { try await engine.synchronize() }
-        guard await waitForPushSuspension(remote) else { return }
+        guard await Self.waitForPushSuspension(remote) else { return }
         syncTask.cancel()
         let cancelledUpload = await remote.lastPushUpload()
         let upload = try XCTUnwrap(cancelledUpload)
@@ -824,7 +906,7 @@ final class DailySyncTests: XCTestCase {
         try await engine.markProgressPending()
 
         let syncTask = Task { try await engine.synchronize() }
-        guard await waitForPushSuspension(remote) else { return }
+        guard await Self.waitForPushSuspension(remote) else { return }
         // Force deletion at the exact point where the old check-then-write code
         // would have performed three writes (history, progress snapshot,
         // metadata) for this response. Every one of them now runs inside the
@@ -870,7 +952,7 @@ final class DailySyncTests: XCTestCase {
         try await staleEngine.markResultPending(completed.puzzleID)
 
         let staleTask = Task { try await staleEngine.synchronize() }
-        guard await waitForImportSuspension(gated) else { return }
+        guard await Self.waitForImportSuspension(gated) else { return }
         fixture.lifecycle.invalidate()
 
         let liveRemote = TestDailyRemote(userID: userID)
@@ -969,7 +1051,7 @@ final class DailySyncTests: XCTestCase {
     }
 
     @discardableResult
-    private func waitForImportSuspension(_ remote: GateRemote) async -> Bool {
+    private static func waitForImportSuspension(_ remote: GateRemote) async -> Bool {
         for _ in 0..<1_000 {
             if await remote.isImportSuspended { return true }
             await Task.yield()
@@ -980,7 +1062,7 @@ final class DailySyncTests: XCTestCase {
     }
 
     @discardableResult
-    private func waitForPushSuspension(_ remote: GateRemote) async -> Bool {
+    private static func waitForPushSuspension(_ remote: GateRemote) async -> Bool {
         for _ in 0..<1_000 {
             if await remote.isPushSuspended { return true }
             await Task.yield()
@@ -1088,6 +1170,19 @@ final class DailySyncTests: XCTestCase {
         var history = DailyClassicHistory()
         for result in results { XCTAssertTrue(history.record(result)) }
         return history
+    }
+
+    private func dailyPack() throws -> DailyWordPack {
+        try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1,
+            "id": "daily-classic-en-US-v1",
+            "scheduleVersion": 1,
+            "locale": "en-US",
+            "wordLength": 5,
+            "epochDay": day,
+            "acceptedGuesses": ["adore", "civic", "stone"],
+            "answers": ["adore"]
+        ]))
     }
 
     private func object<T: Encodable>(_ value: T) throws -> [String: Any] {

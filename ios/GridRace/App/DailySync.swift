@@ -560,14 +560,15 @@ final class DailySyncLifecycle: @unchecked Sendable {
     }
 }
 
-actor DailySyncEngine {
+@MainActor
+final class DailySyncEngine {
     private let userID: UUID
     private let store: AccountDailyClassicStore
     private let remote: any DailySyncRemote
     private let now: @Sendable () -> Date
     private let lifecycle: DailySyncLifecycle
 
-    init(
+    nonisolated init(
         userID: UUID,
         store: AccountDailyClassicStore,
         remote: any DailySyncRemote,
@@ -660,8 +661,19 @@ actor DailySyncEngine {
         var metadata = try store.loadSyncMetadata()
         switch conflict {
         case .progress(let puzzleID, let local, let cloud):
+            let localCompletionAgainstCloudProgress = local.completion != nil
+                && cloud.completion == nil
             switch resolution {
             case .useCloud:
+                if localCompletionAgainstCloudProgress {
+                    var history = try store.loadHistory()
+                    guard let current = history.result(for: puzzleID),
+                          DailySyncReconciler.activeRepresents(local, result: current),
+                          history.removeResult(for: puzzleID)
+                    else { throw DailySyncError.invalidLocalData }
+                    try lifecycle.performThrowingIfValid { try store.save(history) }
+                    metadata.pendingResultPuzzleIDs.remove(puzzleID)
+                }
                 try lifecycle.performThrowingIfValid { try store.save(cloud) }
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.remove(puzzleID)
@@ -670,7 +682,12 @@ actor DailySyncEngine {
                 try lifecycle.performThrowingIfValid { try store.save(local) }
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.insert(puzzleID)
-                if cloud.completion != nil { metadata.ignoredResults.insert(puzzleID) }
+                if cloud.completion != nil || localCompletionAgainstCloudProgress {
+                    metadata.ignoredResults.insert(puzzleID)
+                }
+                if localCompletionAgainstCloudProgress {
+                    metadata.pendingResultPuzzleIDs.remove(puzzleID)
+                }
             }
         case .completedResult(let puzzleID, let local, let cloud):
             let selected: DailyCompletedResult

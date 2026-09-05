@@ -598,6 +598,16 @@ struct DailyClassicHistory: Codable, Equatable, Sendable {
         return true
     }
 
+    @discardableResult
+    mutating func removeResult(for puzzleID: String) -> Bool {
+        guard let index = completedResults.firstIndex(where: { $0.puzzleID == puzzleID })
+        else { return false }
+        completedResults.remove(at: index)
+        statisticsAppliedPuzzleIDs = Set(completedResults.map(\.puzzleID))
+        statistics = DailyStatistics.calculate(from: completedResults)
+        return true
+    }
+
     func result(for puzzleID: String) -> DailyCompletedResult? {
         completedResults.first { $0.puzzleID == puzzleID }
     }
