@@ -473,10 +473,13 @@ enum DailySyncReconciler {
 
     static func isValidLocalProgress(_ progress: DailyClassicProgress) -> Bool {
         progress.formatVersion == 1
-            && progress.puzzleID == "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: progress.puzzleDay))"
-            && progress.puzzleNumber > 0
-            && !progress.wordPackID.isEmpty
-            && progress.scheduleVersion > 0
+            && DailyPuzzleIdentity.isValid(
+                puzzleID: progress.puzzleID,
+                puzzleNumber: progress.puzzleNumber,
+                puzzleDay: progress.puzzleDay,
+                wordPackID: progress.wordPackID,
+                scheduleVersion: progress.scheduleVersion
+            )
             && progress.acceptedGuesses.count < 6
             && progress.draft.utf8.count <= 5
             && progress.draft.utf8.allSatisfy { (65...90).contains($0) }

@@ -70,7 +70,7 @@ final class DailySyncTests: XCTestCase {
             puzzleID: puzzleID(day: day),
             puzzleNumber: 1,
             puzzleDay: day,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             guesses: [localGuess],
             outcome: .solved,
@@ -377,7 +377,7 @@ final class DailySyncTests: XCTestCase {
         let accountRoot = root.appending(path: "AccountRoot", directoryHint: .isDirectory)
         let guest = DailyClassicStore(directory: guestDirectory)
         let guestProgress = progress(words: ["civic"], draft: "ST")
-        let guestResult = result(day: day - 1, words: ["stone"])
+        let guestResult = result(day: day + 1, words: ["stone"])
         try guest.save(guestProgress)
         try guest.save(history(guestResult))
         let store = AccountDailyClassicStore(rootDirectory: accountRoot, userID: userID)
@@ -435,6 +435,40 @@ final class DailySyncTests: XCTestCase {
         let status = try await fixture.engine(remote: remote).synchronize()
         XCTAssertEqual(status, .failed(.invalidData))
         XCTAssertTrue(try fixture.store.loadHistory().completedResults.isEmpty)
+    }
+
+    func testReconcilerRejectsCloudProgressWithInconsistentIdentity() {
+        let inconsistent = DailyClassicProgress(
+            puzzleID: puzzleID(day: day),
+            puzzleNumber: 2,
+            puzzleDay: day,
+            wordPackID: "daily-classic-en-US-v1",
+            scheduleVersion: 1,
+            hardModeEnabled: false,
+            acceptedGuesses: [],
+            draft: "",
+            completion: nil
+        )
+        XCTAssertThrowsError(try DailySyncReconciler.reconcile(
+            localProgress: nil,
+            localHistory: DailyClassicHistory(),
+            incomingProgress: inconsistent,
+            incomingResults: []
+        )) { error in
+            XCTAssertEqual(error as? DailySyncError, .invalidCloudData)
+        }
+    }
+
+    func testReconcilerRejectsCloudResultOutsidePublishedSchedule() {
+        let outOfRange = result(day: DailyPuzzleIdentity.lastDay + 1, words: ["stone"])
+        XCTAssertThrowsError(try DailySyncReconciler.reconcile(
+            localProgress: nil,
+            localHistory: DailyClassicHistory(),
+            incomingProgress: nil,
+            incomingResults: [outOfRange]
+        )) { error in
+            XCTAssertEqual(error as? DailySyncError, .invalidCloudData)
+        }
     }
 
     @MainActor
@@ -904,9 +938,9 @@ final class DailySyncTests: XCTestCase {
         let puzzleDay = day ?? self.day
         return DailyClassicProgress(
             puzzleID: puzzleID(day: puzzleDay),
-            puzzleNumber: puzzleDay - self.day + 2,
+            puzzleNumber: puzzleDay - self.day + 1,
             puzzleDay: puzzleDay,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             hardModeEnabled: hardMode,
             acceptedGuesses: words.enumerated().map { index, word in
@@ -946,9 +980,9 @@ final class DailySyncTests: XCTestCase {
         }
         return DailyCompletedResult(
             puzzleID: puzzleID(day: puzzleDay),
-            puzzleNumber: puzzleDay - self.day + 2,
+            puzzleNumber: puzzleDay - self.day + 1,
             puzzleDay: puzzleDay,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             hardModeEnabled: hardMode,
             guesses: guesses,

@@ -3,7 +3,7 @@ import XCTest
 @testable import GridRace
 
 final class DailyClassicTests: XCTestCase {
-    private let epochDay = 20_000
+    private let epochDay = 20_696
     private let accepted = Set(["stone", "civic", "crane", "bloom", "mouse", "sassy", "assay"])
 
     func testUTCIdentitySelectionAndResetAreStable() throws {
@@ -13,7 +13,7 @@ final class DailyClassicTests: XCTestCase {
 
         let first = try DailyPuzzleSchedule.puzzle(at: firstDate, in: pack)
         let second = try DailyPuzzleSchedule.puzzle(at: secondDate, in: pack)
-        XCTAssertEqual(first.id, "daily-classic-2024-10-04")
+        XCTAssertEqual(first.id, "daily-classic-2026-08-31")
         XCTAssertEqual(first.number, 1)
         XCTAssertEqual(first.answer, "stone")
         XCTAssertEqual(second.number, 2)
@@ -255,6 +255,98 @@ final class DailyClassicTests: XCTestCase {
         XCTAssertThrowsError(try DailyClassicHistory.load(from: future))
     }
 
+    func testCanonicalV1IdentityRejectsInconsistentTuplesAndOutOfRangeDays() {
+        let firstID = "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay))"
+        let lastDay = DailyPuzzleIdentity.lastDay
+        let lastID = "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: lastDay))"
+        func candidate(
+            puzzleID: String,
+            puzzleNumber: Int,
+            puzzleDay: Int,
+            wordPackID: String,
+            scheduleVersion: Int,
+            completedAt: Date
+        ) -> DailyCompletedResult {
+            DailyCompletedResult(
+                puzzleID: puzzleID,
+                puzzleNumber: puzzleNumber,
+                puzzleDay: puzzleDay,
+                wordPackID: wordPackID,
+                scheduleVersion: scheduleVersion,
+                guesses: [
+                    DailyGuess(
+                        word: "civic",
+                        feedback: Array(repeating: .absent, count: 5),
+                        acceptedAt: date(day: puzzleDay)
+                    ),
+                    DailyGuess(
+                        word: "stone",
+                        feedback: Array(repeating: .correct, count: 5),
+                        acceptedAt: date(day: puzzleDay, seconds: 1)
+                    )
+                ],
+                outcome: .solved,
+                guessCount: 2,
+                completedAt: completedAt
+            )
+        }
+
+        var history = DailyClassicHistory()
+        // Structurally valid shape with a number from another schedule day.
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: firstID, puzzleNumber: 2, puzzleDay: epochDay,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: epochDay, seconds: 100)
+        )))
+        // Puzzle id names a different day than the puzzle day.
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay + 1))",
+            puzzleNumber: 1, puzzleDay: epochDay,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: epochDay, seconds: 100)
+        )))
+        // Legacy word-pack id and non-v1 schedule version.
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: firstID, puzzleNumber: 1, puzzleDay: epochDay,
+            wordPackID: "daily-classic-v1", scheduleVersion: 1,
+            completedAt: date(day: epochDay, seconds: 100)
+        )))
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: firstID, puzzleNumber: 1, puzzleDay: epochDay,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 2,
+            completedAt: date(day: epochDay, seconds: 100)
+        )))
+        // Days outside the published 725-answer schedule.
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay - 1))",
+            puzzleNumber: 0, puzzleDay: epochDay - 1,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: epochDay - 1, seconds: 100)
+        )))
+        XCTAssertFalse(history.record(candidate(
+            puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: lastDay + 1))",
+            puzzleNumber: DailyPuzzleIdentity.lastNumber + 1, puzzleDay: lastDay + 1,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: lastDay + 1, seconds: 100)
+        )))
+        XCTAssertTrue(history.completedResults.isEmpty)
+
+        // Schedule boundaries are accepted: #1 on the epoch day, #725 last.
+        XCTAssertTrue(history.record(candidate(
+            puzzleID: firstID, puzzleNumber: 1, puzzleDay: epochDay,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: epochDay, seconds: 100)
+        )))
+        XCTAssertTrue(history.record(candidate(
+            puzzleID: lastID,
+            puzzleNumber: DailyPuzzleIdentity.lastNumber,
+            puzzleDay: lastDay,
+            wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
+            completedAt: date(day: lastDay, seconds: 100)
+        )))
+        XCTAssertEqual(history.completedResults.map(\.puzzleNumber), [1, 725])
+    }
+
     func testCompletedResultReconstructsImmutableProgress() throws {
         let completed = DailyCompletedResult(
             puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay))",
@@ -361,7 +453,7 @@ final class DailyClassicTests: XCTestCase {
             puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: day))",
             puzzleNumber: day - epochDay + 1,
             puzzleDay: day,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             guesses: rows,
             outcome: outcome,

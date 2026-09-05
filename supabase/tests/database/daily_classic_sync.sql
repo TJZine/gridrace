@@ -65,7 +65,7 @@ select ok(
 set local role anon;
 select throws_ok(
   $$select public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     '[]'::jsonb, null
   )$$,
   '42501',
@@ -86,7 +86,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.import_daily_result(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     '[]'::jsonb, 'solved', 0, transaction_timestamp()
   )$$,
   '42501',
@@ -104,7 +104,7 @@ select set_config(
 
 select is(
   public.sync_daily_progress(
-    'wrong-puzzle', 1, 20696, 'daily-classic-v1', 1, false,
+    'wrong-puzzle', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), null
   ) #>> '{error,code}',
   'invalid_daily_payload',
@@ -112,7 +112,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    null, 1, 20696, 'daily-classic-v1', 1, false,
+    null, 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), null
   ) #>> '{error,code}',
   'invalid_daily_payload',
@@ -120,7 +120,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     '[{"word":"CRANE","feedback":[0,1,0,0,2],"accepted_at":"2026-08-31T12:00:00Z"}]', null
   ) #>> '{error,code}',
   'invalid_daily_payload',
@@ -128,7 +128,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), null
   ) ->> 'status',
   'inserted',
@@ -136,7 +136,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), 999
   ) ->> 'status',
   'exact',
@@ -144,7 +144,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'two'), 1
   ) ->> 'status',
   'advanced',
@@ -152,7 +152,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), 1
   ) ->> 'status',
   'server_ahead',
@@ -160,7 +160,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'reordered'), 2
   ) ->> 'status',
   'conflict',
@@ -168,7 +168,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'divergent'), 2
   ) ->> 'status',
   'conflict',
@@ -176,7 +176,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'three'), 1
   ) ->> 'status',
   'conflict',
@@ -184,7 +184,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'three'), 2
   ) #>> '{progress,revision}',
   '3',
@@ -193,7 +193,7 @@ select is(
 
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'empty'), null
   ) ->> 'status',
   'inserted',
@@ -201,7 +201,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-v1', 1, true,
+    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-en-US-v1', 1, true,
     (select guesses from daily_payloads where name = 'empty'), 99
   ) ->> 'status',
   'conflict',
@@ -209,7 +209,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-v1', 1, true,
+    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-en-US-v1', 1, true,
     (select guesses from daily_payloads where name = 'empty'), 1
   ) ->> 'status',
   'advanced',
@@ -217,7 +217,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-v1', 1, true,
+    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-en-US-v1', 1, true,
     (select guesses from daily_payloads where name = 'first'), 2
   ) ->> 'status',
   'advanced',
@@ -225,7 +225,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-01', 2, 20697, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), 3
   ) ->> 'status',
   'conflict',
@@ -247,7 +247,7 @@ select throws_ok(
       client_completed_at
     ) values (
       '30000000-0000-0000-0000-000000000001', 'daily-classic-2026-08-31',
-      1, 20696, 'daily-classic-v1', 1, false, '[]', 'solved', 0,
+      1, 20696, 'daily-classic-en-US-v1', 1, false, '[]', 'solved', 0,
       transaction_timestamp()
     )$$,
   '42501',
@@ -266,7 +266,7 @@ select is((select count(*) from public.daily_progress), 0::bigint, 'unrelated us
 select is((select count(*) from public.daily_imported_results), 0::bigint, 'unrelated user reads no owner results');
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-08-31', 1, 20696, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'divergent'), null
   ) ->> 'status',
   'inserted',
@@ -283,7 +283,7 @@ select set_config(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'two'), null
   ) ->> 'status',
   'inserted',
@@ -291,7 +291,7 @@ select is(
 );
 select is(
   public.import_daily_result(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'solved'), 'solved', 3,
     '2026-08-31T12:03:00Z'
   ) ->> 'status',
@@ -305,7 +305,7 @@ select is(
 );
 select is(
   public.import_daily_result(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'solved'), 'solved', 3,
     '2026-08-31T12:03:00Z'
   ) ->> 'status',
@@ -322,7 +322,7 @@ select throws_ok(
 );
 select is(
   public.import_daily_result(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, true,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, true,
     (select guesses from daily_payloads where name = 'solved'), 'solved', 3,
     '2026-08-31T12:03:00Z'
   ) ->> 'status',
@@ -331,7 +331,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), null
   ) ->> 'status',
   'completed',
@@ -339,7 +339,7 @@ select is(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-02', 3, 20698, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'divergent'), null
   ) ->> 'status',
   'conflict',
@@ -380,7 +380,7 @@ select set_config(
 );
 select is(
   public.sync_daily_progress(
-    'daily-classic-2026-09-03', 4, 20699, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-03', 4, 20699, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'first'), null
   ) ->> 'status',
   'inserted',
@@ -388,7 +388,7 @@ select is(
 );
 select is(
   public.import_daily_result(
-    'daily-classic-2026-09-04', 5, 20700, 'daily-classic-v1', 1, false,
+    'daily-classic-2026-09-04', 5, 20700, 'daily-classic-en-US-v1', 1, false,
     (select guesses from daily_payloads where name = 'solved'), 'solved', 3,
     '2026-08-31T12:03:00Z'
   ) ->> 'status',

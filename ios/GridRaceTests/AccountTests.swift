@@ -437,7 +437,7 @@ final class DailySyncLifecycleTests: XCTestCase {
             puzzleID: "daily-classic-2026-08-31",
             puzzleNumber: 1,
             puzzleDay: 20_696,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             hardModeEnabled: false,
             acceptedGuesses: [],
@@ -554,7 +554,7 @@ final class DailySyncLifecycleTests: XCTestCase {
             puzzleID: "daily-classic-2026-08-31",
             puzzleNumber: 1,
             puzzleDay: 20_696,
-            wordPackID: "test-v1",
+            wordPackID: "daily-classic-en-US-v1",
             scheduleVersion: 1,
             guesses: [DailyGuess(
                 word: "stone",

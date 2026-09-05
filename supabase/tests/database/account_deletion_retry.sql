@@ -30,7 +30,7 @@ values (
   'daily-classic-2026-08-31',
   1,
   20696,
-  'daily-classic-v1',
+  'daily-classic-en-US-v1',
   1,
   false,
   '[]'

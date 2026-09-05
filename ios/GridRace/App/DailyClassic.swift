@@ -48,14 +48,45 @@ struct DailyWordPack: Decodable, Equatable, Sendable {
     }
 
     static func validateBundledIdentity(_ pack: DailyWordPack) throws {
-        guard pack.id == "daily-classic-en-US-v1",
-              pack.scheduleVersion == 1,
-              pack.epochDay == 20_696
+        guard pack.id == DailyPuzzleIdentity.wordPackID,
+              pack.scheduleVersion == DailyPuzzleIdentity.scheduleVersion,
+              pack.epochDay == DailyPuzzleIdentity.epochDay
         else { throw DailyClassicError.invalidWordPack }
     }
 
     private static func isWord(_ word: String) -> Bool {
         word.utf8.count == 5 && word.utf8.allSatisfy { (97...122).contains($0) }
+    }
+}
+
+/// Canonical Daily Classic v1 puzzle identity.
+///
+/// Schedule source: shared/word-packs/daily-classic-en-US-v1 (schedule
+/// version 1, epoch day 20696 = 2026-08-31, 725 published answers). Puzzle
+/// days 20696...21420 carry puzzle numbers 1...725, and the puzzle id is the
+/// UTC calendar date of the puzzle day. There is no v2 or generalized
+/// identity framework; a future schedule needs an explicit contract change.
+enum DailyPuzzleIdentity {
+    static let wordPackID = "daily-classic-en-US-v1"
+    static let scheduleVersion = 1
+    static let epochDay = 20_696
+    static let answerCount = 725
+    static let lastDay = epochDay + answerCount - 1
+    static let lastNumber = answerCount
+
+    static func isValid(
+        puzzleID: String,
+        puzzleNumber: Int,
+        puzzleDay: Int,
+        wordPackID: String,
+        scheduleVersion: Int
+    ) -> Bool {
+        guard wordPackID == self.wordPackID,
+              scheduleVersion == self.scheduleVersion,
+              (epochDay...lastDay).contains(puzzleDay),
+              puzzleNumber == puzzleDay - epochDay + 1
+        else { return false }
+        return puzzleID == "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: puzzleDay))"
     }
 }
 
@@ -458,13 +489,14 @@ struct DailyCompletedResult: Codable, Equatable, Sendable {
     }
 
     fileprivate var isStructurallyValid: Bool {
-        guard (0...100_000).contains(puzzleDay) else { return false }
-        let dateID = "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: puzzleDay))"
         let solved = guesses.last?.feedback.allSatisfy { $0 == .correct } == true
-        return puzzleID == dateID
-            && puzzleNumber > 0
-            && !wordPackID.isEmpty
-            && scheduleVersion > 0
+        return DailyPuzzleIdentity.isValid(
+            puzzleID: puzzleID,
+            puzzleNumber: puzzleNumber,
+            puzzleDay: puzzleDay,
+            wordPackID: wordPackID,
+            scheduleVersion: scheduleVersion
+        )
             && guessCount == guesses.count
             && (1...6).contains(guessCount)
             && guesses.allSatisfy {
