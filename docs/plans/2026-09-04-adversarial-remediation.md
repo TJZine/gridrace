@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: Adversarial review remediation for synchronization, data safety, backend privacy, verification, and delivery controls
 Owner: Primary orchestrator
 Started: 2026-09-04
@@ -16,9 +16,9 @@ exhausted, native Codex worker/reviewer roles took over the remaining work.
 # Current snapshot
 
 - Review verdicts: five Accept, four Accept with modification, one Defer.
-- GR-01..09 are implemented and locally accepted through U-07.
-- Live multiplayer remains paused until CI, integrated review, and closeout gates
-  complete; the formal hosted/credential-dependent proofs remain explicit.
+- GR-01..10 are implemented and locally accepted.
+- The local CI, integrated review, remediation, and closeout gates are complete;
+  formal hosted/credential-dependent proofs remain explicit follow-ups.
 - GR-09 is a horizon defect but is included at maintainer direction.
 - GR-10 is implemented locally; the first hosted run and default-branch protection
   remain unverified external follow-ups.
@@ -52,8 +52,8 @@ exhausted, native Codex worker/reviewer roles took over the remaining work.
 | U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Accepted |
 | U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Accepted |
 | U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Accepted locally; hosted run pending |
-| R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | In progress |
-| C-01 Closeout | all | plan, final gates, commit record | R-01 | Pending |
+| R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | Accepted after IR-01..04 remediation |
+| C-01 Closeout | all | plan, final gates, commit record | R-01 | Accepted |
 
 # Integration order and serialization
 
@@ -115,10 +115,10 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 
 | ID | Severity | Disposition | Remediation and proof |
 | --- | --- | --- | --- |
-| IR-01 | High | Accept | Serialize sync-engine local reconciliation with MainActor-owned gameplay writes and add a deterministic stale-response interleaving regression. |
-| IR-02 | Medium | Accept | Give completed-local/active-cloud conflict choices stable semantics, including history/pending cleanup or explicit upload suppression, and prove immediate resync convergence for both choices. |
-| IR-03 | Medium | Accept | Revalidate both daily identity CHECK constraints after replacing their validation function and prove pre-existing invalid rows block constraint recreation. |
-| IR-04 | Low | Accept | Correct the stale GR-10 plan snapshot without claiming hosted CI or branch-protection evidence. |
+| IR-01 | High | Accepted, fixed | `fb60658` serializes sync reconciliation with MainActor gameplay writes and proves a real gameplay mutation survives a suspended stale response. |
+| IR-02 | Medium | Accepted, fixed | `fb60658` gives both completed-local/active-cloud choices stable semantics and proves immediate resync convergence. |
+| IR-03 | Medium | Accepted, fixed | `f4cfa8f` rebuilds both CHECK constraints and proves pre-existing invalid rows block recreation. |
+| IR-04 | Low | Accepted, fixed | `f7d2399` corrects the stale GR-10 snapshot without claiming hosted evidence. |
 
 # Muse sessions and commit record
 
@@ -132,6 +132,8 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | U-06 | `01a06e0e-592c-70e0-9299-54be34b87361` | `.muse/worktrees/20260904-7c02` | `e991dd7` (integrated as `ecf7ae4`) | Accepted; session retained |
 | U-07 | Muse `01a06ef9-4ccf-7b43-9425-d07b8b51c5db`; Codex `/root/u07_worker`; review `/root/u07_reviewer` | `.muse/worktrees/20260904-cc66` | `e565580` (integrated as `85764de`) | Accepted after native takeover; reviewer reported no findings |
 | U-08 | Codex `/root/u08_worker`; review `/root/u08_reviewer` | `/tmp/gridrace-u08-ci` / `dev/u08-ci` | `553f196` (integrated as `725979d`) | Accepted locally; reviewer reported no findings; hosted run unverified |
+| IR-01/02 | Codex `/root/ir_sync_worker`; primary inspection | `/tmp/gridrace-review-sync` / `dev/review-sync-fixes` | `dffaf73` (integrated as `fb60658`); cleanup `863907a` | Accepted; focused and full iOS proof passed |
+| IR-03 | Codex `/root/ir_identity_worker`; primary inspection | `/tmp/gridrace-review-identity` / `dev/review-identity-fix` | `a3f90ff` (integrated as `f4cfa8f`) | Accepted; reset, pgTAP, and lint passed |
 
 # Verification record
 
@@ -163,9 +165,32 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   equivalent gate passed. The fresh reviewer reported no findings. No hosted run has
   occurred, so runner provisioning, time limits, emitted status checks, and branch
   protection remain explicitly unverified external evidence.
+- Integrated review: one fresh independent reviewer found four actionable issues;
+  all were reproduced, accepted, and remediated. Swift reconciliation now shares
+  MainActor ownership with gameplay writes, completed-local/active-cloud choices
+  converge on immediate resync, both identity constraints rescan deployed rows, and
+  the stale GR-10 plan statement is corrected.
+- Final affected gates on integrated source: clean Supabase reset passed; all five
+  pgTAP files passed with 214 assertions; database lint exited zero with only known
+  historical warnings; the full iOS suite passed 111 tests with one expected local
+  credentials skip and zero failures; and a clean Debug simulator build passed.
+- The earlier complete canonical wave on the same integrated U-01..08 source passed
+  word-pack and seed determinism, TypeScript rules (3 tests), Edge fmt/lint/check
+  and tests (89 tests), Supabase reset/pgTAP/lint, the full iOS suite, clean Debug
+  build, and structural/secret inspection. Final remediation touched only Swift,
+  SQL, tests, and this tracker, so those affected gates were rerun above.
 
-# Next action
+# Remaining follow-ups
 
-Remediate accepted integrated-review findings IR-01..03 with bounded native workers,
-run affected canonical gates, record the completed gate wave, and close the plan
-without claiming hosted CI or the deferred visual/VoiceOver matrix.
+- Observe the first hosted GitHub Actions run and decide which emitted checks branch
+  protection should require; repository work did not authorize remote settings.
+- Run hosted Realtime subscription proof and real Apple/provider credential paths
+  when those environments are available.
+- Revalidate the superseded UI plan's formal visual/VoiceOver matrix separately, as
+  the maintainer requested; no pass is claimed here.
+
+# Closeout
+
+All locally actionable accepted findings are implemented and verified. The latest
+completed content checkpoints are `f4cfa8f`, `fb60658`, and `863907a`. Tracker
+closeout is this commit; the external proofs above do not reactivate this plan.
