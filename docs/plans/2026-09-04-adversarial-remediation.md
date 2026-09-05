@@ -50,8 +50,8 @@ exhausted, native Codex worker/reviewer roles took over the remaining work.
 | U-05 Edge assurance | GR-07 | Edge handler tests and Edge command canon in the runbook | U-03 for final gate set | Accepted |
 | U-06 Daily identity | GR-08 | `202609040002_daily_identity_v1.sql`, a new focused pgTAP file, Swift identity validation and focused tests | U-01 integrated first | Accepted |
 | U-07 Pagination | GR-09 | `SupabaseDailySyncRemote.swift` and focused remote/sync tests | U-01 integrated first | Accepted |
-| U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Ready |
-| R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | Pending |
+| U-08 CI | GR-10 | minimal `.github/workflows` and command documentation only | U-03, U-05, U-04, U-06, U-07 | Accepted locally; hosted run pending |
+| R-01 Integrated review | all | read-only net-diff and contract audit | U-01..08 | In progress |
 | C-01 Closeout | all | plan, final gates, commit record | R-01 | Pending |
 
 # Integration order and serialization
@@ -121,7 +121,7 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 | U-05 | `01a06dd2-7210-76a1-a6b0-32f43e917425` | `.muse/worktrees/20260904-315a` | `6b07074` (integrated as `ddde194`) | Accepted after test-name follow-up; session retained |
 | U-06 | `01a06e0e-592c-70e0-9299-54be34b87361` | `.muse/worktrees/20260904-7c02` | `e991dd7` (integrated as `ecf7ae4`) | Accepted; session retained |
 | U-07 | Muse `01a06ef9-4ccf-7b43-9425-d07b8b51c5db`; Codex `/root/u07_worker`; review `/root/u07_reviewer` | `.muse/worktrees/20260904-cc66` | `e565580` (integrated as `85764de`) | Accepted after native takeover; reviewer reported no findings |
-| U-08 | Pending | Pending | Pending | Not dispatched |
+| U-08 | Codex `/root/u08_worker`; review `/root/u08_reviewer` | `/tmp/gridrace-u08-ci` / `dev/u08-ci` | `553f196` (integrated as `725979d`) | Accepted locally; reviewer reported no findings; hosted run unverified |
 
 # Verification record
 
@@ -146,9 +146,16 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
   `(puzzle_day, puzzle_id)` keyset pagination and a 1,001-result drift regression.
   The fresh reviewer reported no actionable findings. Primary focused proof passed,
   then all 38 `DailySyncTests` passed with one expected local-credentials skip.
+- U-08: the native worker added one two-job workflow with read-only permissions,
+  SHA-pinned official actions, lockfile-pinned Supabase CLI, portable simulator
+  selection, finite timeouts, and no secrets, deployment, or cache. YAML parsing,
+  upstream action-tag SHA checks, official runner-image inspection, and every local
+  equivalent gate passed. The fresh reviewer reported no findings. No hosted run has
+  occurred, so runner provisioning, time limits, emitted status checks, and branch
+  protection remain explicitly unverified external evidence.
 
 # Next action
 
-Implement U-08 with a bounded native worker after proving its fresh-runner bootstrap
-commands, then run one fresh integrated read-only review and the complete canonical
-closeout gate set.
+Run one fresh integrated read-only net-diff review across U-01..08, adjudicate any
+material findings, then record the already-completed canonical gate wave and close
+the plan without claiming hosted CI or the deferred visual/VoiceOver matrix.
