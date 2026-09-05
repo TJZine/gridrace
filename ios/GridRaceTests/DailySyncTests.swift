@@ -898,6 +898,62 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(liveStoredCount, 1)
     }
 
+    // MARK: - U-07 remediation regression (GR-09)
+
+    func testImportedResultsPaginationReturns1001ResultsExactlyOnceInStableOrder() async throws {
+        let total = 1_001
+        let pageSize = 1_000
+        var rows: [DailyImportedResultDTO] = []
+        rows.reserveCapacity(total)
+        for index in 0..<total {
+            let puzzleDay = day + index / 2
+            rows.append(DailyImportedResultDTO(
+                userID: userID,
+                puzzleID: "\(puzzleID(day: puzzleDay))-\(String(format: "%04d", index))",
+                puzzleNumber: index + 1,
+                puzzleDay: puzzleDay,
+                wordPackID: "daily-classic-en-US-v1",
+                scheduleVersion: 1,
+                hardModeEnabled: false,
+                guesses: [],
+                outcome: .solved,
+                guessCount: 0,
+                clientCompletedAt: fixedDate(100),
+                serverImportedAt: fixedDate(600)
+            ))
+        }
+        let expected = rows.sorted {
+            if $0.puzzleDay != $1.puzzleDay { return $0.puzzleDay < $1.puzzleDay }
+            return $0.puzzleID < $1.puzzleID
+        }
+        let store = PaginatedResultsStore(rows: expected)
+        let client = SupabaseClient(
+            supabaseURL: URL(string: "http://127.0.0.1:54321")!,
+            supabaseKey: "test-key"
+        )
+        let remote = SupabaseDailySyncRemote(
+            client: client,
+            pageSize: pageSize,
+            fetchProgress: { [] },
+            fetchResultsPage: { cursor, limit in
+                try await store.page(after: cursor, limit: limit)
+            }
+        )
+
+        let snapshot = try await remote.pull()
+
+        XCTAssertNil(snapshot.progress)
+        XCTAssertEqual(snapshot.importedResults.count, total)
+        XCTAssertEqual(snapshot.importedResults.map(\.puzzleID), expected.map(\.puzzleID))
+        XCTAssertEqual(Set(snapshot.importedResults.map(\.puzzleID)).count, total)
+        let calls = await store.calls()
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertNil(calls[0].cursor)
+        XCTAssertEqual(calls[0].limit, pageSize)
+        XCTAssertEqual(calls[1].cursor, DailyImportedResultsCursor(expected[pageSize - 1]))
+        XCTAssertEqual(calls[1].limit, pageSize)
+    }
+
     private func XCTAssertThrowsCancellation(
         _ expression: @autoclosure () async throws -> Void,
         file: StaticString = #filePath,
@@ -1325,4 +1381,45 @@ private actor GateRemote: DailySyncRemote {
             serverUpdatedAt: serverDate
         )
     }
+}
+
+/// In-memory page server for the GR-09 pagination proof. After the first page it
+/// inserts an older row, reproducing the drift that offset pagination permits.
+private actor PaginatedResultsStore {
+    private var rows: [DailyImportedResultDTO]
+    private var recorded: [(cursor: DailyImportedResultsCursor?, limit: Int)] = []
+
+    init(rows: [DailyImportedResultDTO]) {
+        self.rows = rows
+    }
+
+    func page(after cursor: DailyImportedResultsCursor?, limit: Int) throws -> [DailyImportedResultDTO] {
+        recorded.append((cursor: cursor, limit: limit))
+        guard limit > 0 else {
+            throw DailySyncRemoteError.unavailable
+        }
+        let page = rows.filter {
+            guard let cursor else { return true }
+            return cursor.precedes(DailyImportedResultsCursor($0))
+        }.prefix(limit)
+        if cursor == nil, let first = rows.first {
+            rows.insert(DailyImportedResultDTO(
+                userID: first.userID,
+                puzzleID: "daily-classic-0000-00-00",
+                puzzleNumber: 0,
+                puzzleDay: first.puzzleDay - 1,
+                wordPackID: first.wordPackID,
+                scheduleVersion: first.scheduleVersion,
+                hardModeEnabled: false,
+                guesses: [],
+                outcome: .solved,
+                guessCount: 0,
+                clientCompletedAt: first.clientCompletedAt,
+                serverImportedAt: first.serverImportedAt
+            ), at: 0)
+        }
+        return Array(page)
+    }
+
+    func calls() -> [(cursor: DailyImportedResultsCursor?, limit: Int)] { recorded }
 }
