@@ -184,6 +184,11 @@ def main() -> int:
         action="store_true",
         help="replace manifests with deterministic values after validating packs",
     )
+    parser.add_argument(
+        "--checked-in-only",
+        action="store_true",
+        help="validate checked-in packs and manifests without the pinned source corpus",
+    )
     args = parser.parse_args()
 
     try:
@@ -191,16 +196,17 @@ def main() -> int:
             "development-en-US-v1", validate_development, args.write_manifest
         )
         daily = validate_one("daily-classic-en-US-v1", validate_daily, args.write_manifest)
-        generated_pack, generated_manifest = build_daily_pack()
-        require(
-            (PACKS / "daily-classic-en-US-v1.json").read_bytes() == generated_pack,
-            "daily pack is stale; run scripts/generate_daily_word_pack.py",
-        )
-        require(
-            (PACKS / "daily-classic-en-US-v1.manifest.json").read_bytes()
-            == generated_manifest,
-            "daily manifest differs from deterministic generation",
-        )
+        if not args.checked_in_only:
+            generated_pack, generated_manifest = build_daily_pack()
+            require(
+                (PACKS / "daily-classic-en-US-v1.json").read_bytes() == generated_pack,
+                "daily pack is stale; run scripts/generate_daily_word_pack.py",
+            )
+            require(
+                (PACKS / "daily-classic-en-US-v1.manifest.json").read_bytes()
+                == generated_manifest,
+                "daily manifest differs from deterministic generation",
+            )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"word-pack check failed: {error}", file=sys.stderr)
         return 1
