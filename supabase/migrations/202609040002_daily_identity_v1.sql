@@ -43,4 +43,31 @@ as $$
   end;
 $$;
 
+-- Replacing a function used by an already validated CHECK constraint does not
+-- rescan existing rows. Recreate both constraints so this forward migration
+-- fails atomically if data accepted by the old predicate violates v1 identity.
+alter table public.daily_progress
+  drop constraint daily_progress_identity_check,
+  add constraint daily_progress_identity_check check (
+    private.valid_daily_identity(
+      puzzle_id,
+      puzzle_number,
+      puzzle_day,
+      word_pack_id,
+      schedule_version
+    )
+  );
+
+alter table public.daily_imported_results
+  drop constraint daily_imported_results_identity_check,
+  add constraint daily_imported_results_identity_check check (
+    private.valid_daily_identity(
+      puzzle_id,
+      puzzle_number,
+      puzzle_day,
+      word_pack_id,
+      schedule_version
+    )
+  );
+
 commit;

@@ -116,6 +116,70 @@ select is(
   'null puzzle number is rejected'
 );
 
+-- Exercise the populated forward-upgrade path: once an old constraint is
+-- absent, a row accepted by the former loose identity predicate must prevent
+-- the stricter constraint from being recreated as validated.
+alter table public.daily_progress
+  drop constraint daily_progress_identity_check;
+insert into public.daily_progress (
+  user_id, puzzle_id, puzzle_number, puzzle_day, word_pack_id,
+  schedule_version, hard_mode_enabled, guesses
+) values (
+  '50000000-0000-0000-0000-000000000001', 'daily-classic-2026-08-31',
+  2, 20696, 'daily-classic-en-US-v1', 1, false, '[]'
+);
+select throws_ok(
+  $$alter table public.daily_progress
+      add constraint daily_progress_identity_check check (
+        private.valid_daily_identity(
+          puzzle_id, puzzle_number, puzzle_day, word_pack_id, schedule_version
+        )
+      )$$,
+  '23514',
+  'check constraint "daily_progress_identity_check" of relation "daily_progress" is violated by some row',
+  'pre-existing invalid progress prevents identity constraint recreation'
+);
+delete from public.daily_progress
+where user_id = '50000000-0000-0000-0000-000000000001';
+alter table public.daily_progress
+  add constraint daily_progress_identity_check check (
+    private.valid_daily_identity(
+      puzzle_id, puzzle_number, puzzle_day, word_pack_id, schedule_version
+    )
+  );
+
+alter table public.daily_imported_results
+  drop constraint daily_imported_results_identity_check;
+insert into public.daily_imported_results (
+  user_id, puzzle_id, puzzle_number, puzzle_day, word_pack_id,
+  schedule_version, hard_mode_enabled, guesses, outcome, guess_count,
+  client_completed_at
+) values (
+  '50000000-0000-0000-0000-000000000001', 'daily-classic-2026-08-31',
+  2, 20696, 'daily-classic-en-US-v1', 1, false,
+  '[{"word":"stone","feedback":[2,2,2,2,2],"accepted_at":"2026-08-31T12:00:00Z"}]',
+  'solved', 1, '2026-08-31T12:01:00Z'
+);
+select throws_ok(
+  $$alter table public.daily_imported_results
+      add constraint daily_imported_results_identity_check check (
+        private.valid_daily_identity(
+          puzzle_id, puzzle_number, puzzle_day, word_pack_id, schedule_version
+        )
+      )$$,
+  '23514',
+  'check constraint "daily_imported_results_identity_check" of relation "daily_imported_results" is violated by some row',
+  'pre-existing invalid result prevents identity constraint recreation'
+);
+delete from public.daily_imported_results
+where user_id = '50000000-0000-0000-0000-000000000001';
+alter table public.daily_imported_results
+  add constraint daily_imported_results_identity_check check (
+    private.valid_daily_identity(
+      puzzle_id, puzzle_number, puzzle_day, word_pack_id, schedule_version
+    )
+  );
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
