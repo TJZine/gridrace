@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [dev/classic-mode]
+  pull_request:
+    branches: [dev/classic-mode]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.20.2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.9.5
+      - run: npm ci
+      - name: Verify generated data
+        run: |
+          python3 scripts/check_word_pack.py
+          npm run check:seed
+      - name: Verify shared rules
+        run: |
+          deno fmt --check rules/typescript
+          deno lint rules/typescript
+          deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
+          deno test --allow-read rules/typescript/evaluator_test.ts
+      - name: Verify Edge Functions
+        run: |
+          deno fmt --check supabase/functions
+          deno lint supabase/functions
+          deno check --config supabase/functions/deno.json \
+            supabase/functions/_shared/command.ts \
+            supabase/functions/create-match/index.ts \
+            supabase/functions/create-match/index_test.ts \
+            supabase/functions/join-match/index.ts \
+            supabase/functions/join-match/index_test.ts \
+            supabase/functions/start-match/index.ts \
+            supabase/functions/start-match/index_test.ts \
+            supabase/functions/submit-guess/index.ts \
+            supabase/functions/submit-guess/index_test.ts \
+            supabase/functions/match-snapshot/index.ts \
+            supabase/functions/match-snapshot/index_test.ts \
+            supabase/functions/delete-account/index.ts \
+            supabase/functions/delete-account/index_test.ts
+          deno test --config supabase/functions/deno.json supabase/functions/
+      - name: Verify database
+        run: |
+          npx --no-install supabase start
+          npx --no-install supabase db reset
+          npx --no-install supabase test db
+          npx --no-install supabase db lint --local --schema public,private --level warning --fail-on error
+
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Test
+        run: >-
+          xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
+          -derivedDataPath "$RUNNER_TEMP/GridRaceDerivedData-test" test
+      - name: Clean build
+        run: >-
+          xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
+          -derivedDataPath "$RUNNER_TEMP/GridRaceDerivedData-build" clean build

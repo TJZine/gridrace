@@ -130,6 +130,8 @@ git diff --cached --check
 git diff --cached --stat
 git log -1 --oneline
 python3 scripts/check_word_pack.py
+npm ci
+npm run check:seed
 deno fmt --check rules/typescript
 deno lint rules/typescript
 deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
@@ -151,9 +153,11 @@ deno check --config supabase/functions/deno.json \
   supabase/functions/delete-account/index.ts \
   supabase/functions/delete-account/index_test.ts
 deno test --config supabase/functions/deno.json supabase/functions/
-supabase db reset
-supabase test db
-supabase db lint --local --schema public,private --level warning --fail-on error
+npx --no-install supabase --version
+npx --no-install supabase start
+npx --no-install supabase db reset
+npx --no-install supabase test db
+npx --no-install supabase db lint --local --schema public,private --level warning --fail-on error
 xcodebuild -project ios/GridRace.xcodeproj -list
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
@@ -170,10 +174,21 @@ concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
 The checked-in project currently proves these Deno, local Supabase, and Xcode commands
-with Deno 2.9.5, Supabase CLI 2.115.0, Xcode 26.6, the installed iOS 26.5 runtime,
+with Deno 2.9.5, the lockfile-pinned Supabase CLI 2.116.0, Xcode 26.6, the
+installed iOS 26.5 runtime,
 and the named iPhone 17 Pro simulator. The simulator UUID is local toolchain state:
 rediscover it with the proved destination commands before reusing the build or test
-command on another machine. No remote deployment or CI command is canonical yet.
+command on another machine.
+
+The checked-in [CI workflow](../.github/workflows/ci.yml) runs the same
+generated-data, shared-rule, Edge Function, local-database, iOS test, and Debug-build
+gates on pushes and pull requests for `dev/classic-mode`, with an explicit manual
+trigger. It pins Node 20.20.2, Deno 2.9.5, the Supabase CLI lockfile, and every action
+to a full commit SHA. The iOS job selects Xcode 26.6 and the iOS 26.5 iPhone 17 Pro
+simulator by name rather than copying a machine-local UUID. Checking in the workflow
+proves only its configuration: a passing hosted run remains unverified until GitHub
+executes it. Requiring that run through branch protection is an external
+repository-administration follow-up, not part of this code change.
 
 ### Candidate gates to prove and promote
 
@@ -188,14 +203,13 @@ Expected gate families are:
 | --- | --- | --- |
 | iOS build and tests | Proved above for the checked-in `GridRace` project and scheme | Rediscover the destination UUID when the supported local simulator changes. |
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
-| Supabase local stack | Pinned local CLI start, reset-from-zero, database lint, and database tests | Migrations and seed rebuild a clean local database; pgTAP/RLS tests pass, including negative users. |
 | Edge Functions | Proved above for the six checked-in command handlers and their tests | Run from the repository root with the explicit `--config supabase/functions/deno.json` shown above; `fmt` and `lint` need no config. |
 | Word pack | `python3 scripts/check_word_pack.py` | Proved locally against the curated source and deterministic manifest. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
-Exact Supabase, database, and CI command spellings remain undefined
-until those surfaces exist. Never invent them in a plan or CI workflow. Record a
-missing gate as “not available” or “documented only,” not passed.
+Remote deployment commands remain undefined until that surface exists. Never invent
+them in a plan or workflow. Record a missing gate as “not available” or “documented
+only,” not passed.
 
 ## Risk tiers and verification
 
