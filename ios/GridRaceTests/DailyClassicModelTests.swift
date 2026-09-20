@@ -207,6 +207,100 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertNoThrow(try guestStore.resetGuestDailyData())
     }
 
+    func testPreviousStreakFirstEverSolve() throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 1)
+    }
+
+    func testPreviousStreakConsecutiveSolve() throws {
+        let fixture = try Fixture()
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+        fixture.type("stone", into: model)
+        model.submitGuess()
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+        XCTAssertEqual(model.displayedCurrentStreak, 2)
+    }
+
+    func testPreviousStreakMissedDayResetsToZero() throws {
+        let fixture = try Fixture()
+        let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1,
+            "id": "daily-classic-en-US-v1",
+            "scheduleVersion": 1,
+            "locale": "en-US",
+            "wordLength": 5,
+            "epochDay": fixture.epochDay,
+            "acceptedGuesses": ["adore", "civic", "crane", "stone"],
+            "answers": ["adore", "civic", "crane", "stone"]
+        ]))
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try DailyClassicModel(
+            pack: pack,
+            store: DailyClassicStore(directory: fixture.directory),
+            defaults: fixture.defaults,
+            now: { now }
+        )
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 2, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.answer, "crane")
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 0)
+        fixture.type("crane", into: model)
+        model.submitGuess()
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 1)
+    }
+
+    func testPreviousStreakSurvivesFailedCurrentPuzzle() throws {
+        let fixture = try Fixture()
+        let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1,
+            "id": "daily-classic-en-US-v1",
+            "scheduleVersion": 1,
+            "locale": "en-US",
+            "wordLength": 5,
+            "epochDay": fixture.epochDay,
+            "acceptedGuesses": ["adore", "civic", "crane", "stone"],
+            "answers": ["adore", "civic", "crane", "stone"]
+        ]))
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try DailyClassicModel(
+            pack: pack,
+            store: DailyClassicStore(directory: fixture.directory),
+            defaults: fixture.defaults,
+            now: { now }
+        )
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.answer, "civic")
+        for _ in 0..<6 {
+            fixture.type("stone", into: model)
+            model.submitGuess()
+        }
+        XCTAssertEqual(model.game.completion?.outcome, .failed)
+        XCTAssertEqual(model.displayedCurrentStreak, 0)
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+    }
+
     func testTerminalPersistenceRetriesAfterBothWritesFail() throws {
         let fixture = try Fixture()
         let store = FailingStore()

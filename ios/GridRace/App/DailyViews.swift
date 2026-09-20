@@ -79,6 +79,7 @@ struct DailyAppView: View {
 struct DailyHomeView: View {
     @Bindable var model: DailyClassicModel
     @Bindable var account: AccountModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let syncMessage: String?
     let isDailyPlayable: Bool
     let retryDailyStorage: () -> Void
@@ -114,71 +115,89 @@ struct DailyHomeView: View {
     }
 
     private var brandHeader: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "flag.checkered.2.crossed")
-                .font(.system(size: 44, weight: .black))
-                .foregroundStyle(Color.raceIndigo)
-                .accessibilityHidden(true)
-            Text("GRIDRACE")
-                .font(.system(.largeTitle, design: .rounded, weight: .black))
-                .tracking(1.5)
-            Text("One grid. One day. Make every row count.")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 2) {
+            HStack(spacing: 8) {
+                Image(systemName: "flag.checkered.2.crossed")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color.raceIndigo)
+                    .accessibilityHidden(true)
+                Text("GRIDRACE")
+                    .font(.title3.bold())
+                    .tracking(1.5)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("GridRace")
+            // Only this decorative brand row is capped at accessibility
+            // sizes, so the flag and word stay on one compact line while
+            // Daily, account, Learn, and game content keep scaling.
+            .dynamicTypeSize(dynamicTypeSize.isAccessibilitySize ? .large : dynamicTypeSize)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text("One grid. One day. Make every row count.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private var dailyCard: some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("DAILY CLASSIC")
-                        .font(.caption.weight(.black))
-                        .tracking(1.2)
-                        .foregroundStyle(Color.raceIndigo)
-                    Text("Puzzle #\(model.puzzle.number)")
-                        .font(.title2.bold())
-                    Label(model.homeStatus.title, systemImage: model.homeStatus.symbol)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            // Brand signature lane edge: fixed indigo, never a status color.
+            Color.raceIndigo
+                .frame(width: 5)
+                .accessibilityHidden(true)
+            VStack(spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("DAILY CLASSIC")
+                            .font(.caption.weight(.black))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.raceIndigo)
+                        Text("Puzzle #\(model.puzzle.number)")
+                            .font(.title2.bold())
+                        Label(model.homeStatus.title, systemImage: model.homeStatus.symbol)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    MiniRaceGrid(rows: model.game.rows)
+                        .frame(width: 82)
                 }
-                Spacer()
-                MiniRaceGrid(rows: model.game.rows)
-                    .frame(width: 82)
-            }
 
-            if isDailyPlayable {
-                NavigationLink(value: AppRoute.daily) {
-                    Text(model.homeStatus.action)
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            } else {
-                Text("Account storage must be available before this puzzle can be played.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Retry account storage", action: retryDailyStorage)
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 48)
+                if isDailyPlayable {
+                    NavigationLink(value: AppRoute.daily) {
+                        Text(model.homeStatus.action)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-            }
+                } else {
+                    Text("Account storage must be available before this puzzle can be played.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Retry account storage", action: retryDailyStorage)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
 
-            if model.game.isComplete {
-                NextPuzzleLabel(reset: model.nextReset)
-            } else if model.settings.hardModeEnabled {
-                Label("Hard Mode", systemImage: "shield.checkered")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                if model.game.isComplete {
+                    NextPuzzleLabel(reset: model.nextReset)
+                } else if model.settings.hardModeEnabled {
+                    Label("Hard Mode", systemImage: "shield.checkered")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
+            .padding(20)
         }
-        .padding(20)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.raceCard)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(Color.raceLine, lineWidth: 1.5)
@@ -189,7 +208,7 @@ struct DailyHomeView: View {
     private var statisticsStrip: some View {
         NavigationLink(value: AppRoute.statistics) {
             HStack(spacing: 0) {
-                HomeMetric(value: "\(model.displayedCurrentStreak)", label: "Current streak")
+                HomeMetric(value: "\(model.displayedCurrentStreak)", label: "Current streak", emphasized: true)
                 Divider().frame(height: 44)
                 HomeMetric(value: "\(model.history.statistics.solvePercentage)%", label: "Solved")
                 Divider().frame(height: 44)
@@ -204,17 +223,29 @@ struct DailyHomeView: View {
     }
 
     private var secondaryRoutes: some View {
-        VStack(spacing: 10) {
-            NavigationLink(value: AppRoute.help) {
-                HomeRouteLabel(title: "How to play", subtitle: "Rules and tile evidence", symbol: "questionmark.circle")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LEARN")
+                .font(.caption.weight(.bold))
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 0) {
+                NavigationLink(value: AppRoute.help) {
+                    HomeRouteLabel(title: "How to play", subtitle: "Rules and tile evidence", symbol: "questionmark.circle")
+                }
+                Divider().padding(.leading, 70)
+                NavigationLink(value: AppRoute.tutorial) {
+                    HomeRouteLabel(title: "Practice race", subtitle: "Revisit the local tutorial", symbol: "figure.run")
+                }
             }
-            NavigationLink(value: AppRoute.settings) {
-                HomeRouteLabel(title: "Settings", subtitle: "Haptics, contrast, Hard Mode", symbol: "gearshape")
-            }
-            NavigationLink(value: AppRoute.tutorial) {
-                HomeRouteLabel(title: "Practice race", subtitle: "Revisit the local tutorial", symbol: "figure.run")
+            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.raceLine, lineWidth: 1.5)
             }
         }
+        .padding(.top, 12)
         .buttonStyle(.plain)
     }
 
@@ -314,10 +345,13 @@ private struct MiniRaceGrid: View {
 private struct HomeMetric: View {
     let value: String
     let label: String
+    var emphasized = false
 
     var body: some View {
         VStack(spacing: 2) {
-            Text(value).font(.title2.bold().monospacedDigit())
+            Text(value)
+                .font(emphasized ? .title2.weight(.semibold).monospacedDigit() : .title3.weight(.medium).monospacedDigit())
+                .foregroundStyle(emphasized ? .primary : .secondary)
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -337,6 +371,7 @@ private struct HomeRouteLabel: View {
                 .frame(width: 42, height: 42)
                 .background(Color.raceInset, in: Circle())
                 .foregroundStyle(Color.raceIndigo)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
@@ -345,14 +380,12 @@ private struct HomeRouteLabel: View {
             Image(systemName: "chevron.right")
                 .font(.caption.bold())
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(14)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
-        }
+        .frame(minHeight: 44)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -361,6 +394,13 @@ private struct HomeRouteLabel: View {
 /// exactly once). Draft-error focus uses a per-submit generation below.
 enum DailyGameFocus: Hashable {
     case resultHeader
+}
+
+/// State-driven scroll targets: the fresh result panel, or the terminal
+/// error banner when an error owns the completion transition.
+private enum DailyGameScrollTarget: Hashable {
+    case result
+    case error
 }
 
 struct DailyGameView: View {
@@ -393,30 +433,69 @@ struct DailyGameView: View {
         ZStack {
             Color.racePage.ignoresSafeArea()
             VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        puzzleHeader
-                        BoardView(
-                            rows: model.game.rows,
-                            draft: model.game.draft,
-                            isPlaying: !model.game.isComplete,
-                            highContrast: model.settings.highContrastEnabled
-                        )
-                        .padding(.horizontal)
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            puzzleHeader
+                            if model.game.isComplete {
+                                // Completed semantic order: a terminal error
+                                // first when present, then the result, then
+                                // the finished board below it.
+                                terminalError
+                                resultPanel
+                                    .id(DailyGameScrollTarget.result)
+                                BoardView(
+                                    rows: model.game.rows,
+                                    draft: model.game.draft,
+                                    isPlaying: false,
+                                    highContrast: model.settings.highContrastEnabled
+                                )
+                                .padding(.horizontal)
+                            } else {
+                                BoardView(
+                                    rows: model.game.rows,
+                                    draft: model.game.draft,
+                                    isPlaying: true,
+                                    highContrast: model.settings.highContrastEnabled
+                                )
+                                .padding(.horizontal)
+                                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
 
-                        statusMessage
-
-                        if model.game.isComplete {
-                            resultPanel
+                                statusMessage
+                            }
+                        }
+                        .frame(maxWidth: 620)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .onChange(of: model.resultEvent) { _, _ in
+                        // Fresh completion: the error owns the transition
+                        // when present, otherwise the result panel. No
+                        // visual scroll animation under Reduce Motion, and
+                        // never decorative motion for the error target.
+                        guard model.game.isComplete else { return }
+                        if model.errorMessage != nil {
+                            proxy.scrollTo(DailyGameScrollTarget.error, anchor: .top)
+                        } else if reduceMotion {
+                            proxy.scrollTo(DailyGameScrollTarget.result, anchor: .top)
+                        } else {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                proxy.scrollTo(DailyGameScrollTarget.result, anchor: .top)
+                            }
                         }
                     }
-                    .frame(maxWidth: 620)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity)
+                    .onChange(of: model.errorMessage) { _, message in
+                        // A completion-related error arriving after the
+                        // result event still brings the error into view
+                        // immediately; focus ownership stays with the
+                        // existing error-focus path.
+                        guard model.game.isComplete, message != nil else { return }
+                        proxy.scrollTo(DailyGameScrollTarget.error, anchor: .top)
+                    }
                 }
 
                 if !model.game.isComplete {
+                    hardModeKeyboardHint
                     LetterKeyboardView(
                         keyboard: model.game.keyboard,
                         typeLetter: { model.typeLetter($0) },
@@ -444,7 +523,15 @@ struct DailyGameView: View {
         }
         .focusable(!model.game.isComplete)
         .focused($acceptsHardwareInput)
-        .onAppear { acceptsHardwareInput = true }
+        .onAppear {
+            acceptsHardwareInput = true
+            // Reopened completed puzzle: the result already leads, so land
+            // VoiceOver on it. An error still owns focus instead (handled by
+            // the error-focus path), matching the fresh-completion rule.
+            if model.game.isComplete, model.errorMessage == nil {
+                axFocus = .resultHeader
+            }
+        }
         .onKeyPress(.return) {
             model.submitGuess()
             noteSubmit()
@@ -495,9 +582,10 @@ struct DailyGameView: View {
         HStack {
             Label("#\(model.puzzle.number)", systemImage: "calendar")
             Spacer()
-            Text("\(model.game.rows.count) / 6")
-                .monospacedDigit()
-                .accessibilityLabel("\(model.game.rows.count) of 6 guesses used")
+            GuessesUsedIndicator(
+                used: model.game.rows.count,
+                outcome: model.game.completion?.outcome
+            )
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.secondary)
@@ -511,11 +599,50 @@ struct DailyGameView: View {
                 .padding(.horizontal)
                 .accessibilityFocused($errorFocus, equals: errorGeneration)
         } else if !model.game.isComplete {
-            Text(model.game.progress.hardModeEnabled
-                ? "Hard Mode: revealed clues must be reused."
-                : "Enter any accepted five-letter word.")
+            // Once the above-keyboard Hard Mode hint appears (first accepted
+            // guess), the generic line stays out so the two never duplicate.
+            if model.game.progress.hardModeEnabled {
+                if model.game.rows.isEmpty {
+                    Text("Hard Mode: revealed clues must be reused.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Enter any accepted five-letter word.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Terminal completion error shown above the result panel. The error
+    /// owns both scroll and VoiceOver focus when present; the result is
+    /// the target only for error-free completion.
+    @ViewBuilder
+    private var terminalError: some View {
+        if let error = model.errorMessage {
+            RaceErrorBanner(message: error)
+                .padding(.horizontal)
+                .accessibilityFocused($errorFocus, equals: errorGeneration)
+                .id(DailyGameScrollTarget.error)
+        }
+    }
+
+    /// One-line Hard Mode lock reminder pinned immediately above the
+    /// keyboard. Appears only after the first accepted guess; the generic
+    /// status-area line owns the pre-first-guess state instead.
+    @ViewBuilder
+    private var hardModeKeyboardHint: some View {
+        if !model.game.isComplete,
+           model.game.progress.hardModeEnabled,
+           !model.game.rows.isEmpty {
+            Text("Hard Mode locked: keep ✓ letters in place and reuse ↻ letters elsewhere.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .accessibilityLabel("Hard Mode locked. Keep correct-position letters in place and reuse present letters in another position.")
         }
     }
 
@@ -527,21 +654,47 @@ struct DailyGameView: View {
         return "Daily puzzle failed. The answer was \(model.puzzle.answer.uppercased())."
     }
 
+    /// Streak line for the result panel, derived from model-owned streak
+    /// state: solved shows the previous-to-current transition, a failed
+    /// puzzle with a prior streak shows the streak ended, and a failed
+    /// puzzle with no prior streak omits the row.
+    @ViewBuilder
+    private var streakContext: some View {
+        if model.game.completion?.outcome == .solved {
+            Text("Streak \(model.previousDisplayedStreak) → \(model.displayedCurrentStreak).")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityLabel("Streak \(model.previousDisplayedStreak) to \(model.displayedCurrentStreak).")
+        } else if model.previousDisplayedStreak > 0 {
+            Text("Streak ended.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var resultPanel: some View {
-        VStack(spacing: 14) {
-            Image(systemName: model.game.completion?.outcome == .solved
-                ? "flag.checkered.2.crossed" : "lock.fill")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(Color.raceIndigo)
+        VStack(spacing: 12) {
+            Text("ANSWER")
+                .font(.caption.weight(.bold))
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text(model.game.completion?.outcome == .solved ? "Solved" : "Not solved")
-                .font(.title2.bold())
+            Text(model.puzzle.answer.uppercased())
+                .font(.title.bold())
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(Color.raceInset, in: Capsule())
                 .accessibilityFocused($axFocus, equals: .resultHeader)
                 .accessibilityLabel(resultHeaderLabel)
-            Text("The answer was \(model.puzzle.answer.uppercased()).")
+            Text(model.game.completion?.outcome == .solved
+                ? "Solved in \(model.game.completion?.guessCount ?? 0)"
+                : "Not solved")
                 .font(.headline)
+                // Sighted copy only: the answer capsule above already
+                // announces the full result (outcome, guess count, answer).
+                .accessibilityHidden(true)
+            streakContext
             Text("Locked result.")
-                .font(.caption.weight(.semibold))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             if let result = model.game.completedResult {
                 ShareLink(item: DailyClassicShare.text(for: result)) {
@@ -566,6 +719,43 @@ struct DailyGameView: View {
         }
         .padding(.horizontal, 20)
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Compact six-segment attempts-used indicator for the Daily header.
+/// Filled segments use raceIndigo; remaining segments are indigo outlines,
+/// so used vs remaining never depends on color alone. One AX element.
+private struct GuessesUsedIndicator: View {
+    let used: Int
+    let outcome: DailyOutcome?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<6, id: \.self) { index in
+                if index < used {
+                    Capsule()
+                        .fill(Color.raceIndigo)
+                        .frame(width: 18, height: 6)
+                } else {
+                    Capsule()
+                        .stroke(Color.raceIndigo, lineWidth: 1.5)
+                        .frame(width: 18, height: 6)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        switch outcome {
+        case .solved:
+            "Solved using \(used) of 6 guesses."
+        case .failed:
+            "6 of 6 guesses used. Puzzle complete."
+        case nil:
+            "\(used) of 6 guesses used, \(6 - used) remaining."
+        }
     }
 }
 
@@ -606,7 +796,12 @@ struct DailyStatisticsView: View {
                         StatisticCard(value: model.displayedCurrentStreak, label: "Streak")
                         StatisticCard(value: model.history.statistics.longestStreak, label: "Best")
                     }
-                    GuessDistributionView(distribution: model.history.statistics.guessDistribution)
+                    GuessDistributionView(
+                        distribution: model.history.statistics.guessDistribution,
+                        todayGuessCount: model.history.result(for: model.puzzle.id).flatMap {
+                            $0.outcome == .solved ? $0.guessCount : nil
+                        }
+                    )
                     todayResult
                 }
                 .frame(maxWidth: 560)
@@ -672,6 +867,10 @@ private struct StatisticCard: View {
 
 private struct GuessDistributionView: View {
     let distribution: [Int: Int]
+    /// Today's solved guess count, when today's result exists and is solved.
+    /// Failed results never highlight: six structural guesses are not part
+    /// of the solved-guess distribution.
+    var todayGuessCount: Int? = nil
     private var maximum: Int { max(1, distribution.values.max() ?? 0) }
 
     private func barWidth(count: Int, in total: CGFloat) -> CGFloat {
@@ -689,14 +888,21 @@ private struct GuessDistributionView: View {
                 .font(.caption.weight(.black))
                 .tracking(1.2)
             ForEach(1...6, id: \.self) { guess in
+                let isToday = todayGuessCount == guess
                 HStack(spacing: 10) {
-                    Text("\(guess)").font(.subheadline.bold()).frame(width: 12)
+                    Text("\(guess)")
+                        .font(isToday ? .subheadline.bold() : .subheadline)
+                        .frame(width: 12)
                     GeometryReader { proxy in
                         let count = distribution[guess, default: 0]
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.raceInset)
                             Capsule().fill(Color.raceIndigo)
                                 .frame(width: barWidth(count: count, in: proxy.size.width))
+                            if isToday {
+                                Capsule()
+                                    .stroke(Color.raceLineEmphasis, lineWidth: 1.5)
+                            }
                         }
                     }
                     .frame(height: 24)
@@ -709,9 +915,19 @@ private struct GuessDistributionView: View {
                         .frame(minWidth: 28, alignment: .leading)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
+                    // The literal marker reserves its own scaled width in
+                    // every row; non-today rows keep the layout width while
+                    // staying visually invisible, so all bars align at any
+                    // text size. The row's custom label owns the semantics.
+                    Text("Today")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                        .opacity(isToday ? 1 : 0)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Solved in \(guess) guesses, \(distribution[guess, default: 0]) games")
+                .accessibilityLabel(isToday
+                    ? "Today, solved in \(guess) guesses, \(distribution[guess, default: 0]) games"
+                    : "Solved in \(guess) guesses, \(distribution[guess, default: 0]) games")
             }
         }
         .padding(18)

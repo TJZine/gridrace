@@ -436,11 +436,17 @@ struct LetterKeyboardView: View {
             letterRow(rows[0])
             letterRow(rows[1]).padding(.horizontal, 14)
             HStack(spacing: 4) {
+                // The visible indigo surface lives inside the label so the
+                // press style transforms the whole key, not just the icon.
                 Button(action: submit) {
                     Image(systemName: "return")
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
                 }
-                .keyboardActionStyle()
+                .buttonStyle(RaceKeyPressStyle())
+                .frame(minWidth: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel("Submit guess")
 
                 ForEach(rows[2], id: \.self) { letter in
@@ -453,9 +459,13 @@ struct LetterKeyboardView: View {
 
                 Button(action: delete) {
                     Image(systemName: "delete.left")
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
                 }
-                .keyboardActionStyle()
+                .buttonStyle(RaceKeyPressStyle())
+                .frame(minWidth: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel("Delete letter")
             }
         }
@@ -474,6 +484,20 @@ struct LetterKeyboardView: View {
                 ) { typeLetter(letter) }
             }
         }
+    }
+}
+
+/// Subtle key-press feedback shared by letter and action keys: a short
+/// ~0.97 scale plus a small opacity dip. Under Reduce Motion the scale
+/// stays exactly 1.0 and only the non-motion opacity feedback remains.
+private struct RaceKeyPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -506,7 +530,7 @@ struct KeyboardKey: View {
                     )
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RaceKeyPressStyle())
         .contentShape(Rectangle())
         .accessibilityLabel(accessibilityLabel)
     }
@@ -526,16 +550,6 @@ struct KeyboardKey: View {
     }
 
     private var isHighContrast: Bool { highContrast || contrast == .increased }
-}
-
-private extension View {
-    func keyboardActionStyle() -> some View {
-        buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
-            .frame(minWidth: 44)
-            .contentShape(Rectangle())
-    }
 }
 
 /// U-06 reveal focus (one speech owner per transition, never both):

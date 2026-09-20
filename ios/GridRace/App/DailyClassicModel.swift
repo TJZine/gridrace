@@ -210,6 +210,18 @@ final class DailyClassicModel {
         )
     }
 
+    /// Displayed streak immediately before today's result, derived from
+    /// completed results before the current puzzle day with the existing
+    /// `DailyStatistics` rules. No new persistence; valid on reopen.
+    var previousDisplayedStreak: Int {
+        let prior = history.completedResults.filter { $0.puzzleDay < puzzle.day }
+        let priorStatistics = DailyStatistics.calculate(from: prior)
+        return priorStatistics.currentStreak(
+            asOf: puzzle.day,
+            latestResultDay: prior.last?.puzzleDay
+        )
+    }
+
     var nextReset: Date { DailyPuzzleSchedule.nextReset(after: now()) }
 
     func refreshForCurrentDay() {
