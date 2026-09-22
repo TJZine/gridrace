@@ -134,7 +134,8 @@ with created as (
   select public.create_match(
     '50000000-0000-0000-0000-000000000001',
     1,
-    repeat('b', 64)
+    repeat('b', 64),
+    '51000000-0000-0000-0000-000000000001'
   ) as response
 )
 insert into test_context (match_id, request_id, first_response)

@@ -7,6 +7,7 @@ import { makeHandler } from "./index.ts";
 
 const USER_ID = "40000000-0000-0000-0000-000000000001";
 const MATCH_ID = "50000000-0000-0000-0000-000000000001";
+const REQUEST_ID = "60000000-0000-0000-0000-000000000001";
 const TOKEN = "signed-bearer-token";
 
 interface RpcCall {
@@ -60,7 +61,7 @@ async function invoke(invocation: Invocation): Promise<Invoked> {
   };
 }
 
-function post(body: unknown, token: string | null = TOKEN): Request {
+function post(body: JsonObject, token: string | null = TOKEN): Request {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
@@ -68,7 +69,7 @@ function post(body: unknown, token: string | null = TOKEN): Request {
   return new Request("http://localhost/create-match", {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ request_id: REQUEST_ID, ...body }),
   });
 }
 
@@ -115,12 +116,12 @@ function codeOf(body: JsonObject): unknown {
 Deno.test("creates a match through the create_match RPC", async () => {
   const invoked = await invoke({
     request: post({ client_build: 7 }),
-    rpcResults: [ok({ match_id: MATCH_ID, join_code: "ABC234" })],
+    rpcResults: [ok({ match_id: MATCH_ID })],
   });
 
   assertEquals(invoked.response.status, 200);
   assertEquals(invoked.body, {
-    data: { match_id: MATCH_ID, join_code: "ABC234" },
+    data: { match_id: MATCH_ID },
   });
   assertEquals(invoked.rpcCalls.length, 1);
   assertEquals(invoked.rpcCalls[0].name, "create_match");
@@ -128,6 +129,7 @@ Deno.test("creates a match through the create_match RPC", async () => {
     p_user_id: USER_ID,
     p_client_build: 7,
     p_ip_hash: null,
+    p_request_id: REQUEST_ID,
   });
   assertEquals(invoked.authenticateCalls, 1);
 });
@@ -147,6 +149,22 @@ const failures: FailureCase[] = [
   {
     name: "rejects a non-JSON body",
     request: () => postRaw("{invalid"),
+    status: 400,
+    code: "internal_error",
+    rpcCalls: 0,
+    authenticateCalls: 0,
+  },
+  {
+    name: "rejects a body missing request_id",
+    request: () => postRaw(JSON.stringify({ client_build: 7 })),
+    status: 400,
+    code: "internal_error",
+    rpcCalls: 0,
+    authenticateCalls: 0,
+  },
+  {
+    name: "rejects an invalid request_id",
+    request: () => post({ client_build: 7, request_id: "not-a-uuid" }),
     status: 400,
     code: "internal_error",
     rpcCalls: 0,
@@ -215,6 +233,15 @@ const failures: FailureCase[] = [
     rpcResults: [domainError("rate_limited")],
     status: 429,
     code: "rate_limited",
+    rpcCalls: 1,
+    authenticateCalls: 1,
+  },
+  {
+    name: "maps a request conflict",
+    request: () => post({ client_build: 7 }),
+    rpcResults: [domainError("request_conflict")],
+    status: 409,
+    code: "request_conflict",
     rpcCalls: 1,
     authenticateCalls: 1,
   },

@@ -81,7 +81,8 @@ with created as (
   select public.create_match(
     '10000000-0000-0000-0000-000000000001',
     1,
-    repeat('a', 64)
+    repeat('a', 64),
+    '11000000-0000-0000-0000-000000000001'
   ) as response
 )
 insert into test_context (match_id, request_id, first_response)
@@ -295,7 +296,7 @@ select throws_ok(
   'normal client cannot read private words'
 );
 select throws_ok(
-  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 1, null)',
+  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 1, null, ''11000000-0000-0000-0000-000000000002'')',
   '42501',
   'permission denied for function create_match',
   'normal client cannot execute service-only RPCs'
