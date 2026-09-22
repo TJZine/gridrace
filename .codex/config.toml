@@ -1,0 +1,24 @@
+[features]
+multi_agent = true
+# Codex currently ignores agents.max_depth under the V2 runtime.
+multi_agent_v2 = false
+
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.worker]
+description = "Implement a bounded approved unit, including substantive logic and risk-matched verification."
+config_file = "agents/worker.toml"
+
+[agents.worker_luna]
+description = "Implement a tightly specified bounded unit using Luna after contracts and acceptance criteria are settled."
+config_file = "agents/worker-luna.toml"
+
+[agents.planner]
+description = "Create decision-complete plans and handoffs for bounded GridRace work."
+config_file = "agents/planner.toml"
+
+[agents.reviewer]
+description = "Read-only reviewer focused on correctness, security, privacy, architecture fit, accessibility, and missing tests."
+config_file = "agents/reviewer.toml"
