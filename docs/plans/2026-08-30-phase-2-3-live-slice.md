@@ -13,10 +13,11 @@ round, creator start, server-owned guesses and time, clue-free progress, recover
 and shared reveal. Daily Classic stays immediately playable offline and signed out;
 its imported personal history never becomes verified competitive evidence.
 
-This plan remains the sole active plan. The 2026-09-22 task is **planning only**:
-brainstorming, accepted direction, documentation revision, independent adversarial
-review, and documentation checkpoints. It does not implement P2 or P3 product code,
-run destructive resets, deploy, purchase services, or close this ongoing live plan.
+This plan remains the sole active plan. The accepted 2026-09-22 planning checkpoint
+is complete, and the current controller is executing the implementation packages
+below. Local product changes and confirmed-disposable GridRace test resets are now
+authorized only inside each package's recorded boundary; deployment, remote mutation,
+spending, publication, release, and unrelated dictionary work remain excluded.
 
 ### Repository evidence
 
@@ -42,6 +43,50 @@ run destructive resets, deploy, purchase services, or close this ongoing live pl
   Xcode project. Preserve every pre-existing edit/untracked file. The planning task
   must not edit or stage the runbook. The iOS writer waits for the maintainer to
   checkpoint or otherwise separate overlapping work; no automatic stash/commit.
+
+### Implementation controller bootstrap, 2026-09-22
+
+- Controller task: `GridRace live-slice implementation controller` on the saved local
+  checkout `/Users/tristan/Software/gridrace`; controller model/reasoning is
+  `gpt-5.6-sol` / medium per the maintainer's corrected pairing. No product worker had
+  been dispatched when that correction arrived.
+- Pre-bootstrap repository state: branch `dev/classic-mode`, full HEAD
+  `656c6ba1c0c95eb5656344c5ab39b39f957fa354`, empty index, cached upstream
+  `origin/dev/classic-mode` at `ea630dd985a0e1ffeca1317517539d3d8d9a065b`, ahead 6
+  and behind 0. No fetch or fresh remote claim was made. Exactly this plan is Active;
+  no repository `.codex/config.toml` or task-role configuration was found.
+- A fresh byte-hash baseline for all 23 unrelated tracked/untracked files, including
+  the two concrete files under untracked `.codex/cache/`, is stored outside the
+  repository at
+  `/tmp/gridrace-live-slice-controller-01a0c7dd/unrelated-baseline.tsv`. The unrelated
+  paths are the runbook, Xcode project, `DailyViews.swift`, word-pack checker and
+  artifacts, `.DS_Store` files, `.codex/cache` review cache, dictionary plan/evidence,
+  extraction scripts, attribution, baseline and provenance artifacts. Recheck this
+  exact inventory and hashes at every write-lease transfer and closeout; never stage,
+  stash, discard, or overwrite it.
+- The maintainer authorizes one narrow exception to the runbook's controller-only Git
+  rule: the single active implementation writer may stage only its explicit owned
+  paths and create exactly its requested conventional implementation commit. The
+  controller alone edits/stages/commits this plan and authority integration. Read-only
+  workers never mutate Git. All other repository rules remain in force.
+- A writer receives the lease only after the controller verifies the branch/full HEAD,
+  empty index, unrelated baseline, one-active-plan invariant, repository role config,
+  and exact owned paths. While the lease is active, the controller performs no file,
+  index, commit, shared-database, or simulator mutation and dispatches no other writer.
+  The worker completes edits, proof, staging, its one commit, final status and evidence
+  before one callback; that callback releases the lease and no later worker writes are
+  allowed. The controller then validates the commit and baseline, independently reruns
+  risk-matched proof, records acceptance, and creates a separate plan checkpoint before
+  the next serial dispatch.
+- The first lease is P2-04A, restricted to
+  `supabase/migrations/202609220001_live_recovery_contract.sql`,
+  `supabase/tests/database/live_recovery_contract.sql`,
+  `supabase/functions/create-match/index.ts`, and
+  `supabase/functions/create-match/index_test.ts`. Its worker is explicitly
+  `gpt-5.6-luna` / xhigh. It starts from the full SHA of this bootstrap checkpoint,
+  proves forward/reset plus focused negative and true-concurrency behavior, and uses
+  `feat(backend): make live creation retry-safe`. P2-04B and all Swift work remain
+  gated on controller acceptance and the dependencies below.
 
 ## Accepted BRAINSTORM_RESULT
 
@@ -333,7 +378,8 @@ start with real-output fixtures for deleted-member snapshots and lost/concurrent
 create retries; add the one forward migration and the bounded create handler/test
 change listed in the unit. Preserve the six-migration baseline, demonstrate forward
 and reset paths plus negative RLS/receipt/HTTP tests, then checkpoint for P2-04B.
-This planning task stops before making any of those product changes.
+The controller dispatches that bounded writer after committing this bootstrap record;
+no other writer or controller mutation runs until its one callback releases the lease.
 
 ## Current planning review and verification
 
@@ -443,12 +489,16 @@ Phase 2/3 commits to date:
 | `0162081 docs(plan): reactivate phase 2 and 3 live slice` | Reconcile current state, make this the sole active plan, and record fresh backend proof | Complete |
 | `764b9e1 docs(plan): record reactivation checkpoint` | Record the reactivation content checkpoint | Complete |
 | `2a8ac34 docs(plan): strengthen authoritative live slice and free-first scope` | Accepted brainstorming, eight authority updates, six planning findings addressed, fresh independent review and documentation checks | Complete |
+| `656c6ba docs(plan): record reviewed planning checkpoint` | Record the accepted planning content checkpoint and keep this plan Active for implementation | Complete |
 
-
-Planning tracker checkpoint: **this commit** records `2a8ac34`. Staging was limited
+Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
 content matched the reviewed diff. Product implementation remains pending and this
 plan remains Active.
+
+Implementation-controller bootstrap checkpoint: **this commit** records the current
+repository/baseline evidence, the maintainer-authorized single-writer Git exception,
+the callback lease protocol, corrected model pairing, and P2-04A as the next unit.
 
 ## Milestone exit and checkpoint policy
 
