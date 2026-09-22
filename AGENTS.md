@@ -8,11 +8,19 @@ If a tracked plan is active, locate and read it before changing the repository:
 rg -l '^Status: Active$' docs/plans
 ```
 
-If more than one plan is active, stop and let the orchestrator resolve ownership.
+If multiple plans are active, the primary controller resolves ownership before
+affected writes; workers return the conflict to the controller. Continue independent
+read-only work.
+
 Use [docs/ENGINEERING_RUNBOOK.md](docs/ENGINEERING_RUNBOOK.md) for workflow, risk,
 verification, review, and handoff policy rather than duplicating it here.
 
 Always preserve these product boundaries:
+
+Server-authoritative gameplay and pre-reveal answer secrecy apply to live racing and
+future verified competition. Daily Classic and the tutorial follow their documented
+local behavior; imported Daily results remain owner-private personal history and
+cannot become verified competitive results.
 
 - Supabase is authoritative for answers, guess validation and feedback, timestamps,
   scoring, and match transitions.
@@ -21,7 +29,8 @@ Always preserve these product boundaries:
 - Realtime events prompt UI updates; canonical snapshots own recovery and convergence.
 - Do not simplify away RLS, secret handling, idempotency, accessibility, or safe
   production data practices.
-- Build the focused live vertical slice before generalized modes or architecture.
+- Follow the accepted Daily Classic scope. For live racing, prove the focused
+  vertical slice before broader match flow or generalized architecture.
 
 Coordination boundaries:
 

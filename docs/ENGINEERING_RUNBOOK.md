@@ -46,13 +46,23 @@ When sources disagree:
 6. Treat historical plans, stale prose, caches, and external examples as context
    only.
 
-Correct clearly stale active documentation in the same change. If the mismatch
-could alter game rules, privacy, security, data retention, deployment, a public API,
-or an accepted architecture decision, stop and ask instead of guessing.
+Apply relevant skills within the user's authorized scope and repository requirements.
+Skill defaults do not authorize reduced scope, replace repository test tools, impose
+response-length caps, or require renewed approval for settled decisions. Preserve
+configured model assignments, reasoning settings, and cost-conscious routing.
+
+Correct clearly stale active documentation in the same change. If resolving a
+mismatch requires an unsettled decision about game rules, privacy, security, data
+retention, deployment, a public API, or accepted architecture, ask instead of guessing.
 
 ## Product and engineering invariants
 
 These constraints survive refactors, scheduling pressure, and “simplification”:
+
+Server-authoritative gameplay and pre-reveal answer secrecy apply to live racing and
+future verified competition. Daily Classic and the tutorial follow their documented
+local behavior; imported Daily results remain owner-private personal history and
+cannot become verified competitive results.
 
 - The backend selects answers, validates guesses, computes feedback and scoring,
   timestamps accepted actions, and owns match and round transitions.
@@ -75,9 +85,10 @@ These constraints survive refactors, scheduling pressure, and “simplification�
 - Production secrets stay out of the repository and app bundle. Development,
   staging, and production remain separate environments when those environments
   are introduced.
-- The initial product remains the focused private live race. Do not introduce a
-  generalized game framework, friend graph, chat, public matchmaking, rankings,
-  monetization, or speculative compatibility layers without a new decision.
+- Follow the accepted Daily Classic scope. For live racing, prove the focused
+  vertical slice before broader match flow or generalized architecture. Do not
+  introduce a generalized game framework, friend graph, chat, public matchmaking,
+  rankings, monetization, or speculative compatibility layers without a new decision.
 
 ## Ownership and boundaries
 
@@ -248,12 +259,29 @@ evidence, not the whole definition of done.
 | CI/deployment | Local equivalent gates first; configuration parse; least-privilege secrets; failure-path inspection; remote execution evidence before calling it verified. |
 | Workflow/docs only | `git diff --check`; inspect every referenced path/command; confirm future commands are labeled; read the full changed authority set. |
 
+Apply checks to the behavior and surfaces actually changed. Workflow-only changes
+use the Workflow/docs row; their Medium classification does not require unrelated
+application builds or tests. Reuse meaningful existing coverage; add tests when
+needed to demonstrate changed behavior or prevent regression. Once required checks
+pass, broaden or repeat them only for new changes, failures, integration effects,
+or unresolved concerns.
+
 For security or privacy boundaries, prove denial as well as success. For distributed
 state, prove recovery and convergence, not only the happy event stream. If a required
 environment is unavailable, state exactly what was not run, what substitute evidence
 exists, the resulting confidence, and who must complete the remaining proof.
 
 ## Planning and progress tracking
+
+Carry the authorized task through implementation, applicable verification,
+remediation, and handoff. A status question, correction, or compaction does not cancel
+the task; retain accepted decisions, completed work, constraints, and remaining steps
+unless the user changes the objective. Read-only and proposal-only requests end at
+their requested deliverable.
+
+Give brief progress updates for meaningful findings, decisions, and blockers. Lead
+the final response with the outcome and proportionate evidence; omit empty checklist
+sections and routine command narration.
 
 Use one active plan for the repository. Create a durable dated file under `docs/plans/`
 when the maintainer asks for tracking, the work spans sessions, or the risk/seams are
@@ -298,6 +326,11 @@ The primary controller owns the goal, plan, decisions, integration, verification
 review adjudication, progress updates, staging, commits, and final handoff. Keep the
 agent tree shallow; delegation is a means to isolate bounded work, not a target.
 
+Scale this flow to the task. Work locally when delegation adds no useful independence
+or parallel progress. When authorized, delegate bounded independent work with
+disjoint write paths while the controller continues useful work. Preserve existing
+role, model, reasoning, and cost-routing policies.
+
 Default flow:
 
 1. **Frame:** inspect authorities and current state; state goal, exclusions,
@@ -310,14 +343,16 @@ Default flow:
    update the plan, and resolve dependencies before the next wave.
 5. **Integrate:** reconcile contracts and shared surfaces serially. No worker stages or
    commits.
-6. **Review:** give a fresh read-only reviewer the final task/diff/proof/risk packet,
+6. **Review:** use the review required by the risk tier. When independent review is
+   required, give a fresh read-only reviewer the final task/diff/proof/risk packet,
    not the implementation transcript.
 7. **Adjudicate and verify:** reproduce valid findings, fix accepted ones, rerun the
    affected gates, audit the net diff and status, update tracking, then commit.
 
-One implementation wave plus one final review is the default even for high-risk work.
-Add another wave only for a material dependency or accepted finding. Do not create
-recursive reviewer loops or parallelize tightly coupled changes.
+When independent review is required, one implementation wave plus one final review
+is the default even for high-risk work. Add another wave only for a material
+dependency or accepted finding. Do not create recursive reviewer loops or parallelize
+tightly coupled changes.
 
 ### Compact worker packet
 
@@ -419,7 +454,12 @@ provenance with word-list artifacts when that surface is introduced.
 
 ## Stop and ask
 
-Stop and obtain maintainer direction before:
+Ask for direction only when a listed decision remains unresolved by the user's
+instructions or accepted decisions. Existing authorization persists across turns.
+Complete authorized investigation and preparation before requesting a decision, and
+continue independent safe work while it is pending.
+
+Decisions requiring direction include:
 
 - changing an exact game rule, ranking tie-breaker, visible/hidden information rule,
   or MVP scope boundary;
@@ -432,8 +472,14 @@ Stop and obtain maintainer direction before:
   compatibility layer, or CI/release system without a present requirement;
 - resolving a destructive or irreversible data operation whose target or recovery
   path is unclear;
-- proceeding through overlapping writes, unexpected worktree changes, an authority
-  conflict, a failed high-risk gate, or an unowned required verification gap.
+- overlapping writes or unexpected changes that cannot be safely preserved, an
+  unresolved authority conflict, a high-risk failure that cannot be repaired within
+  scope, or a required verification gap with no available resolution.
+
+Diagnose failures, fix defects caused by the requested change, and rerun affected
+checks without renewed approval. Do not bypass a failed gate or treat unavailable
+evidence as passing. If an instruction causes a pause, link its source, quote the
+relevant rule, and state the exact unresolved decision.
 
 When stopping, preserve the active plan, state the evidence and exact decision
 needed, and identify any safe work that can continue independently.
