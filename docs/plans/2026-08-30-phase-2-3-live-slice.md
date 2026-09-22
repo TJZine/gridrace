@@ -442,7 +442,13 @@ Phase 2/3 commits to date:
 | `dd85670 feat(ios): add accounts and daily classic synchronization` | Supply the reusable account/session/profile client foundation | Complete |
 | `0162081 docs(plan): reactivate phase 2 and 3 live slice` | Reconcile current state, make this the sole active plan, and record fresh backend proof | Complete |
 | `764b9e1 docs(plan): record reactivation checkpoint` | Record the reactivation content checkpoint | Complete |
+| `2a8ac34 docs(plan): strengthen authoritative live slice and free-first scope` | Accepted brainstorming, eight authority updates, six planning findings addressed, fresh independent review and documentation checks | Complete |
 
+
+Planning tracker checkpoint: **this commit** records `2a8ac34`. Staging was limited
+to the eight task-owned documents; the staged whitespace check passed and staged
+content matched the reviewed diff. Product implementation remains pending and this
+plan remains Active.
 
 ## Milestone exit and checkpoint policy
 
