@@ -1,12 +1,14 @@
-Status: Paused
+Status: Active
 Scope: GridRace Phase 2 backend foundation and Phase 3 two-player live slice
 Owner: Primary orchestrator
 Started: 2026-08-30
-Last updated: 2026-08-31
+Last updated: 2026-09-22
 
-Paused for Daily Classic, the first permanent mode. All completed Phase 2 work and
-the in-progress Edge Functions are preserved for later adaptation; live multiplayer
-is not a prerequisite for the local daily milestone.
+Reactivated after completion of the Daily Classic account and synchronization
+milestone. The proved authoritative backend and six Edge command boundaries are the
+foundation for the next product milestone: the first server-backed two-player race.
+Friends, broader result sharing, and generalized match expansion remain deferred
+until this slice meets its exit criteria.
 
 # Phase 2 and Phase 3 Live Slice Plan
 
@@ -21,43 +23,39 @@ recovery, deadline finalization, and shared reveal.
 
 ## Current verified outcome
 
-- The supplied starting point is clean `main` at
-  `e7ccb96 docs: close phase 0 and 1 plan`; no newer or unrelated changes exist.
-- No other `Status: Active` repository plan existed before this tracker.
-- The task, Ponytail full-mode instructions, repository authorities, canonical rule
-  and word artifacts, TypeScript evaluator, all iOS sources/tests, Xcode project,
-  and shared scheme were read completely before editing.
-- The formal goal and live execution plan are active.
-- Existing baseline gates pass: the 100-word deterministic pack, all TypeScript
-  evaluator gates, 16 XCTest cases, and a clean iOS build.
-- The available simulator was rediscovered as iPhone 17 Pro / iOS 26.5 with UUID
-  `1BCA3F5A-3228-4888-909E-ED86AE627221`; it was not assumed from prose.
-- Wave 1 discovery is complete. The controller reconciled the backend/toolchain,
-  schema/RLS/security, iOS integration, and command/test reports into the versioned
-  contract at `docs/live-api-contract.md` and the current authority documents.
-- Supabase CLI `2.116.0` and Supabase Swift `2.55.1` are frozen from current official
-  releases. Node 24.14.0, npm 11.9.0, Docker 29.5.2, Deno 2.9.5, Xcode 26.6, and
-  Swift 6.3.3 are locally available.
-- Schema ownership, column-level secrecy, nonrecursive RLS helpers, lock ordering,
-  deletion/anonymization, fixed rate limits, debug-auth boundary, snapshot v1, safe
-  match-row Realtime signals, command envelopes, and negative/concurrency proof are
-  frozen. The missing display-name contract is now explicit in the live API authority.
-- P2-01 is integrated: the exact Supabase CLI 2.116.0 lockfile installs, generated
-  local config pins Postgres 17 with public-table auto-exposure disabled, and a
-  standard-library generator proves the derived 100-row private word seed has not
-  drifted from the canonical JSON artifact.
-- P2-02 is integrated and controller-verified. One forward migration recreates the
-  constrained schema, profile trigger, service-only transactions, private evaluator,
-  snapshot, finalizer/Cron, deletion preparation, grants, column privileges, RLS,
-  and Realtime publication from zero. Database lint has zero errors and 79 pgTAP
-  assertions pass after closure of DB-01 through DB-05.
-- No Supabase project has been linked, reset, migrated, or deployed. No remote
-  Supabase state has been read or mutated.
+- Reactivation starts on `dev/classic-mode` at `8fa34fb`. No other plan is marked
+  `Status: Active`; historical plans remain evidence only.
+- Daily Classic and optional account synchronization are complete locally. They now
+  provide the production account/session/profile foundation that the live slice can
+  reuse without merging Daily personal history into verified competition.
+- P2-01 remains integrated and was freshly checked: the lockfile pins Supabase CLI
+  `2.116.0`, the local configuration resets from zero, and the deterministic private
+  development seed still contains the canonical 100 answers.
+- P2-02 remains integrated. The authoritative schema, private answers, service-only
+  transactions, snapshot, finalizer, deletion preparation, grants, RLS, and match
+  revision Realtime signal recreate successfully alongside the later Daily migrations.
+- P2-03 is complete, not paused: all six authenticated Edge handlers have focused
+  contract tests. Fresh format, lint, type-check, and 96-test execution pass.
+- Fresh shared-rule proof passes 3 TypeScript evaluator tests. A fresh database reset
+  applies all six migrations, all 217 pgTAP assertions pass, and lint reports no
+  errors; existing `extra` warnings are recorded rather than misreported as clean.
+- The iOS app has Supabase account and Daily synchronization services, but no live
+  match domain, command client, session model, Realtime recovery, lobby, live round,
+  or shared reveal. Phase 3 is therefore the remaining product implementation.
+- The versioned wire contract at `docs/live-api-contract.md` remains the implementation
+  authority. No remote Supabase project is linked and no remote state was mutated.
+- Uncommitted dictionary/attribution work predates reactivation and overlaps the Xcode
+  project. It remains unrelated user work and must be checkpointed or otherwise
+  separated before Phase 3 changes touch overlapping files.
 
 ## Next integration action
 
-Implement the six authenticated Edge Function boundaries and focused contract tests
-against the now-frozen service-only database RPCs.
+Finish P2-04 by auditing the current integrated Phase 2 backend against the frozen
+contract and completing the fresh security/RLS review. Preserve the passing baseline;
+fix only reproduced gaps. Once the unrelated dictionary work no longer overlaps the
+iOS project, begin P3-01 with the smallest complete client path: typed command and
+snapshot mapping, one live-match session model, then create/join lobby UI before the
+round and reveal states.
 
 ## Scope
 
@@ -164,11 +162,11 @@ auth must compile out of Release and use independent sessions without admin acce
 | D-02 Schema/RLS/security audit | `schema_security_audit` | Read-only repository/official docs | Required reads | Complete: schema/policies/deletion/locks/tests frozen |
 | D-03 iOS integration audit | `ios_audit` | Read-only iOS/project/official docs | Required reads | Complete: SDK 2.55.1 and minimum seams frozen |
 | D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | Complete: wire/privacy/concurrency/two-client proof frozen |
-| C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete; controller diff audit pending checkpoint |
+| C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete |
 | P2-01 Local toolchain and deterministic seed | `backend_audit` | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Complete; controller verified |
-| P2-02 Schema, transactions, grants, RLS, database tests | `schema_security_audit` | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Complete: reset/lint/79 tests green; DB-01..05 closed |
-| P2-03 Edge command functions and focused tests | `backend_audit` | `supabase/functions/**` only | P2-02 SQL/API freeze | Paused: functions committed; focused contract tests remain |
-| P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Pending |
+| P2-02 Schema, transactions, grants, RLS, database tests | `schema_security_audit` | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Complete: fresh zero-state reset, 217 aggregate pgTAP assertions, and error-level lint pass |
+| P2-03 Edge command functions and focused tests | `backend_audit` | `supabase/functions/**` only | P2-02 SQL/API freeze | Complete: six handlers; fresh format, lint, check, and 96 tests pass |
+| P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Active: re-baseline current schema/contract and perform fresh security/RLS review |
 | P3-01 SwiftUI live slice | One iOS writer | `ios/**`; project/composition serialized to this writer/controller | P2 checkpoint | Pending |
 | P3-02 Disjoint backend integration/recovery tests | Assigned after freeze if useful | Exact test-only paths, no SQL/API/project overlap | P2 checkpoint | Pending |
 | P3-03 Two-client integration proof | Primary orchestrator | Local stack and simulator containers only | P3-01..02 | Pending |
@@ -191,6 +189,8 @@ paths, never mutate Git, never nest delegation, and return assumptions/blockers.
 - Local stack reset/seed/database proof precedes the Phase 2 security review.
 - Phase 2 security findings close before iOS integration depends on the backend.
 - One iOS writer owns package/project/composition changes; no overlapping iOS writer.
+- Existing dictionary/attribution changes that touch the Xcode project must be
+  checkpointed or separated before the Phase 3 iOS writer begins.
 - The controller integrates and commits every checkpoint after rerunning proof.
 
 ## Risk tier and verification matrix
@@ -233,6 +233,8 @@ cross-stack contracts are all touched.
 | DEC-12 | Local trusted client-IP provenance is unavailable. Prove transactional per-user limits and the keyed-IP database path; keep live address extraction documented-only. | Accepted limitation | Current official deployment material does not identify a trustworthy local header |
 | BLK-01 | Exact Supabase CLI/SDK versions and current API syntax. | Resolved | DEC-07 and official source inspection |
 | BLK-02 | Final SQL/deletion/rate-limit/RLS structure. | Resolved | DEC-08..12 and live API contract |
+| DEC-13 | Resume the proved live slice after Daily Classic; defer friends and broader sharing until its exit criteria pass. | Accepted | Product roadmap, repository focused-slice boundary, and maintainer direction on 2026-09-22 |
+| BLK-03 | Uncommitted dictionary/attribution work overlaps `ios/GridRace.xcodeproj/project.pbxproj`. | Open prerequisite | Preserve it unchanged; checkpoint or separate it before P3-01 edits the project |
 
 ## Review findings and dispositions
 
@@ -267,6 +269,14 @@ cross-stack contracts are all touched.
 | Database reset | `npx supabase db reset --local` | Passed: migration and exact seed applied from zero |
 | Database lint | `npx supabase db lint --local --schema public,private,app_rls --level error --fail-on error` | Passed: zero results |
 | Database/RLS tests | `npx supabase test db --local supabase/tests/database` | Passed: 79 tests, 0 failed |
+| Reactivation uniqueness | `rg -l '^Status: Active$' docs/plans` before reactivation | Passed: no result |
+| Reactivation seed | `npm run check:seed` | Passed: 100 canonical rows |
+| Reactivation TypeScript and Edge static gates | `deno fmt --check rules/typescript supabase/functions`; `deno lint rules/typescript supabase/functions`; explicit `deno check` for all handlers and tests | Passed: 17 formatted files, 16 linted files, all checked entrypoints |
+| Reactivation shared rules | `deno test --allow-read rules/typescript/evaluator_test.ts` | Passed: 3 tests, 0 failed |
+| Reactivation Edge tests | `deno test --config supabase/functions/deno.json supabase/functions/` | Passed: 96 tests, 0 failed |
+| Reactivation database reset | `npx --no-install supabase db reset --local` | Passed: all six migrations and seed applied from zero |
+| Reactivation database tests | `npx --no-install supabase test db --local supabase/tests/database` | Passed: 217 assertions across 5 files |
+| Reactivation database lint | `npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error` | Passed with no errors; existing unused/shadowed-variable extra warnings remain |
 
 ## Integrated commits
 
@@ -278,25 +288,24 @@ Phase 2/3 commits to date:
 | `357af25 docs: define phase 2 and 3 live contract` | Freeze phase naming, trust boundaries, commands, snapshot, deletion, and proof | Complete |
 | `f69365b build(backend): bootstrap local Supabase` | Pin the local Supabase CLI and deterministic canonical word seed | Complete |
 | `b9628c0 feat(backend): add private game schema and RLS` | Add authoritative schema, service-only transactions, RLS, finalizer, deletion, and database proof | Complete |
-| `95edc90 feat(backend): add authenticated command edge functions` | Preserve the six authenticated Edge boundaries after format, lint, and type checks | Paused before focused contract tests |
+| `95edc90 feat(backend): add authenticated command edge functions` | Preserve the six authenticated Edge boundaries after format, lint, and type checks | Complete after `ddde194` added focused tests |
+| `ddde194 test(edge): cover all six handlers and prove Edge Deno canon` | Complete focused contract coverage for the six Edge handlers | Complete |
+| `f0b7b5f fix(live): replace matches.updated_at realtime signal with revision` | Use an explicit monotonic match revision as the safe Realtime refresh signal | Complete |
+| `f73da30 feat(backend): add daily classic personal sync storage` | Add owner-private Daily storage without changing competitive live state | Complete |
+| `dd85670 feat(ios): add accounts and daily classic synchronization` | Supply the reusable account/session/profile client foundation | Complete |
 
-Remaining intended checkpoints are adjusted only when the real dependency graph
-makes units inseparable:
+Remaining checkpoints are adjusted only when the real dependency graph makes units
+inseparable:
 
-1. `build(backend): bootstrap local Supabase`
-2. `feat(backend): add private game schema and RLS`
-3. `feat(auth): add Supabase authentication and profiles`
-4. `feat(backend): add match commands and snapshots`
-5. `feat(backend): add idempotent guessing and finalization`
-6. `feat(ios): add two-player live race`
-7. `test(integration): prove authoritative live slice`
-8. `docs: record phase 2 and 3 verification`
-9. `docs: close phase 2 and 3 plan`
+1. `docs(plan): reactivate phase 2 and 3 live slice`
+2. Phase 2 security/RLS review and any focused reproduced fixes
+3. `feat(ios): add two-player live race`
+4. `test(integration): prove authoritative live slice`
+5. `docs: record phase 2 and 3 verification`
+6. `docs: close phase 2 and 3 plan`
 
-## Unavailable or documented-only proof
+## External or documented-only proof
 
-- Supabase/database/Edge/Cron commands remain unavailable until the pinned local
-  toolchain and implementation exist. They are not claimed as passed.
 - Real Apple provider exchange and Apple token revocation require external provider
   credentials and are expected to remain documented-only if unavailable locally.
 - Physical-device proof and remote Cron delivery are not required for this local
@@ -305,14 +314,14 @@ makes units inseparable:
 
 ## Phase 2 exit criteria
 
-- [ ] Pinned local stack installs and recreates migrations/seed from zero.
-- [ ] Private words/answers are denied to anonymous and normal authenticated users.
-- [ ] Unrelated users cannot read matches; normal clients cannot mutate game tables.
-- [ ] Positive/negative RLS tests pass for every exposed table.
-- [ ] Server evaluator passes the canonical contract.
-- [ ] Local auth/session/profile setup works with independent test identities.
-- [ ] Account deletion removes/anonymizes Phase 2/3 data and deletes local auth identity.
-- [ ] Exact proved backend commands are promoted into the runbook.
+- [x] Pinned local stack installs and recreates migrations/seed from zero.
+- [x] Private words/answers are denied to anonymous and normal authenticated users.
+- [x] Unrelated users cannot read matches; normal clients cannot mutate game tables.
+- [x] Positive/negative RLS tests pass for every exposed table.
+- [x] Server evaluator passes the canonical contract.
+- [x] Local auth/session/profile setup works with independent test identities.
+- [x] Account deletion removes/anonymizes Phase 2/3 data and deletes local auth identity.
+- [x] Exact proved backend commands are promoted into the runbook.
 - [ ] Fresh security/RLS review has no unresolved high-severity finding.
 
 ## Phase 3 exit criteria

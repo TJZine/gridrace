@@ -9,7 +9,8 @@
 
 ## After the Proved Live Slice
 
-- Expand only after the active Phase 2 backend and Phase 3 two-player/one-round plan
+- Expand only after the active
+  [`Phase 2 backend and Phase 3 two-player/one-round plan`](plans/2026-08-30-phase-2-3-live-slice.md)
   proves its complete local exit criteria.
 - The exact next action is Phase 4 planning for the smallest product expansion that
   evidence from the live slice supports; do not preselect rematch, more players,
