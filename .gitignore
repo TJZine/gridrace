@@ -11,3 +11,6 @@ supabase/.temp/
 supabase/functions/.env
 supabase/functions/.env.*
 !supabase/functions/.env.example
+
+# Claude Code personal settings
+.claude/settings.local.json
