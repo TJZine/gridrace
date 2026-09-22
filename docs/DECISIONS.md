@@ -4,7 +4,44 @@ This file preserves stable product and architecture decisions whose rationale sh
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
 [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
-is paused and preserved for later adaptation.
+is active; its current checkpoint strengthens the local slice before implementation.
+
+## 2026-09-22 — Keep the Focused Native/Supabase Slice With Bounded Recovery
+
+**Decision:** Retain SwiftUI and the PostgreSQL/RLS, authenticated Edge, Realtime
+signal and canonical-snapshot ownership split. Before the live client, make creation
+retry-safe with a persisted request ID. Use account-bound pending intents and bounded
+foreground snapshot refresh to recover silent event loss. Defer opponent presence
+labels for this slice; show only this client's transport status and opponent game
+progress. Presence remains a later MVP responsibility.
+
+**Rationale:** The existing stack fits low-frequency private races. Replacing it would
+repeat authentication, transaction, privacy and recovery verification without a
+current product benefit. Lost create responses and silently missed events are real
+holes the client must resolve. A local socket does not establish opponent presence.
+
+**Consequences/revisit:** The API change is pending implementation and must precede
+Swift integration. No generic command framework, polling of completed rooms or
+presence channel is introduced. Revisit transport after measured contention/fan-out,
+and platform choice only for a concrete additional-platform requirement. The
+maintainer owns the later presence decision after the local slice is proved.
+
+## 2026-09-22 — Validate With No Initial Spend
+
+**Decision:** Use local development and free services while validating with the owner
+and friends. Traction outside that group is a reason to reconsider spending, not
+permission to upgrade automatically. Every paid commitment requires maintainer approval.
+
+**Rationale:** The product needs evidence of use before recurring infrastructure cost.
+Free-tier capacity/availability and native distribution must be checked explicitly;
+security, deletion, retention and recovery are not traded away to fit a quota.
+
+**Consequences/revisit:** This plan authorizes no hosted deployment or purchase.
+Before friend distribution the maintainer resolves Apple membership/distribution and
+hosted retention, backups and provider setup. Native TestFlight may require a paid
+membership even when hosting is free; do not promise zero-cost distribution or change
+the client stack silently. Revisit that boundary at distribution planning or evidence
+of external users, with a concrete cost proposal.
 
 ## 2026-08-31 — Separate Imported Daily History From Verified Competition
 

@@ -28,14 +28,15 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-The paused Phase 3 plan later adds this fixed live slice:
+The active Phase 3 plan adds these routes alongside Daily Classic:
 
 ```text
-Tutorial or Sign in with Apple / Debug local sign-in
-  -> Home
-     -> Create -> Lobby -> Countdown -> Round -> Reveal
-     -> Join   -> Lobby -> Countdown -> Round -> Reveal
-     -> Profile -> identity, sign out, account deletion
+Home (Daily remains primary)
+  -> Live create/join -> existing account flow if signed out
+     -> Create -> Lobby -> Countdown -> Round -> Reveal -> Home
+     -> Join   -> Lobby -> Countdown -> Round -> Reveal -> Home
+  -> Resume saved live match -> canonical snapshot -> current live state
+  -> Account -> identity, sign out, account deletion
 ```
 
 The match creator starts the first and later countdowns. There is no readiness
@@ -84,9 +85,11 @@ authority demonstration.
 
 ### Home, create/join, and lobby
 
-The Phase 3 Home routes to fixed Create, manual-code Join, tutorial, and Profile.
+Phase 3 adds fixed Create, manual-code Join and Resume alongside the existing Daily,
+tutorial and Account routes; authentication never gates Daily.
 Create always makes exactly two seats and one round; configuration and invite links
-remain later. Lobby shows the private roster, room code, advisory connection state,
+remain later. Lobby shows the private roster, room code, this client's connection/
+recovery status,
 and creator-only Start. It does not add readiness, public discovery, chat, or late
 joining.
 
@@ -105,18 +108,29 @@ The opponent strip shows, for each opponent:
 
 - generated avatar and display name;
 - accepted guess count;
-- connected or disconnected presentation;
+- connected or disconnected presentation in the later MVP (deferred in this slice);
 - playing, solved, failed, timed-out, or forfeited state;
 - a small progress response when the accepted count increases.
 
 Phase 1 ghosts remain connected and use only playing, solved, or failed. The live
-slice uses the full connection and terminal presentations while preserving those
-local tutorial ghosts.
+slice shows all canonical terminal states and this client's own connection/recovery
+status; it makes no claim about opponent connectivity. Preserve tutorial ghosts.
 
 During play it never shows opponent letters or submitted words, feedback,
 keyboard state, starting words, or exact solve time. An accessible summary is
 equivalent to “Opponent Alex, three guesses submitted, still playing.” Reduced
 Motion replaces progress movement with an immediate count/state update.
+
+A solved/failed player waits for the canonical shared reveal; show their accepted
+board and opponent count/state without exposing the answer. Invalid input preserves
+the draft. A pending uncertain submission locks resubmission as a new intent and
+explains recovery. Local deadline expiry locks input while fetching authoritative
+state; network failure never manufactures a result. Provide explicit retry and Home.
+
+Leaving for Home or signing out does not forfeit/cancel the match. Foreground Resume
+restores the accepted board through a snapshot. An expired lobby disables Start;
+host deletion makes a guest's room unavailable, and guest deletion returns the host
+to a one-seat lobby. Show those outcomes without an endless loading state.
 
 ### Reveal
 
@@ -151,7 +165,8 @@ round remains, reveal stays available until the creator starts its countdown.
 After the final reveal, Results offers Rematch or Home. Rematch creates a new
 match; it does not reopen or mutate the completed one.
 
-History remains later. Phase 2/3 Profile manages display name, generated avatar,
+Competitive history remains later; Daily statistics/history stay available. Phase 2/3
+Profile manages display name, generated avatar,
 sign out, and complete in-app deletion; blocked-player controls remain later.
 Contacts, photos, chat, and visible email are outside the product.
 

@@ -12,8 +12,10 @@ cannot enter a verified competitive surface.
 
 Current work: the account and Daily Classic synchronization milestone is complete
 locally. The Phase 2 authoritative backend / Phase 3 two-player live-slice plan is
-active again; its immediate checkpoint is a current security/RLS review before iOS
-live-match implementation begins.
+active again. Its planning checkpoint accepts the current stack, retry-safe creation,
+bounded snapshot recovery, deferred opponent presence, and zero initial spend. The
+next implementation unit is P2-04A: create receipts and deleted-member snapshot
+correction, followed by the current security/RLS checkpoint before live iOS work.
 
 Next large chunk: the first server-backed Blind Race—exactly two authenticated
 players and one round, with server-selected answers, server-validated guesses,
@@ -21,7 +23,9 @@ clue-free progress, canonical snapshot recovery, and shared reveal. Friends and
 broader result sharing remain deferred until this slice is proved.
 
 Genuine blocker: uncommitted dictionary/attribution work overlaps the Xcode project;
-preserve and checkpoint or separate it before Phase 3 modifies that project.
+preserve it and have the maintainer checkpoint or separate it before Phase 3 touches
+the project or Daily views. Native friend distribution also needs a later cost and
+provider decision; local simulator work requires no paid service.
 
 Last meaningful verification: fresh clean database reset; 217 pgTAP assertions;
 database lint with no errors; 3 shared-rule and 96 Edge tests; previously proved 74

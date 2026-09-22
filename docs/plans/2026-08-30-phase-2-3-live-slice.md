@@ -4,239 +4,386 @@ Owner: Primary orchestrator
 Started: 2026-08-30
 Last updated: 2026-09-22
 
-Reactivated after completion of the Daily Classic account and synchronization
-milestone. The proved authoritative backend and six Edge command boundaries are the
-foundation for the next product milestone: the first server-backed two-player race.
-Friends, broader result sharing, and generalized match expansion remain deferred
-until this slice meets its exit criteria.
-
 # Phase 2 and Phase 3 Live Slice Plan
 
-## Goal
+## Goal and current checkpoint
 
-Complete GridRace Phase 2 and Phase 3: build and verify the local authoritative
-Supabase foundation, authentication/profile boundary, private answer storage, RLS,
-transactional commands, deletion path, and database tests; then deliver an
-end-to-end two-player, one-round SwiftUI multiplayer race with server-selected
-answers, idempotent guess submission, clue-free progress, canonical snapshot
-recovery, deadline finalization, and shared reveal.
+Prove the first authoritative Blind Race: two authenticated players, one five-letter
+round, creator start, server-owned guesses and time, clue-free progress, recovery,
+and shared reveal. Daily Classic stays immediately playable offline and signed out;
+its imported personal history never becomes verified competitive evidence.
 
-## Current verified outcome
+This plan remains the sole active plan. The 2026-09-22 task is **planning only**:
+brainstorming, accepted direction, documentation revision, independent adversarial
+review, and documentation checkpoints. It does not implement P2 or P3 product code,
+run destructive resets, deploy, purchase services, or close this ongoing live plan.
 
-- Reactivation starts on `dev/classic-mode` at `8fa34fb`. No other plan is marked
-  `Status: Active`; historical plans remain evidence only.
-- Daily Classic and optional account synchronization are complete locally. They now
-  provide the production account/session/profile foundation that the live slice can
-  reuse without merging Daily personal history into verified competition.
-- P2-01 remains integrated and was freshly checked: the lockfile pins Supabase CLI
-  `2.116.0`, the local configuration resets from zero, and the deterministic private
-  development seed still contains the canonical 100 answers.
-- P2-02 remains integrated. The authoritative schema, private answers, service-only
-  transactions, snapshot, finalizer, deletion preparation, grants, RLS, and match
-  revision Realtime signal recreate successfully alongside the later Daily migrations.
-- P2-03 is complete, not paused: all six authenticated Edge handlers have focused
-  contract tests. Fresh format, lint, type-check, and 96-test execution pass.
-- Fresh shared-rule proof passes 3 TypeScript evaluator tests. A fresh database reset
-  applies all six migrations, all 217 pgTAP assertions pass, and lint reports no
-  errors; existing `extra` warnings are recorded rather than misreported as clean.
-- The iOS app has Supabase account and Daily synchronization services, but no live
-  match domain, command client, session model, Realtime recovery, lobby, live round,
-  or shared reveal. Phase 3 is therefore the remaining product implementation.
-- The versioned wire contract at `docs/live-api-contract.md` remains the implementation
-  authority. No remote Supabase project is linked and no remote state was mutated.
-- Uncommitted dictionary/attribution work predates reactivation and overlaps the Xcode
-  project. It remains unrelated user work and must be checkpointed or otherwise
-  separated before Phase 3 changes touch overlapping files.
+### Repository evidence
 
-## Next integration action
+- Branch `dev/classic-mode`; reactivation checkpoints `0162081` and `764b9e1`.
+- Six migrations, six authenticated Edge handlers, pinned CLI `2.116.0` and Swift
+  SDK `2.55.1` exist. Recorded reactivation proof: deterministic 100-answer seed,
+  clean reset, 217 pgTAP assertions, no lint errors (extra warnings recorded),
+  3 shared-rule tests, and 96 Edge tests. These are prior execution results, not
+  tests rerun by this planning task.
+- Phase 2 includes private answers, service-only transactions, RLS, deletion,
+  minute-scheduled Cron finalization, and `matches.revision` change signals.
+  Database round state stays `countdown` until reveal; snapshots derive `playing`.
+- iOS has Daily Classic, optional accounts, profile/deletion, account-scoped storage,
+  and Daily sync. `SupabaseAccountService` owns the SDK client and already supplies
+  Daily transport. Reuse its authenticated client through composition; do not create
+  competing Auth sessions or put live state in `DailyAccountCoordinator`.
+- No live Swift domain, command service, session model, Realtime service, or UI exists.
+  Existing Edge tests inject dependencies; SQL assertions are not proof of independent
+  concurrent transactions or of actual Edge gateway/Realtime delivery.
+- Staging/Release configuration placeholders and CI already exist. Remote deployment,
+  a passing hosted CI run, and real Apple exchange are not established by those files.
+- Unrelated dictionary/attribution work includes the runbook, `DailyViews.swift`, and
+  Xcode project. Preserve every pre-existing edit/untracked file. The planning task
+  must not edit or stage the runbook. The iOS writer waits for the maintainer to
+  checkpoint or otherwise separate overlapping work; no automatic stash/commit.
 
-Finish P2-04 by auditing the current integrated Phase 2 backend against the frozen
-contract and completing the fresh security/RLS review. Preserve the passing baseline;
-fix only reproduced gaps. Once the unrelated dictionary work no longer overlaps the
-iOS project, begin P3-01 with the smallest complete client path: typed command and
-snapshot mapping, one live-match session model, then create/join lobby UI before the
-round and reveal states.
+## Accepted BRAINSTORM_RESULT
 
-## Scope
+- **Goal:** validate simultaneous private play and a shared social reveal before
+  investing in broader match flow.
+- **Constraints/non-goals:** native iPhone first; existing secrecy, RLS, server time,
+  idempotency, deletion, accessibility and recovery; exactly two players/one round;
+  local proof now; no paid services while validating with the owner and friends.
+- **Options considered:** keep current stack; cross-platform client; custom server or
+  Edge-owned gameplay; direct client gameplay RPCs; polling-only/Broadcast transport.
+- **Direction:** retain SwiftUI and Supabase Auth/PostgreSQL/RLS/Edge/Realtime/Cron.
+  Transactions stay with their data, Edge owns authenticated command translation,
+  and one live session owns client lifecycle. Keep existing Postgres signals and add
+  bounded snapshot refresh. No demonstrated benefit justifies a replacement stack.
+- **Trade-offs:** SQL/RLS and multi-service testing remain real maintenance costs;
+  Auth/Realtime/SDK integration creates vendor coupling; private room fan-out is
+  small but throughput must be measured before expansion. No abstraction framework
+  or provider-neutral facade is warranted.
+- **Resolved by maintainer:** defer opponent presence labels; accept retry-safe
+  creation, bounded recovery, and the proposed planning improvements; use free
+  services initially and obtain explicit approval before any spend.
+- **Open decisions:** none blocking local implementation planning. Distribution,
+  real provider setup, hosted retention/backups, and any paid service remain later
+  maintainer decisions; see operating boundary below.
+- **Planning changes:** freeze pending backend corrections, split P3 by dependency,
+  define transport/recovery/deletion behavior, attach evidence to each exit gate,
+  and reconcile stale authorities without changing the broader beta promise.
 
-- Phase 2: repository-pinned local Supabase CLI, deterministic word seed, public
-  and private database schemas, grants/RLS, profiles, local authenticated test
-  sessions, Apple-auth production boundary, account deletion, six explicit Edge
-  Functions, transactional command functions, database/Edge tests, and local proof.
-- Phase 3: exactly two authenticated players and one round through create, join,
-  creator start, server-authoritative guess submission, clue-free progress,
-  timestamp-driven countdown/deadline, idempotent finalization, versioned canonical
-  snapshots, Realtime-triggered recovery, reveal, and two-client simulator proof.
-- Same-pass product, architecture, privacy, flow, decision, runbook, and plan updates
-  needed to distinguish Phase 2 and Phase 3 and match implemented behavior.
-- Fresh security/RLS review after Phase 2 and a fresh final review after Phase 3.
+## Scope, non-goals, and product invariants
 
-## Non-goals
+Phase 2 finishes the local backend integration/security checkpoint, including the
+bounded contract corrections below. Phase 3 connects create/join/start, countdown,
+guessing, count/state progress, recovery, and reveal through independent clients.
 
-- More than two players, three/five-round execution, later-round advancement,
-  rematch, history, Universal Links, notifications/devices, reports/blocks,
-  profanity services, public matchmaking, friends, chat, spectators, rankings/Elo,
-  asynchronous play, custom answers, monetization, anti-cheat attestation, staging,
-  production deployment, TestFlight, CI/deployment automation, or a generalized
-  game/command/repository/coordinator framework.
-- Remote Supabase linking, reset, migration, deployment, or secret management.
-- Claiming real Apple provider exchange, physical-device proof, remote Cron
-  scheduling, or production deployment when those external prerequisites are absent.
+No more players/rounds, rematches, competitive history, links, notifications,
+reports/blocks, opponent presence, friends graph, public matchmaking, chat, custom
+answers, rankings, generalized modes, telemetry service, or new dependency framework.
+Reports/blocks and other broader MVP requirements remain mandatory before beta exit;
+local slice completion is neither beta exit nor permission to distribute publicly.
+No remote linking/reset/deployment, TestFlight, paid infrastructure, CI redesign,
+production retention choice, or dictionary changes are part of this milestone.
 
-## Product, security, privacy, and state-machine invariants
+- Five letters, six accepted guesses; correct sixth solves, incorrect sixth fails.
+  Shared versioned Swift/TypeScript vectors and the development seed stay unchanged.
+  The development pack is deliberately small and is not production dictionary proof.
+- Creator starts after two seats; no readiness, cancellation, automatic next round,
+  or ordinary forfeit UI. Countdown is 3 seconds, round 180 seconds. Eligibility is
+  `starts_at <= transaction_timestamp() < ends_at`; equality times out. Preserve this
+  accepted database-transaction-time rule, including lock-wait tests; do not substitute
+  device send time or wall-clock-after-lock time silently.
+- Match `lobby -> in_progress -> completed`; effective round
+  `pending -> countdown -> playing -> revealed`; player
+  `playing -> solved|failed|timed_out|forfeited`. Terminal states do not change.
+  Disconnect, navigation away, and sign-out do not forfeit. Active account deletion
+  explicitly forfeits only a still-playing player; solved/failed results remain intact.
+- PostgreSQL selects nonrepeating answers and owns dictionary acceptance, feedback,
+  timestamps, rankings,
+  constraints, atomicity and transitions. Edge verifies identity/build/input and maps
+  stable errors. Views send intents and render validated domain values only.
+- Normal credentials cannot read private answers, pre-reveal opponent clue/timing
+  fields, unrelated matches, or mutate authoritative state. Service credentials stay
+  server-side. Membership filters alone never replace grants/RLS.
+- Realtime payloads are refresh signals, not state or ordering authority. Client
+  clock estimates never decide acceptance, timeout, placement, or reveal.
+- Preserve in-app deletion, anonymized survivor results, Daily cache isolation,
+  non-color meaning, VoiceOver, Dynamic Type, Reduce Motion, Increased Contrast,
+  Bold Text, usable targets, and optional native haptics.
+- No raw words, feedback, snapshots, names, join codes, tokens, request receipts,
+  credentials, or raw identifiers in diagnostics. No new telemetry collection.
 
-- Private Blind Race remains five letters and six accepted guesses. Production
-  supports 2–8 players and 1/3/5 rounds; this slice forces exactly two and one.
-- The creator starts; readiness does not exist. Countdown is three seconds and the
-  deadline is 180 seconds. A guess is eligible only while
-  `startsAt <= serverNow && serverNow < endsAt`; equality times out.
-- Match: `lobby -> inProgress -> completed`. Round:
-  `pending -> countdown -> playing -> revealed`. Round player:
-  `playing -> solved|failed|timedOut|forfeited`.
-- Disconnect never forfeits. Only an explicit authenticated action could forfeit;
-  this slice exposes no forfeit UI or command.
-- The server selects nonrepeating answers and owns accepted-word validation,
-  feedback, timestamps, scoring, placement, and transitions. The sixth correct guess
-  solves; only an incorrect sixth guess fails.
-- The duplicate-letter algorithm and versioned Swift/TypeScript vector contract do
-  not change.
-- Normal credentials cannot read the private schema, answer before reveal, an
-  unrelated match, or directly mutate authoritative game state.
-- Pre-reveal data never exposes opponent words, feedback, keyboard state, starting
-  words, or exact solve duration. Logs never contain raw answers, guesses, tokens,
-  invite secrets, profile payloads, or credentials.
-- Realtime is a refresh signal. Versioned canonical snapshots own recovery and
-  convergence after entry, reconnect, foregrounding, command uncertainty, timer
-  expiry, and inconsistent events.
-- Guess submission, finalization, seat assignment, and account deletion are
-  transactional and idempotent where retried. Reused request IDs cannot duplicate a
-  guess or silently change request content.
-- Account deletion removes the auth identity and owner-only detail, irreversibly
-  anonymizes any retained opponent-visible slot as “Deleted Player,” removes
-  reversible identity mapping, and preserves the other player's structural result.
-- Views never import or call Supabase. The app contains no service-role credential,
-  Apple private key, session token, or broad transport-security exception.
-- Accessibility, non-color semantics, Reduce Motion, Dynamic Type, Increased
-  Contrast, Bold Text, usable targets, and optional native haptics remain intact.
+## Contract checkpoint and ownership
 
-## Frozen cross-stack contract
+[`../live-api-contract.md`](../live-api-contract.md) is the normative wire and recovery
+contract. Its **pending P2-04A** sections distinguish accepted targets from current
+implementation. Freeze that checkpoint before Swift DTOs depend on it.
 
-The normative wire details are in [`../live-api-contract.md`](../live-api-contract.md).
-The summaries below are frozen inputs to all implementation units.
+1. Add required `request_id` to create. An authenticated actor's identical retry,
+   including concurrent/lost-response retry, returns the original match ID without
+   spending another create quota or allocating another room. Receipt and room commit
+   atomically. Reject conflicting reuse; never build a generalized command bus.
+2. Keep snapshot v1, and fix deleted members' `is_self` to Boolean false: current SQL
+   compares nullable `auth_user_id` directly and can emit null. Preserve every other
+   privacy restriction. Define enum/null/timestamp/state validation against real output.
+3. Preserve submit receipts and original response times. The client never uses a
+   replayed guess timestamp to calibrate its clock or replaces a newer snapshot with
+   an older command response. Placements come from SQL; millisecond display values
+   do not recreate the database's microsecond tie-breaker.
+4. Reuse the existing deletion receipt flow, which is a database-preparation/Auth
+   deletion/completion sequence, not a single transaction across Auth and Postgres.
+   Receipt status can precede normal authentication only on the narrow deletion route;
+   it grants no account data. Prove lost responses and all partial-failure stages.
+5. Audit the whole lock graph, including rate counters, new create receipts, account
+   deletion and Cron. The canonical game-row order is match, round, players in seat
+   order, then guesses; it is not a claim that every existing lock follows that list.
+   Prove rollback and deadlock/retry behavior with independent connections.
 
-### Command boundary
+### Client lifecycle and recovery target
 
-Only `create-match`, `join-match`, `start-match`, `submit-guess`,
-`match-snapshot`, and `delete-account` are in scope. Each authenticates a bearer
-session, validates build/input, invokes one transactional database command for an
-authoritative mutation, maps a centralized stable error subset, and logs no payload
-secrets.
+- One account-bound `@MainActor` live session, one command in flight, and one
+  coalesced snapshot fetch. Signals during a fetch set a trailing-refresh flag.
+  Subscribe before the catch-up snapshot; refresh after subscription/reconnection.
+- Generation guards discard callbacks after account/match changes even when task
+  cancellation races completion. Serialize snapshot application with commands: a
+  pre-command response cannot overwrite its result; refresh after accepted commands.
+  Snapshot version is a schema version, not a monotonically increasing state version.
+- Before network dispatch, durably save the pending create/guess identity in a small
+  account-scoped recovery file. Save recovered match ID before exposing its UI.
+  Relaunch retries the same operation/UUID and obtains a snapshot before enabling
+  another guess. A snapshot lacks request IDs, so it cannot by itself acknowledge an
+  uncertain guess. Never resend a guess under a new UUID automatically.
+- Store only the latest match pointer and one pending intent, not a competitive
+  history or offline guess queue. Clear resolved pending data, clear live recovery
+  state on sign-out/confirmed deletion, and hide it immediately on identity change.
+  Persist no bearer, accepted-board cache, answer, or opponent data. Protect pending
+  words as private account data. Failure to persist blocks dispatch with safe retry.
+- A foreground open lobby/countdown/round refreshes after **5 seconds without a
+  successful snapshot**, even if the socket appears healthy. Coalesce with events;
+  no per-frame requests. On network failure use 5/10/20/30-second capped backoff,
+  reset by success. Stop this loop in background, on session exit, reveal, expired
+  lobby, invalid membership, or unavailable authentication. Foreground/reconnect and
+  explicit retry restart recovery. No indefinite lobby polling beyond its expiry.
+- Bound each request to 10 seconds; cancellation/timeout means uncertain outcome,
+  not rollback. Refresh expired Auth once for an operation, then require sign-in.
+  No automatic replay of validation/conflict/permission errors. Retry create/guess
+  only with their saved IDs; join with the same code; start through snapshot recovery.
+- Display time from a fresh snapshot's server time plus monotonic elapsed time.
+  Device clock changes do not extend the round. Network latency makes display
+  approximate; at local countdown/deadline expiry fetch canonical state. At deadline
+  lock input while recovering; never reveal or award a timeout locally.
+- Returning Home leaves server membership intact and offers Resume for the saved
+  match. One locally selected match at a time; the server may contain other lobbies.
+  No list/history feature or automatic cancellation is implied. Host deletion makes
+  a guest's lobby unavailable; guest deletion restores a one-seat lobby.
+- Daily stays the primary home action. Live create/join uses the existing optional
+  account flow; live errors do not block Daily. Reuse passive visual primitives where
+  useful, never the Daily/tutorial evaluator as an authoritative live guess path.
+- Opponents show avatar/name/count/coarse game state only. Show this client's own
+  connecting/recovering/unavailable status; do not infer opponent connectivity from
+  inactivity or from the local socket. Presence remains later.
 
-### Stable errors
+## Work units and dependency order
 
-`not_authenticated`, `not_a_match_member`, `match_not_joinable`, `room_full`,
-`room_expired`, `not_host`, `not_enough_players`, `round_not_active`,
-`round_already_finished`, `invalid_guess_format`, `word_not_accepted`,
-`rate_limited`, `client_update_required`, `request_conflict`, and `internal_error`.
+All statuses below concern future implementation unless explicitly complete. The
+primary controller owns shared contracts, plan, integration, index and commits.
+Future filenames below are proposed write boundaries, **not existing files**.
 
-### Snapshot v1 visibility
-
-- Pre-reveal: server time; public match/build/expiry state; stable roster snapshots;
-  public round timestamps/state; requester's status/count/full accepted board;
-  opponents' count/coarse state only.
-- Post-reveal: answer; both boards in stable seat order; permitted server submission
-  timestamps; guesses used; solve durations; efficiency; competition placement.
-- DTO/domain mapping rejects malformed or impossible state combinations.
-
-### Local proof identities
-
-At minimum: two rostered authenticated users, one unrelated authenticated user, one
-anonymous context, and internal/service context only where required. Debug local
-auth must compile out of Release and use independent sessions without admin access.
-
-## Work units, owners, dependencies, and exclusive write boundaries
-
-| Unit | Owner | Write boundary | Depends on | Status |
-| --- | --- | --- | --- | --- |
-| D-01 Backend/toolchain audit | `backend_audit` | Read-only repository/toolchain/official docs | Required reads | Complete: CLI 2.116.0 and local gates frozen |
-| D-02 Schema/RLS/security audit | `schema_security_audit` | Read-only repository/official docs | Required reads | Complete: schema/policies/deletion/locks/tests frozen |
-| D-03 iOS integration audit | `ios_audit` | Read-only iOS/project/official docs | Required reads | Complete: SDK 2.55.1 and minimum seams frozen |
-| D-04 Contract/test audit | Primary orchestrator | Read-only task/contracts/proof design | Required reads | Complete: wire/privacy/concurrency/two-client proof frozen |
-| C-01 Contract and authority freeze | Primary orchestrator | This plan and shared authority/contract docs | D-01..04 | Complete |
-| P2-01 Local toolchain and deterministic seed | `backend_audit` | `package.json`, lockfile, Supabase config, seed generator/derived seed, ignores/examples | C-01 | Complete; controller verified |
-| P2-02 Schema, transactions, grants, RLS, database tests | `schema_security_audit` | One serialized migration/test boundary under `supabase/migrations/**` and `supabase/tests/database/**` | C-01, P2-01 | Complete: fresh zero-state reset, 217 aggregate pgTAP assertions, and error-level lint pass |
-| P2-03 Edge command functions and focused tests | `backend_audit` | `supabase/functions/**` only | P2-02 SQL/API freeze | Complete: six handlers; fresh format, lint, check, and 96 tests pass |
-| P2-04 Phase 2 integration/security review/checkpoint | Primary + fresh reviewer | Integrated backend diff, docs, plan, Git | P2-01..03 | Active: re-baseline current schema/contract and perform fresh security/RLS review |
-| P3-01 SwiftUI live slice | One iOS writer | `ios/**`; project/composition serialized to this writer/controller | P2 checkpoint | Pending |
-| P3-02 Disjoint backend integration/recovery tests | Assigned after freeze if useful | Exact test-only paths, no SQL/API/project overlap | P2 checkpoint | Pending |
-| P3-03 Two-client integration proof | Primary orchestrator | Local stack and simulator containers only | P3-01..02 | Pending |
-| R-01 Final independent review | Fresh read-only reviewer | Final task-owned diff and evidence | Integrated Phase 3 | Pending |
-| C-02 Closeout | Primary orchestrator | Findings, authorities, runbook, plan, Git | All accepted fixes verified | Pending |
-
-Only the primary orchestrator edits this plan, shared contracts after freeze,
-authority integration, the Git index, or commits. Migrations, grants/RLS, seeds,
-shared API/snapshot contracts, Xcode project/package resolution, and composition
-roots are serialized. Workers inspect broadly, write only within exact assigned
-paths, never mutate Git, never nest delegation, and return assumptions/blockers.
-
-## Dependencies and serialization points
-
-- Official Supabase local-development, Cron, CLI, Edge, Swift SDK, and Apple
-  authentication guidance must be consulted before dependency/API syntax is frozen.
-- SQL command signatures, error names, snapshot JSON, account-deletion semantics,
-  build number, debug identities, and rate limits freeze before Edge/iOS writers.
-- The migration/schema owner freezes SQL before the Edge writer starts.
-- Local stack reset/seed/database proof precedes the Phase 2 security review.
-- Phase 2 security findings close before iOS integration depends on the backend.
-- One iOS writer owns package/project/composition changes; no overlapping iOS writer.
-- Existing dictionary/attribution changes that touch the Xcode project must be
-  checkpointed or separated before the Phase 3 iOS writer begins.
-- The controller integrates and commits every checkpoint after rerunning proof.
-
-## Risk tier and verification matrix
-
-Risk: **High** — authentication, RLS, secrets, migrations, deletion, APIs,
-concurrency/idempotency, timers, state machines, Realtime, project dependencies, and
-cross-stack contracts are all touched.
-
-| Surface | Required evidence |
-| --- | --- |
-| Toolchain/config | Lockfile install, pinned CLI version, config parse, ignored local state, secret scan |
-| Seed | Deterministic generation/check, exact 100 canonical words, reset-from-zero |
-| Schema | Constraints/indexes/FKs, lint, clean forward migration/reset |
-| Grants/RLS | Positive and negative pgTAP for anonymous, rostered, unrelated, private schema, direct mutations, before/after reveal |
-| Transactions | Parallel seat-two joins, duplicate/conflicting requests, simultaneous submissions/finalizers, deadline race, rollback/idempotency |
-| Evaluator | Canonical vectors and duplicate-letter equivalence in server runtime |
-| Edge commands | Auth/build/input/error contract tests; no sensitive logging |
-| Deletion | Authenticated retry, data removal/anonymization, auth identity deletion, survivor integrity |
-| Snapshot | Pre/post reveal field audit, impossible-state rejection, stable ordering |
-| Realtime/recovery | Duplicate/dropped/reordered signal coalescing, snapshot convergence, foreground/relaunch/deadline refresh |
-| iOS | Focused service/mapper/session tests, Release debug-auth exclusion, clean dependency resolution, tests/build |
-| Accessibility/UI | Tutorial regression, two-player flow, VoiceOver/non-color/Reduce Motion/Dynamic Type inspection |
-| End to end | Independent client sessions create/join/start/race/finalize/reveal identically |
-
-## Decisions and blockers
-
-| ID | Decision or blocker | State | Evidence / resolution |
+| Unit | Owner / exclusive write boundary | Dependency | Acceptance / status |
 | --- | --- | --- | --- |
-| DEC-01 | Use Ponytail full mode and stop at native/database/platform mechanisms that securely satisfy the requested slice. | Accepted | User direction and skill contract |
-| DEC-02 | Restore Phase 2 backend / Phase 3 live-slice naming without changing product behavior. | Accepted | User correction |
-| DEC-03 | Phase 3 forces exactly two players, one round, 60-minute lobby expiration, build floor matching app build. | Accepted | Explicit task authorization |
-| DEC-04 | Keep the canonical evaluator and 100-word development pack unchanged; generated SQL is derived and drift-checked. | Accepted | Product/task contract |
-| DEC-05 | Local automated identities are debug-only, independent authenticated sessions; production remains Apple through Supabase Auth. | Accepted | Task contract |
-| DEC-06 | Real Apple provider exchange, external token revocation, and physical-device proof may be documented-only when credentials/hardware are unavailable. | Accepted | Task contract |
-| DEC-07 | Pin Supabase CLI `2.116.0` and Supabase Swift `2.55.1`; use the CLI's Docker matrix and no custom Compose stack. | Accepted | Official release/source audits D-01/D-03 |
-| DEC-08 | Use service-only security-invoker command RPCs, a separate safe definer-helper schema for nonrecursive RLS, column grants for timing/auth IDs, and a public match revision as the only Realtime signal. | Accepted | D-02/D-03 reconciliation |
-| DEC-09 | Use one fixed lock order: match, round, player rows in seat order, then guesses/receipts. Expected business errors return typed results so rate counters commit. | Accepted | D-02 concurrency audit |
-| DEC-10 | Delete invalid lobbies, treat active account deletion as explicit forfeit, and retain only irreversibly anonymized survivor-required results before hard Auth deletion. | Accepted | Architecture/privacy decision and D-02 |
-| DEC-11 | Display names are 2–16 ASCII characters with alphanumeric ends and internal letters, digits, single spaces, apostrophes, or hyphens. | Accepted assumption | The supplied “documented” set was absent; narrow trust-boundary rule now documented |
-| DEC-12 | Local trusted client-IP provenance is unavailable. Prove transactional per-user limits and the keyed-IP database path; keep live address extraction documented-only. | Accepted limitation | Current official deployment material does not identify a trustworthy local header |
-| BLK-01 | Exact Supabase CLI/SDK versions and current API syntax. | Resolved | DEC-07 and official source inspection |
-| BLK-02 | Final SQL/deletion/rate-limit/RLS structure. | Resolved | DEC-08..12 and live API contract |
-| DEC-13 | Resume the proved live slice after Daily Classic; defer friends and broader sharing until its exit criteria pass. | Accepted | Product roadmap, repository focused-slice boundary, and maintainer direction on 2026-09-22 |
-| BLK-03 | Uncommitted dictionary/attribution work overlaps `ios/GridRace.xcodeproj/project.pbxproj`. | Open prerequisite | Preserve it unchanged; checkpoint or separate it before P3-01 edits the project |
+| PLAN-01 | Primary; this plan, API, architecture, privacy, flow, product, decisions, NOW | Accepted brainstorming | Complete: accepted direction revised and independently reviewed; documentation proof below; no product writes |
+| P2-01..03 | Historical backend owners; existing migrations, seed, handlers/tests | Original contract | Complete baseline; evidence retained below, not proof of new targets |
+| P2-04A Recovery contract corrections | One backend writer; future `supabase/migrations/202609220001_live_recovery_contract.sql`, future `supabase/tests/database/live_recovery_contract.sql`, existing `supabase/functions/create-match/index.ts` and `index_test.ts`; controller owns API integration | PLAN-01 checkpoint | Pending: atomic create receipts and Boolean deleted-member identity, real-output contract fixtures, forward/reset proof; no iOS/project edits |
+| P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, future `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Pending: current RLS/grants/secret/deletion/revision/lock audit, negative and concurrent proof, accepted fixes closed |
+| P3-01 Transport and mapping | One iOS writer; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Pending: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
+| P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Pending: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
+| P3-03 Live UI | Same iOS writer; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Pending: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
+| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, future `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness is established during P2-04B | Pending: actual Edge/Auth/Realtime, independent users/connections and two simulator apps; promote exact new commands only after successful runs |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
-## Review findings and dispositions
+No parallel writers on migrations, API, project, account/composition roots, or
+tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
+and return findings to the controller. A missing dependency pauses its dependent
+unit only; P2-04A has no dictionary/Xcode overlap and is executable next.
+
+## Risk and evidence gates
+
+Cross-boundary architecture and the eventual implementation are **High** risk. This
+task changes documentation only: run the runbook's workflow/docs checks and one fresh
+independent review of the revised plan. Do not mislabel this as the P2 security audit
+or the P3 implementation review. No unrelated application builds are needed now.
+
+Existing commands are owned by [`../ENGINEERING_RUNBOOK.md`](../ENGINEERING_RUNBOOK.md).
+Use its current Deno, seed, Supabase reset/test/lint and Xcode discovery/test/build
+commands during affected implementation units. Include `app_rls` in the security
+inspection; the earlier three-schema lint result is retained below. A clean reset
+proves zero-state migration only: P2-04A also needs a forward upgrade from the current
+six-migration fixture, verifying resulting normal-role grants without manually
+repairing them in the proof harness.
+
+New concurrency/HTTP/Realtime harnesses, Release-specific checks and the coordinated
+simulator procedure are **future proof surfaces**, not commands claimed to work.
+P2-04B/P3-04 must establish and record exact invocations, prerequisites, cleanup and
+results; promote them to the runbook only after they run. Missing/opt-in-skipped proof
+is unavailable, not passed. Local reset is permitted only on confirmed disposable
+GridRace test state; never reset a linked/remote project or the user's live data.
+
+| Gate / exit criterion | Owner and feasible evidence path |
+| --- | --- |
+| E1 Backend authority and secrecy | P2-04B: clean reset + forward path, lint, pgTAP with anonymous/rostered/unrelated/deleted/service identities; direct private reads, column grants, RPC execution and direct mutation denied; before/after reveal audits including Realtime payloads |
+| E2 Contract, rules, creation and submission | P2-04A/P3-01: existing shared vectors in Swift/Deno plus SQL equivalent proof; actual snapshot fixtures (not fabricated Edge mock shapes); HTTP success/non-2xx errors, unknown/version/malformed rejection; same create/guess UUID returns original result, conflicting guess reuse fails, no extra quota/rows |
+| E3 Concurrent transitions | P2-04B/P3-04: separate transactions synchronized at lock boundaries; competing seat-two joins, same/different UUID submissions, same UUID across matches, finalizers vs last/sixth guess, deadline equality and lock-wait ordering, deletion vs join/start/submit, rollback and rate-counter deadlocks; bounded completion and exactly one canonical outcome |
+| E4 Two-client product loop | P3-04: two separate app processes/simulators and two Auth users use actual local Edge gateway, same roster/start/deadline, independently submit and converge on reveal/placement; third user and anonymous requests fail; local fixture admin credentials never enter client paths |
+| E5 Recovery and persistence | P3-02/P3-04: lost create/guess response before and after commit; relaunch between persistence/send/ack; same UUID replay after deadline/reveal; blocked auth/expired token; account switch and late callbacks; disk failure; exact accepted-board restoration and no duplicate row |
+| E6 Realtime, timers and terminal behavior | P3-02/P3-04: healthy event path plus all signals dropped, duplicates/reordering, subscription handshake race, silent socket, foreground/background and clock jumps; trailing fetch cannot regress state; bounded watchdog restores lobby and early reveal without another event; creator disconnect never forfeits |
+| E7 No-client finalization | P3-04: both apps closed; local scheduled job reaches reveal after deadline without a client snapshot; inspect job outcome through privileged test setup, invoke finalizer repeatedly, reopen both clients and compare. Direct finalizer tests alone do not prove scheduling. Remote Cron remains external |
+| E8 Deletion and account isolation | P2-04B/P3-04: host/guest lobby deletion, active deletion, already-solved deletion, survivor reveal, both accounts deleted; preparation/Auth/completion failure and lost-response retries through real Edge; no reversible auth mapping, old credentials cannot read/write; live state cleared and Daily UUID cache removed only after confirmed deletion; guest files retained |
+| E9 UI/accessibility/regressions | P3-03: build/tests plus inspect all live states with VoiceOver, largest Dynamic Type, Reduce Motion, Increased Contrast, Bold Text, non-color tiles, hit targets, hardware keyboard and haptics preference; waiting after early solve, errors/recovery and reveal semantic order; repeat Daily/tutorial/account regressions |
+| E10 Local environment and diagnostics | P3-04: Debug tests and clean build, Release build/debug-auth exclusion, no bundled secrets, correct build floor; actual local gateway auth modes and Realtime authorization; safe error/timeout diagnostics and no payload leakage; record request count, snapshot byte size and latency without user data |
+| E11 Final quality | R-01/C-02: fresh implementation review, accepted fixes verified, whole owned diff and command/path checks, evidence for every gate, unrelated edits preserved, no remote mutation or spend |
+
+No gate is satisfied merely by test counts. Record named scenarios, actual result,
+fixture/environment, and limitations. UI approval is required for material departures
+from the accepted Daily-first flow; routine implementation within that flow needs no
+repeat approval. If a genuine rule/privacy/API decision emerges, ask before changing it.
+
+## Operating, cost, and release boundary
+
+**Accepted constraint:** spend $0 initially while the owner and friends validate the
+app. Do not provision paid plans/add-ons, domains, telemetry, CI capacity or hosting.
+External traction permits reconsideration, not automatic spending. The maintainer
+must approve any paid commitment. Local development continues without hosted spend.
+
+Official facts checked 2026-09-22: Supabase Free lists 500 MB database, 5 GB egress,
+50,000 monthly active users, 200 peak Realtime connections, 2 million messages/month
+and 500,000 Edge invocations/month; it can pause after a week of inactivity and has
+no automatic backups. These are current quotas, not a GridRace capacity guarantee.
+[Supabase pricing](https://supabase.com/pricing)
+
+Inference: a small friends-only trial should fit if usage is measured. At a 5-second
+watchdog interval, two foreground clients in a 3-minute round generate roughly 72
+watchdog snapshots before event resets and other commands; an idle lobby costs more
+if left open. Daily sync shares the same quota. Measure real request counts, bytes,
+latency and storage growth locally; before hosted testing inspect project usage and
+stop/reduce test activity if free quotas are insufficient. Never weaken recovery or
+retention secretly to save quota. Do not add synthetic traffic to defeat pausing.
+
+Native distribution is a distinct blocker under a strict zero-spend constraint:
+Apple lists a $99/year Developer Program membership including TestFlight. Free
+personal-device provisioning is limited and expires after seven days; it is not a
+promise of convenient free friends distribution. Existing membership/eligibility is
+unknown. The maintainer must resolve distribution before that later milestone;
+no purchase or native-stack reversal is authorized here.
+[Apple program](https://developer.apple.com/programs/) ·
+[Personal Team limits](https://developer.apple.com/help/account/basics/about-your-developer-account)
+
+Keep the existing local stack. Later hosted friend testing needs an explicitly
+approved deployment plan, isolated environment/configuration, provider setup,
+retention and backup/export/restore decisions, safe secrets and usage checks.
+No hosted availability promise follows from the local proof; free-tier pauses,
+provider incidents and quota failures must leave Daily playable and live recovery
+honest. Restore current auth and snapshot state when service returns.
+
+Cron already invokes the same database finalizer once a minute. Acceptance stops at
+the stored deadline; unattended persisted reveal may lag until a job runs. No hard
+real-time scheduling guarantee is implied. Prove the local schedule and command
+fallback; hosted Cron delivery is a later gate.
+[Supabase Cron](https://supabase.com/docs/guides/cron)
+
+Postgres Changes performs per-subscriber authorization and ordered processing; use
+small match-scoped subscriptions and coalesced snapshots now. Benchmark fan-out and
+lock contention before expansion; consider authorized Broadcast only if measurements
+show a bottleneck. SQL remains comparatively portable, but Auth/Realtime/Edge APIs
+are coupling. Self-hosting shifts operational responsibility and is not a free
+maintenance solution. Short-lived Edge handlers should not host the match clock.
+[Postgres Changes](https://supabase.com/docs/guides/realtime/postgres-changes) ·
+[Self-hosting](https://supabase.com/docs/guides/self-hosting) ·
+[Edge limits](https://supabase.com/docs/guides/functions/limits)
+
+Use only safe operation/error category, elapsed duration and aggregate request counts
+for local proof diagnostics. Do not add persistent production telemetry or log raw
+responses/SQL errors. Capture Cron failure and recovery failures without gameplay
+payloads. Production log retention/authorized access remains a pre-hosting decision.
+
+Rollback during local implementation means revert task-owned code and recreate only
+explicitly disposable local fixtures. Do not edit applied migration history; add a
+forward migration. The required create request field is a coordinated local API
+change before any live iOS client ships; no compatibility framework is needed.
+A future hosted release requires a data-preserving migration/rollback strategy,
+backup verification and compatible client/build gating before any rollout.
+
+## Decisions, blockers, and next action
+
+| ID | State | Decision / blocker / owner |
+| --- | --- | --- |
+| DEC-01 | Retained | Native SwiftUI, fixed slice, authoritative PostgreSQL, thin authenticated Edge, canonical recovery; no framework or dependency change |
+| DEC-02 | Accepted 2026-09-22 | Opponent presence deferred by maintainer; own transport status only |
+| DEC-03 | Accepted 2026-09-22 | Retry-safe create and bounded foreground snapshots; P2-04A contract change before Swift |
+| DEC-04 | Accepted 2026-09-22 | $0 initial spend; paid commitments need explicit maintainer approval after revisiting traction |
+| BLK-01 | Open for overlapping files | Maintainer must checkpoint/separate unrelated dictionary work before `DailyViews.swift`, Xcode or overlapping runbook writes; no agent may stage/discard it. P2-04A product paths remain independent |
+| BLK-02 | Open implementation gate | P2-04A corrections and P2-04B security/concurrency checkpoint precede iOS dependency |
+| BLK-03 | Later external proof | Maintainer: Apple credentials/revocation, distribution cost, physical devices, hosted environment/retention/backups/usage; not local-slice completion claims |
+| BLK-04 | Known limitation | Trusted client-IP provenance unavailable locally; prove per-user limits and keyed-IP SQL path, do not trust arbitrary forwarded headers; resolve before hosted abuse-control claims |
+
+Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
+implementation; they do not reduce this agreed scope.
+
+**Exact next implementation unit: P2-04A.** After this documentation checkpoint,
+start with real-output fixtures for deleted-member snapshots and lost/concurrent
+create retries; add the one forward migration and the bounded create handler/test
+change listed in the unit. Preserve the six-migration baseline, demonstrate forward
+and reset paths plus negative RLS/receipt/HTTP tests, then checkpoint for P2-04B.
+This planning task stops before making any of those product changes.
+
+## Current planning review and verification
+
+Planning findings and independent revised-plan review dispositions are recorded
+below before committing. A closed planning finding means the plan now requires the
+repair/proof; it never means a pending product fix has been implemented.
+
+| ID | Severity | Location / claim | Evidence | Disposition | Action | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| PLAN-01 | High | Original next action treated the backend contract as ready for Swift recovery | `create_match` has no receipt; deleted-member `is_self` SQL comparison can return null | Accepted | P2-04A precedes mapping and security checkpoint; target/current API split | Source traced; product proof remains E2/E5/E8 |
+| PLAN-02 | High | Event/lifecycle refresh alone cannot bound recovery from silent lost signals | No next event guaranteed in lobby or early reveal | Accepted | Bounded foreground watchdog and handshake/trailing refresh proof | E5/E6 explicitly exercise all signals dropped |
+| PLAN-03 | Medium | Opponent connectivity had no owner or wire field | Screen flow promised it; snapshot/service has no presence | Accepted | Maintainer deferred labels; update flow/architecture | API and screen flow agree |
+| PLAN-04 | Medium | Single iOS unit and generic evidence could hide missing real transport/race proof | Edge tests inject RPC/auth; SQL tests are sequential | Accepted | Dependency units and E1–E11 evidence paths | Distinguish mocks, SQL, concurrency, gateway, simulator, external |
+| PLAN-05 | Medium | Stale paused/current claims and clean-worktree closeout conflict with reactivation/user edits | Product/flow/decisions stale; pre-existing dictionary/runbook changes | Accepted | Correct active authorities; preserve unrelated hashes and task-only staging | Final documentation checks |
+| PLAN-06 | Medium | Initial cost/distribution assumptions were unspecified | Maintainer zero-spend constraint; current Apple and Supabase docs | Accepted | Free-first budget, no automatic upgrades, explicit later distribution blocker | Official sources checked; no purchase or deployment |
+
+### Fresh review of the revised state
+
+A fresh read-only reviewer inspected the full revised plan, all eight task-owned
+current authorities, scoped diffs, and relevant implementation seams. No additional
+material findings or user decisions were identified. Coverage included product/beta
+alignment, factual/current-versus-pending claims, dependencies, trust/API/snapshots,
+secrecy, state machines, concurrency/retry/cancellation, Realtime/recovery, deletion,
+accessibility, realistic tests, diagnostics, environment/rollback/cost and evidence
+feasibility. This was not the future implementation security or final review.
+
+Controller final dependency inspection clarified that Phase 2 requires only backend
+portions of shared evidence gates; Swift mapper proof waits for P3-01. The backend
+HTTP/Realtime/concurrency harness starts in P2-04B, avoiding an apparent cycle through
+the later simulator unit. No product decision or scope changed.
+
+### Planning verification, 2026-09-22
+
+Task-owned files: this plan, `docs/live-api-contract.md`, `docs/architecture.md`,
+`docs/privacy-data-map.md`, `docs/screen-flow.md`, `docs/product-spec.md`,
+`docs/DECISIONS.md`, and `docs/NOW.md`. No runbook, TODO, game-rule or product-code
+change was required; all pre-existing changes remain unrelated.
+
+| Check | Result |
+| --- | --- |
+| Required authority reads and bounded source tracing | Complete; all named authorities read, implementation inspected only at relevant seams |
+| `rg -l '^Status: Active$' docs/plans` | Exactly this one active plan |
+| Local Markdown targets and inline file references | All 12 relative links resolve; missing implementation paths are explicitly labeled future |
+| Existing command resolution | Git, rg, Python, npm/npx, Deno and xcodebuild resolve; 22 existing command input/project/scheme paths exist; npm seed script inspected; new harness/Release procedures labeled future, no new command promoted |
+| Task-scoped `git diff --check` and complete owned diff inspection | Passed; eight documents reviewed in full/scoped diff, including accepted pending API changes |
+| Unrelated working-tree preservation | SHA-256 comparison of all 22 pre-existing changed/untracked files passed; no product or unrelated write |
+| Independent revised-plan review | Complete; no additional material findings; controller dependency clarification inspected |
+| Product execution | Not run in this documentation task: no reset, product tests/build, simulator, gateway, Realtime or concurrency execution; prior evidence remains labeled historical |
+
+## Historical implementation findings
 
 | ID | Severity | Location and claim | Evidence | Disposition | Action | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -246,7 +393,7 @@ cross-stack contracts are all touched.
 | DB-04 | Low | `pg_cron` privileges were not explicitly denied to client roles. | Game schemas were explicit; extension schema relied on defaults. | Accepted | Client schema/table/routine privileges revoked; owner job retained. | Closed: reset/lint/79 pgTAP pass |
 | DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
 
-## Verification record
+## Prior execution evidence (not rerun by the planning task)
 
 | Surface | Exact command or inspection | Result |
 | --- | --- | --- |
@@ -259,7 +406,7 @@ cross-stack contracts are all touched.
 | TypeScript check | `deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts` | Passed |
 | TypeScript tests | `deno test --allow-read rules/typescript/evaluator_test.ts` | Passed: 3 tests, 0 failed |
 | Xcode project | `xcodebuild -project ios/GridRace.xcodeproj -list` | Passed |
-| Simulator discovery | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations` | Passed: live UUID recorded above |
+| Simulator discovery | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations` | Passed historically: local UUID used in the following commands; rediscover before reuse |
 | iOS tests | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-baseline-test test` | Passed: 16 tests, 0 failed |
 | iOS clean build | `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' -derivedDataPath /tmp/GridRaceDerivedData-baseline-build clean build` | Passed |
 | Package install | `npm ci --no-audit --no-fund` | Passed: 8 packages from lockfile |
@@ -294,66 +441,37 @@ Phase 2/3 commits to date:
 | `f73da30 feat(backend): add daily classic personal sync storage` | Add owner-private Daily storage without changing competitive live state | Complete |
 | `dd85670 feat(ios): add accounts and daily classic synchronization` | Supply the reusable account/session/profile client foundation | Complete |
 | `0162081 docs(plan): reactivate phase 2 and 3 live slice` | Reconcile current state, make this the sole active plan, and record fresh backend proof | Complete |
+| `764b9e1 docs(plan): record reactivation checkpoint` | Record the reactivation content checkpoint | Complete |
 
-Remaining checkpoints are adjusted only when the real dependency graph makes units
-inseparable:
 
-1. `docs(plan): reactivate phase 2 and 3 live slice`
-2. Phase 2 security/RLS review and any focused reproduced fixes
-3. `feat(ios): add two-player live race`
-4. `test(integration): prove authoritative live slice`
-5. `docs: record phase 2 and 3 verification`
-6. `docs: close phase 2 and 3 plan`
+## Milestone exit and checkpoint policy
 
-## External or documented-only proof
+Phase 2 baseline evidence remains recorded above. **Phase 2 exits only after P2-04A
+and P2-04B pass the backend portions of E1–E3 and E8/E10 with no unresolved
+material security finding.**
+The current planning review does not satisfy that gate.
 
-- Real Apple provider exchange and Apple token revocation require external provider
-  credentials and are expected to remain documented-only if unavailable locally.
-- Physical-device proof and remote Cron delivery are not required for this local
-  simulator slice. Database finalizer behavior must still be proved directly.
-- No remote deployment or remote Supabase proof is authorized.
+Phase 3 exits only when E4–E11 and client portions of E2/E5/E8 pass, including real
+independent clients, no-client scheduled finalization, negative secrecy proof,
+retry/relaunch/account isolation, accessibility and Daily/tutorial regressions.
+Unavailable local infrastructure blocks that gate; mocked substitutes do not pass it.
+Real Apple exchange/revocation, hosted scheduling/deployment, physical-device coverage,
+production word provenance/retention and complete 2–8 player MVP/moderation remain
+external/later beta gates, explicitly owned by the maintainer before release.
 
-## Phase 2 exit criteria
+Checkpoint coherent units with conventional commits after their evidence and review.
+Record each content checkpoint here in the next tracker update. Planning completion
+leaves this plan Active; implementation closeout alone marks it Historical.
 
-- [x] Pinned local stack installs and recreates migrations/seed from zero.
-- [x] Private words/answers are denied to anonymous and normal authenticated users.
-- [x] Unrelated users cannot read matches; normal clients cannot mutate game tables.
-- [x] Positive/negative RLS tests pass for every exposed table.
-- [x] Server evaluator passes the canonical contract.
-- [x] Local auth/session/profile setup works with independent test identities.
-- [x] Account deletion removes/anonymizes Phase 2/3 data and deletes local auth identity.
-- [x] Exact proved backend commands are promoted into the runbook.
-- [ ] Fresh security/RLS review has no unresolved high-severity finding.
+- [ ] P2-04A/B contract/security gates complete with exact evidence.
+- [ ] P3 client, real transport, concurrency and two-client gates complete.
+- [ ] Implementation review findings adjudicated; accepted fixes verified.
+- [ ] Authorities and newly proved commands current; beta limitations explicit.
+- [ ] Task-owned changes committed; unrelated work unchanged and unstaged by this task.
+- [ ] No remote mutation, push, paid service or unapproved data operation occurred.
+- [ ] At live-slice completion only: mark Historical, identify last content checkpoint,
+      label tracker closeout “this commit,” and report its SHA.
 
-## Phase 3 exit criteria
-
-- [ ] Two independent authenticated clients create/join the same room and roster.
-- [ ] Creator start produces the same server-timestamp countdown/deadline.
-- [ ] Server guesses, clue-free progress, timeout/finalization, and shared reveal converge.
-- [ ] Pre-reveal answer and unrelated-match denial are proved.
-- [ ] Duplicate request IDs create one guess; conflicting reuse returns `request_conflict`.
-- [ ] Reconnect/relaunch restores the exact accepted board from a snapshot.
-- [ ] Foregrounding, creator disconnect, and reordered/dropped/duplicate signals converge.
-- [ ] Repeated finalization works with clients closed; both clients agree on results.
-- [ ] The Phase 1 tutorial and all existing gates remain green.
-- [ ] Fresh final review findings are adjudicated and closed.
-
-## Stop conditions
-
-Stop for a game-rule, privacy, security, retention, public-contract, or architecture
-contradiction; more than one active plan; unexpected overlapping writes; unrelated
-worktree mutation; a required dependency/API decision unsupported by current
-official documentation; unavailable local infrastructure that prevents secure
-proof; or a failed high-risk gate that cannot be resolved inside scope.
-
-## Closeout checklist
-
-- [ ] Phase 2 and Phase 3 exit criteria have exact evidence.
-- [ ] Security/RLS and final independent reviews are adjudicated.
-- [ ] Successful commands are promoted into the runbook.
-- [ ] Product, architecture, privacy, flow, decision, and phase naming are current.
-- [ ] All content checkpoints are committed with conventional subjects.
-- [ ] No remote Supabase project was mutated; no push occurred.
-- [ ] The worktree is clean.
-- [ ] This plan is `Historical`, identifies the latest content checkpoint, labels
-      tracker closeout as “this commit,” and its closeout SHA is reported.
+Stop for more than one active plan, unexpected overlap, a rule/privacy/security/API
+choice beyond accepted direction, a proposed paid commitment, or a high-risk gate
+that cannot be resolved in scope. Continue independent safe work where possible.

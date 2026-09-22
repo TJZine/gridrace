@@ -1,10 +1,13 @@
 # GridRace Live API Contract
 
 This document freezes the Phase 2 backend and Phase 3 two-player live-slice wire
-contract. [`game-rules.md`](game-rules.md) remains authoritative for gameplay;
+contract. The accepted P2-04A changes below are **not implemented yet**; the
+current backend must be brought to that checkpoint before the live client ships.
+[`game-rules.md`](game-rules.md) remains authoritative for gameplay;
 [`architecture.md`](architecture.md) owns component boundaries. All JSON uses
 `snake_case`, UUIDs use canonical lowercase strings, and timestamps use RFC 3339 UTC
-with fractional seconds.
+with optional fractional seconds (up to microseconds); accept UTC `Z` and
+`+00:00` encodings. Do not assume the three-digit examples are the only SQL output.
 
 ## Version and build floor
 
@@ -55,18 +58,48 @@ Messages are fixed safe presentation text, never database output. Error codes ar
 - `request_conflict`
 - `internal_error`
 
+HTTP methods are POST with JSON content type; current handlers limit bodies to
+2048 bytes and reject extra request keys. Success is HTTP 200. Stable failures map
+as follows; a gateway/transport failure need not have this envelope.
+
+| HTTP status | Error codes |
+| --- | --- |
+| 400 | `invalid_guess_format`; malformed requests may use `internal_error` |
+| 401 | `not_authenticated` |
+| 403 | `not_a_match_member`, `not_host` |
+| 409 | `match_not_joinable`, `room_full`, `not_enough_players`, `round_not_active`, `round_already_finished`, `request_conflict` |
+| 410 | `room_expired` |
+| 422 | `word_not_accepted` |
+| 426 | `client_update_required` |
+| 429 | `rate_limited` |
+| 500 | `internal_error` |
+
+A non-POST request receives 405 with `internal_error` and `Allow: POST`. Decode
+known error bodies from non-2xx SDK responses; never show unknown server text or raw
+SQL. Definitive validation rejection clears that pending intent and preserves the
+draft; an uncertain transport/internal failure retains its UUID. A rate-limit error
+consumes no accepted row and leaves an explicit retry using the same intent; current
+responses supply no `Retry-After` promise. A request conflict requires canonical
+recovery and explicit user action, never an automatic replacement UUID.
+
 ## Commands
 
-All commands require a bearer session. Edge code authenticates it before creating a
-separate server-only client. Mutations invoke one transactional database command;
-normal credentials cannot execute those functions directly.
+Game commands require a bearer session. Edge code authenticates it before creating
+a separate server-only client; normal credentials cannot execute the transactional
+gameplay functions directly. Deletion is the documented exception: a service-only
+receipt lookup may confirm/resume an already-authenticated deletion before ordinary
+Auth validation. It exposes only deletion status, never account data. Database
+preparation and Auth deletion cannot form one cross-service transaction.
 
 ### `create-match`
 
-Request:
+**Current implementation:** accepts only `client_build`, creates a new room on each
+successful call, and cannot recover a lost response by request ID.
+
+**Accepted target, pending P2-04A:** request:
 
 ```json
-{ "client_build": 1 }
+{ "client_build": 1, "request_id": "00000000-0000-0000-0000-000000000000" }
 ```
 
 Response data:
@@ -77,7 +110,24 @@ Response data:
 
 Creation forces two seats, one round, a 60-minute expiration, the current build
 floor, creator seat one, and a pending public round. The client then fetches a
-snapshot.
+snapshot. Pending target requirements:
+
+- Persist the create intent and UUID before dispatch. Scope its receipt by
+  authenticated actor and request ID, separately from guess receipts. Compare the
+  saved request payload including `client_build`; changed content is `request_conflict`.
+- Verify an active profile and supported build; resolve an identical receipt before
+  consuming create quota. The receipt and match/creator/round commit atomically.
+  Concurrent retries produce one room; distinct intentional creates use distinct IDs.
+- An identical retry returns the original match ID even after start/completion or
+  lobby expiry; subsequent snapshot determines presentation. It never creates a new
+  room merely because the original lobby expired. No receipt for a rejected create.
+- Receipt storage is private/service-only and contains only actor, UUID, request
+  content and match ID. Remove it during account-deletion preparation; match removal
+  removes its receipt. No new retention period or automatic lobby cleanup is selected.
+  Serialize create with deletion so an in-flight request cannot recreate deleted data.
+- Replace the old service RPC signature/grants in a forward migration and update the
+  Edge handler/tests together. This local pre-client change needs no compatibility
+  framework; no rollout to existing remote clients is authorized.
 
 ### `join-match`
 
@@ -136,10 +186,11 @@ Successful response data:
 }
 ```
 
-`solve_duration_ms` and `efficiency_points` are null unless solved. The database
-normalizes and validates the guess, evaluates feedback, timestamps it, transitions
-the player, and finalizes when applicable in one transaction. An identical retry is
-resolved before rate limiting and returns the original sequence, feedback, server
+`solve_duration_ms` and `efficiency_points` in this command response are null unless
+solved. Snapshot scoring differs: an unsolved terminal player has zero efficiency.
+The database normalizes and validates the guess, evaluates feedback, timestamps it, transitions
+the player, and finalizes when applicable in one transaction. An identical retry by
+an active authenticated actor is resolved before rate limiting and returns the original sequence, feedback, server
 timestamp, and result. Reusing the request ID for another round or normalized guess
 returns `request_conflict`.
 
@@ -273,6 +324,46 @@ After reveal:
 - A deleted member remains as nonidentifying presentation and retained result data
   only when required for the other player's immutable reveal.
 
+### Enums, nullability and validation
+
+Wire match statuses are `lobby`, `in_progress`, `completed`; effective round states
+are `pending`, `countdown`, `playing`, `revealed`; player states are `playing`,
+`solved`, `failed`, `timed_out`, `forfeited`. These are not Swift case spellings.
+The stored round remains `countdown` until reveal; `playing` is snapshot-derived.
+
+`is_self` and `is_deleted` are required Booleans; exactly one member is self. A
+deleted member is never self and retains its stable member ID/seat. **Pending P2-04A
+correction:** existing SQL equality against a null auth ID emits null for `is_self`;
+change the projection to false and prove survivor decoding. Do not weaken the mapper
+into accepting arbitrary missing identity fields.
+
+For every player whose fields are visible:
+
+| State | Accepted count | Solve duration | Efficiency | Placement |
+| --- | --- | --- | --- | --- |
+| `playing` | 0–5 | null | null | null |
+| `solved` | 1–6 | nonnegative integer milliseconds | 7 minus count | null before reveal; 1–2 after |
+| `failed` | 6 | null | 0 | null before reveal; 1–2 after |
+| `timed_out` / `forfeited` | 0–5 | null | 0 | null before reveal; 1–2 after |
+
+Pre-reveal opponents always have null board, duration, efficiency and placement,
+regardless of coarse state. Visible boards contain exactly the accepted count, with
+contiguous sequences starting at one. A solved board ends all-correct; a failed board
+has six rows without a solve. The client does not use the Daily dictionary/evaluator
+to accept/reject authoritative live rows. Server `placement` is final: SQL compares
+microseconds while the wire truncates durations to milliseconds, so equal displayed
+times do not necessarily mean a tie. Phase 3 presents round placement only, not a
+locally recomputed match ranking.
+
+A lobby has one/two members, a pending round, empty players and null round times.
+Started snapshots have exactly two members and matching player IDs, nonnull start/end
+with a 180-second interval. Before reveal completion/answer are null; at reveal all
+players are terminal, completion/answer are present and both boards visible. A
+completed match and revealed round agree. Countdown may contain a forfeited player
+following account deletion; do not reject that valid state. No client clock controls
+these validation rules. Required nullable fields must exist; null is not the same as
+missing. Unsupported states fail closed with a recoverable update/error presentation.
+
 The mapper rejects unsupported versions, rosters outside one or two unique seats,
 a started match without exactly two members, duplicate IDs or seats, invalid enum
 values, counts outside 0–6, noncontiguous guess sequences,
@@ -284,17 +375,48 @@ that contradict state, or a player/board mismatch.
 
 The public `matches` row contains no private clue data and carries a
 timestamp-free monotonically increasing `revision` signal. Every canonical
-command transactionally increments it after committing member, round, player, or
-guess changes; idempotent replays perform no write and leave it untouched. The
+mutation advances it in the same transaction as member, round, player, or
+guess changes (not as a separate post-commit write); idempotent replays perform no
+write and leave it untouched. The
 exact-action `updated_at` timestamp is service-only: authenticated clients hold
 no `SELECT` grant on it and the Realtime publication column list excludes it, so
 it can be neither selected nor received. The iOS Realtime service subscribes only to
-the current rostered match row and emits `Void`; it never treats payload data or
-delivery order as state.
+the current rostered match row for update signals and emits `Void`; it never treats
+payload data or delivery order as state.
 
 The session model coalesces refreshes and fetches a snapshot on entry, after each
 create/join/start, after an uncertain command, after a relevant signal, on reconnect,
 foreground return, local countdown/deadline expiry, and any inconsistent ordering.
+It also refreshes after accepted guesses and after 5 seconds without a successful
+snapshot while an unfinished match is open in the foreground. Failure backoff is
+5/10/20/30 seconds, capped; stop on background/exit/reveal/expired lobby/invalid
+membership or unavailable Auth. No polling continues for hidden or completed rooms.
+One fetch is in flight; events during it request a trailing refresh. Subscribe before
+the catch-up fetch and refresh after the subscription becomes ready. This covers
+missed updates and host-lobby deletion without relying on delete-event payloads.
+
+Snapshot v1 carries no canonical state revision. `server_time` is a transaction time,
+not a snapshot sequence number. Serialize application with commands and discard stale
+responses using account/match generations; never compare delivery order or use a
+replayed command time to establish freshness. Refresh auth once, use a 10-second
+request timeout, and preserve uncertainty if cancellation occurs after server commit.
+Unknown HTTP/gateway/non-JSON failures remain transport errors, not typed game denial.
+
+| Operation with uncertain response | Recovery |
+| --- | --- |
+| Create (pending target) | Retry the persisted payload/UUID; persist returned match ID and fetch snapshot |
+| Join | Retry same code; existing member returns same match, subject to join rate limit |
+| Start | Fetch known match; repeated start in progress is idempotent; completed returns `round_already_finished`, then refresh |
+| Submit | Retry same persisted match/round/word/UUID, including after deadline/reveal; receipt returns original success; snapshot alone cannot identify the request |
+| Snapshot | Safe to repeat, including its idempotent deadline finalization |
+| Delete account | Preserve the initiating SDK-held bearer for receipt retry; never persist it in live recovery files or expose it to views; do not clear owned caches or claim completion before success |
+
+Pending target live recovery stores only the latest match pointer and one pending
+intent in account-scoped protected local storage. Relaunch resolves uncertainty and
+fetches a snapshot before new input. Clearing it on sign-out does not leave/forfeit a
+server match; rejoining by code remains possible. See the active plan for lifecycle,
+clock display, storage-failure and verification requirements. There is no offline
+submission queue, opponent presence, competitive history, or authoritative board cache.
 
 ## Profiles and local authentication
 

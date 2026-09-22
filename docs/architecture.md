@@ -1,8 +1,8 @@
 # GridRace Architecture
 
 This document is the current architecture authority. It separates the permanent
-local Daily Classic mode, the Phase 1 tutorial, and the preserved Phase 2/3 backend
-and live-race foundation.
+local Daily Classic mode, the Phase 1 tutorial, and the active Phase 2/3 backend
+and planned live-race client.
 
 ## Daily Classic architecture
 
@@ -111,14 +111,15 @@ Phase 2/3 responsibilities are intentionally narrow:
 | Component | Phase 2/3 responsibility |
 | --- | --- |
 | Supabase Auth | Establish identity and sessions, including Sign in with Apple. Auth identity is not a public profile and email is never shown to other players. |
-| PostgreSQL | Own canonical profiles, rosters, rounds, guesses, timestamps, scores, reports, blocks, and state transitions. Constraints and transactional functions enforce valid, idempotent changes. Private schemas own answers and other server-only data. |
+| PostgreSQL | Own canonical profiles, rosters, rounds, guesses, timestamps, scores, and state transitions. Reports/blocks are later responsibilities. Constraints and transactional functions enforce valid, idempotent changes. Private schemas own answers and other server-only data. |
 | Grants and RLS | Give each exposed table the least privilege needed for the authenticated player and game phase. They deny private-answer reads and direct authoritative mutations. |
 | Edge Functions | Authenticate callers, validate build and input, invoke explicit transactional commands, and map stable typed results. Service credentials stay here and never ship in the app. |
 | Realtime | Signal that relevant state may have changed. It does not carry secret clues or replace a canonical snapshot. |
 | Cron | Ask server-owned finalization commands to resolve elapsed deadlines and other scheduled game transitions. It does not introduce a second clock or transition implementation. |
 | APNs | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
 
-Phase 2/3 implements every row above except APNs. The exact six-command and
+Phase 2 implements the local backend rows above; Phase 3 client integration remains
+pending. APNs, reports/blocks and opponent presence are later. The exact six-command and
 versioned snapshot shapes live in [`live-api-contract.md`](live-api-contract.md).
 The client uses only create, join, creator start, guess submission, snapshot, and
 account deletion commands; profile updates remain owner-scoped RLS writes.
@@ -162,13 +163,35 @@ choice.
 
 The canonical snapshot is recovery truth. The client refreshes it on session entry,
 reconnect, foreground return, a relevant Realtime signal, uncertain command outcome,
-local inconsistency, and countdown or round deadline. A validated newer snapshot
-replaces the feature's derived match state as one main-actor update.
+local inconsistency, and countdown or round deadline. A validated snapshot fetched
+under the current account/match generation replaces the feature's derived match state as one main-actor update.
 
 Realtime events may be delayed, duplicated, dropped, or reordered without changing
-the result. If a command response is lost, the client refreshes rather than guessing
-whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
+the result. If a command response is lost, the client follows the command-specific
+retry/snapshot rules rather than guessing whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
 opponent feedback, keyboard evidence, starting words, and exact solve times.
+
+The pending Phase 3 session serializes/coalesces refreshes with commands, rejects
+late results from another account/match, and requests a trailing fetch for signals
+received during a fetch. Snapshot v1 has no state revision; neither delivery order
+nor its transaction timestamp is a revision. An open foreground unfinished match
+also refreshes after five seconds without a successful snapshot, with bounded
+failure backoff. Stop on background/exit/reveal/expiry or loss of authorization.
+This covers silent event loss; subscriptions alone do not prove convergence.
+
+The client owns no offline live guess queue. Pending P2-04A creation receipts and
+Phase 3 account-scoped recovery storage preserve request IDs across lost responses
+and relaunch; the client resolves uncertainty before accepting another intent.
+It saves no authoritative board, answer, opponent payload or credential. Exact retry,
+nullability, timing, error and recovery rules live in the live API contract.
+
+Use the existing authenticated SDK client through service composition. One live
+session owns live state; the Daily coordinator continues to own Daily/account
+synchronization. Reuse passive presentation and pure keyboard evidence from accepted
+rows, but never use a bundled evaluator/dictionary to decide live acceptance.
+
+Opponent presence is deferred in this slice. Only local transport status is known;
+opponent inactivity or local socket connectivity is not an opponent online signal.
 
 Snapshot version 1 uses stable member-seat order. A lobby has a pending public round
 with no timestamps or players. A started round includes the requester's full board
