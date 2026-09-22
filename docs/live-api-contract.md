@@ -1,8 +1,9 @@
 # GridRace Live API Contract
 
 This document freezes the Phase 2 backend and Phase 3 two-player live-slice wire
-contract. The accepted P2-04A changes below are **not implemented yet**; the
-current backend must be brought to that checkpoint before the live client ships.
+contract. P2-04A now implements the retry-safe create and Boolean deleted-member
+identity corrections locally; the remaining backend security/integration checkpoint
+must pass before the live client ships.
 [`game-rules.md`](game-rules.md) remains authoritative for gameplay;
 [`architecture.md`](architecture.md) owns component boundaries. All JSON uses
 `snake_case`, UUIDs use canonical lowercase strings, and timestamps use RFC 3339 UTC
@@ -93,10 +94,7 @@ preparation and Auth deletion cannot form one cross-service transaction.
 
 ### `create-match`
 
-**Current implementation:** accepts only `client_build`, creates a new room on each
-successful call, and cannot recover a lost response by request ID.
-
-**Accepted target, pending P2-04A:** request:
+Current request:
 
 ```json
 { "client_build": 1, "request_id": "00000000-0000-0000-0000-000000000000" }
@@ -110,7 +108,7 @@ Response data:
 
 Creation forces two seats, one round, a 60-minute expiration, the current build
 floor, creator seat one, and a pending public round. The client then fetches a
-snapshot. Pending target requirements:
+snapshot. Current requirements:
 
 - Persist the create intent and UUID before dispatch. Scope its receipt by
   authenticated actor and request ID, separately from guess receipts. Compare the
@@ -332,10 +330,10 @@ are `pending`, `countdown`, `playing`, `revealed`; player states are `playing`,
 The stored round remains `countdown` until reveal; `playing` is snapshot-derived.
 
 `is_self` and `is_deleted` are required Booleans; exactly one member is self. A
-deleted member is never self and retains its stable member ID/seat. **Pending P2-04A
-correction:** existing SQL equality against a null auth ID emits null for `is_self`;
-change the projection to false and prove survivor decoding. Do not weaken the mapper
-into accepting arbitrary missing identity fields.
+deleted member is never self and retains its stable member ID/seat. The SQL projection
+coalesces a deleted member's null auth comparison to false; survivor fixtures prove
+both members remain Boolean with exactly one self. Do not weaken the mapper into
+accepting arbitrary missing identity fields.
 
 For every player whose fields are visible:
 
@@ -404,7 +402,7 @@ Unknown HTTP/gateway/non-JSON failures remain transport errors, not typed game d
 
 | Operation with uncertain response | Recovery |
 | --- | --- |
-| Create (pending target) | Retry the persisted payload/UUID; persist returned match ID and fetch snapshot |
+| Create | Retry the persisted payload/UUID; persist returned match ID and fetch snapshot |
 | Join | Retry same code; existing member returns same match, subject to join rate limit |
 | Start | Fetch known match; repeated start in progress is idempotent; completed returns `round_already_finished`, then refresh |
 | Submit | Retry same persisted match/round/word/UUID, including after deadline/reveal; receipt returns original success; snapshot alone cannot identify the request |

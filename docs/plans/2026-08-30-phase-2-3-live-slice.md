@@ -160,8 +160,9 @@ production retention choice, or dictionary changes are part of this milestone.
 ## Contract checkpoint and ownership
 
 [`../live-api-contract.md`](../live-api-contract.md) is the normative wire and recovery
-contract. Its **pending P2-04A** sections distinguish accepted targets from current
-implementation. Freeze that checkpoint before Swift DTOs depend on it.
+contract. P2-04A now implements its create-receipt and deleted-member identity
+checkpoint. P2-04B must finish the backend security/integration proof before Swift
+DTOs depend on it.
 
 1. Add required `request_id` to create. An authenticated actor's identical retry,
    including concurrent/lost-response retry, returns the original match ID without
@@ -237,7 +238,7 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | --- | --- | --- | --- |
 | PLAN-01 | Primary; this plan, API, architecture, privacy, flow, product, decisions, NOW | Accepted brainstorming | Complete: accepted direction revised and independently reviewed; documentation proof below; no product writes |
 | P2-01..03 | Historical backend owners; existing migrations, seed, handlers/tests | Original contract | Complete baseline; evidence retained below, not proof of new targets |
-| P2-04A Recovery contract corrections | One backend writer; future `supabase/migrations/202609220001_live_recovery_contract.sql`, future `supabase/tests/database/live_recovery_contract.sql`, existing `supabase/functions/create-match/index.ts` and `index_test.ts`; controller owns API integration | PLAN-01 checkpoint | Pending: atomic create receipts and Boolean deleted-member identity, real-output contract fixtures, forward/reset proof; no iOS/project edits |
+| P2-04A Recovery contract corrections | Luna/xhigh worker began the four-path package; controller took over at maintainer direction and added only the two existing SQL fixtures required to make the new RPC parameters genuinely mandatory | PLAN-01 checkpoint | Complete in `a80f282`: atomic create receipts, Boolean deleted-member identity, strict RPC/Edge request ID, forward/reset, negative, rollback, lifecycle and independent concurrency proof; no iOS/project edits |
 | P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, future `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Pending: current RLS/grants/secret/deletion/revision/lock audit, negative and concurrent proof, accepted fixes closed |
 | P3-01 Transport and mapping | One iOS writer; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Pending: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
 | P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Pending: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
@@ -249,22 +250,24 @@ Future filenames below are proposed write boundaries, **not existing files**.
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only; P2-04A has no dictionary/Xcode overlap and is executable next.
+unit only; P2-04B is the next dependency-ready backend unit and remains independent
+of the dictionary/Xcode overlap.
 
 ## Risk and evidence gates
 
-Cross-boundary architecture and the eventual implementation are **High** risk. This
-task changes documentation only: run the runbook's workflow/docs checks and one fresh
-independent review of the revised plan. Do not mislabel this as the P2 security audit
-or the P3 implementation review. No unrelated application builds are needed now.
+Cross-boundary architecture and this implementation are **High** risk. The earlier
+planning checkpoint changed documentation only; P2-04A now has the implementation
+and risk-matched evidence recorded below. Do not mislabel the planning review or
+P2-04A's focused proof as the pending P2-04B security audit or P3 implementation
+review. No unrelated application builds are required for backend-only units.
 
 Existing commands are owned by [`../ENGINEERING_RUNBOOK.md`](../ENGINEERING_RUNBOOK.md).
 Use its current Deno, seed, Supabase reset/test/lint and Xcode discovery/test/build
 commands during affected implementation units. Include `app_rls` in the security
 inspection; the earlier three-schema lint result is retained below. A clean reset
-proves zero-state migration only: P2-04A also needs a forward upgrade from the current
-six-migration fixture, verifying resulting normal-role grants without manually
-repairing them in the proof harness.
+proves zero-state migration only: P2-04A separately proved the forward upgrade from
+the six-migration fixture and resulting normal-role grants without manually repairing
+them in the proof harness.
 
 New concurrency/HTTP/Realtime harnesses, Release-specific checks and the coordinated
 simulator procedure are **future proof surfaces**, not commands claimed to work.
@@ -366,20 +369,64 @@ backup verification and compatible client/build gating before any rollout.
 | DEC-03 | Accepted 2026-09-22 | Retry-safe create and bounded foreground snapshots; P2-04A contract change before Swift |
 | DEC-04 | Accepted 2026-09-22 | $0 initial spend; paid commitments need explicit maintainer approval after revisiting traction |
 | BLK-01 | Open for overlapping files | Maintainer must checkpoint/separate unrelated dictionary work before `DailyViews.swift`, Xcode or overlapping runbook writes; no agent may stage/discard it. P2-04A product paths remain independent |
-| BLK-02 | Open implementation gate | P2-04A corrections and P2-04B security/concurrency checkpoint precede iOS dependency |
+| BLK-02 | Open implementation gate | P2-04A corrections are complete; P2-04B security/concurrency checkpoint still precedes iOS dependency |
 | BLK-03 | Later external proof | Maintainer: Apple credentials/revocation, distribution cost, physical devices, hosted environment/retention/backups/usage; not local-slice completion claims |
 | BLK-04 | Known limitation | Trusted client-IP provenance unavailable locally; prove per-user limits and keyed-IP SQL path, do not trust arbitrary forwarded headers; resolve before hosted abuse-control claims |
 
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P2-04A.** After this documentation checkpoint,
-start with real-output fixtures for deleted-member snapshots and lost/concurrent
-create retries; add the one forward migration and the bounded create handler/test
-change listed in the unit. Preserve the six-migration baseline, demonstrate forward
-and reset paths plus negative RLS/receipt/HTTP tests, then checkpoint for P2-04B.
-The controller dispatches that bounded writer after committing this bootstrap record;
-no other writer or controller mutation runs until its one callback releases the lease.
+**Exact next implementation unit: P2-04B.** Establish the maintained local backend
+integration harness, then perform the fresh read-only security review over the
+integrated backend and actual evidence. Close the backend portions of E1–E3 and E8/E10
+before Swift work. Actual gateway/Realtime/deletion-flow proof remains pending; the
+P2-04A injected Edge and direct PostgreSQL evidence does not substitute for it.
+
+## P2-04A execution and acceptance, 2026-09-22
+
+- Start checkpoint `dd8230ae43cce495c937bb363eea314242885058`; implementation
+  commit `a80f28286aebd38975d627d2616a3afc14286e7f` with that checkpoint as
+  its sole parent.
+- Worker task `GridRace P2-04A recovery contract`
+  (`01a0c7e0-dac1-7ae2-b228-e5b522d3fc21`, `gpt-5.6-luna` / xhigh) created the
+  initial four-path implementation and evidence. At maintainer direction, the
+  controller revoked its lease before staging or commit; the worker stopped at the
+  unchanged start SHA with an empty index and handed back only the four owned edits.
+- The controller completed and accepted the package directly. Audit found the Edge
+  success fixture still included obsolete `join_code`, receipt lifecycle lacked an
+  isolated match-cascade assertion, and the service RPC's generated default made
+  `request_id` optional. The first two were repaired in the assigned files. The RPC
+  repair necessarily expanded the bounded implementation commit to existing
+  `supabase/tests/database/phase_2_3_foundation.sql` and
+  `supabase/tests/database/match_revision_signal.sql`, updating only their three
+  legacy create calls. No compatibility overload/default remains; all four service
+  parameters are mandatory.
+- Final implementation paths: the planned migration and recovery SQL test, create
+  handler/test, and those two existing SQL fixture files. The controller inspected
+  the complete new files and every changed line. Snapshot and deletion function
+  comparisons against their prior definitions showed only Boolean `is_self`, the
+  shared per-account advisory lock, and create-receipt deletion changes.
+- Verification passed: seed check (100 words); Deno format/lint/type checks; all 99
+  Edge tests; clean seven-migration resets; all 266 pgTAP assertions across six files;
+  database lint over `public,private,app_rls` with no errors and only the recorded
+  pre-existing unused/shadow warnings. A fresh two-connection barrier race returned
+  two successes with one canonical match, receipt and quota charge.
+- Forward proof reset the disposable local stack to the exact six historical
+  migrations (migration count 6, old RPC present, no receipt table, 100 seed words),
+  then applied only `202609220001_live_recovery_contract.sql`. The result had migration
+  count 7, no old RPC, the strict four-argument RPC with zero optional arguments,
+  service-only execution/receipt access, the unchanged seed, and a successful real
+  fixture creating one match and receipt. The normal seven-migration reset restored
+  the local stack afterward.
+- Negative/lifecycle proof covers malformed/missing UUIDs, unsupported build, absent
+  profile, conflicting payload reuse, quota deduplication, rollback, replay after
+  expiry/start/completion, account deletion, match cascade, authenticated denial and
+  survivor Boolean identity. Actual Edge gateway/HTTP, broader RLS/secrecy, Realtime,
+  deletion receipt partial failures and lock-graph races remain explicitly P2-04B.
+- The unrelated 23-file baseline remained byte-identical, the index was empty before
+  task staging, and no remote mutation, deployment, push, spend or release occurred.
+- P2-04A tracker/authority checkpoint: **this commit** records controller acceptance
+  and advances the dependency-ready unit to P2-04B without claiming its pending proof.
 
 ## Current planning review and verification
 
@@ -490,6 +537,8 @@ Phase 2/3 commits to date:
 | `764b9e1 docs(plan): record reactivation checkpoint` | Record the reactivation content checkpoint | Complete |
 | `2a8ac34 docs(plan): strengthen authoritative live slice and free-first scope` | Accepted brainstorming, eight authority updates, six planning findings addressed, fresh independent review and documentation checks | Complete |
 | `656c6ba docs(plan): record reviewed planning checkpoint` | Record the accepted planning content checkpoint and keep this plan Active for implementation | Complete |
+| `dd8230a docs(plan): establish live-slice worker execution` | Record the single-writer lease protocol, unrelated baseline and P2-04A dispatch checkpoint | Complete |
+| `a80f282 feat(backend): make live creation retry-safe` | Implement strict retry-safe creation, Boolean deleted-member identity and focused database/Edge proof | Complete; accepted by controller |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged

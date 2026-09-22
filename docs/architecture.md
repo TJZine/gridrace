@@ -179,9 +179,9 @@ also refreshes after five seconds without a successful snapshot, with bounded
 failure backoff. Stop on background/exit/reveal/expiry or loss of authorization.
 This covers silent event loss; subscriptions alone do not prove convergence.
 
-The client owns no offline live guess queue. Pending P2-04A creation receipts and
-Phase 3 account-scoped recovery storage preserve request IDs across lost responses
-and relaunch; the client resolves uncertainty before accepting another intent.
+The client owns no offline live guess queue. Implemented P2-04A creation receipts and
+planned Phase 3 account-scoped recovery storage preserve request IDs across lost
+responses and relaunch; the client resolves uncertainty before accepting another intent.
 It saves no authoritative board, answer, opponent payload or credential. Exact retry,
 nullability, timing, error and recovery rules live in the live API contract.
 

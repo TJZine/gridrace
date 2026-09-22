@@ -20,9 +20,10 @@ repeat authentication, transaction, privacy and recovery verification without a
 current product benefit. Lost create responses and silently missed events are real
 holes the client must resolve. A local socket does not establish opponent presence.
 
-**Consequences/revisit:** The API change is pending implementation and must precede
-Swift integration. No generic command framework, polling of completed rooms or
-presence channel is introduced. Revisit transport after measured contention/fan-out,
+**Consequences/revisit:** The retry-safe create API change is implemented locally and
+the backend security/integration checkpoint must precede Swift integration. No generic
+command framework, polling of completed rooms or presence channel is introduced.
+Revisit transport after measured contention/fan-out,
 and platform choice only for a concrete additional-platform requirement. The
 maintainer owns the later presence decision after the local slice is proved.
 
