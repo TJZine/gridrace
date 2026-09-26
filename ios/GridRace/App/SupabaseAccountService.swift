@@ -123,6 +123,10 @@ final class SupabaseAccountService: AccountServicing {
         SupabaseDailySyncRemote(client: client)
     }
 
+    func makeLiveMatchService() -> SupabaseLiveMatchService {
+        SupabaseLiveMatchService(client: client, clientBuild: clientBuild)
+    }
+
     private static func accountSession(_ session: Session) -> AccountSession {
         AccountSession(
             userID: session.user.id,
