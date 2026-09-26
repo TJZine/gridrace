@@ -245,7 +245,7 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for fresh rerun after IOS-02 closed in `037f9e3` and CI-01 closed in `7937a78` |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires DB-06 join/deletion serialization after IOS-02 and CI-01 were confirmed closed; rerun fresh review after repair acceptance |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
@@ -377,12 +377,14 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: R-01 rerun.** Dispatch a fresh local GridRace project task using
-`gpt-5.6-sol` / medium for a strict read-only review of the updated complete range and
-net diff through `7937a78`, including the IOS-02 and CI-01 repairs and evidence. Require
-a terminal pass or confirmed findings separated from hypotheses and accepted external
-limits. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: DB-06.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium to serialize `join_match` with same-account deletion using the
+existing per-account advisory transaction lock before rate/match work. Preserve the
+signature, grants and account-to-rate/match lock order, and add an independent barrier
+race proving Auth deletion and receipt completion cannot be stranded. After controller
+acceptance and a tracker checkpoint, rerun R-01 in a new read-only task. The controller
+retains orchestration, adjudication, integration and plan ownership. Apply the same
+fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -557,6 +559,7 @@ change was required; all pre-existing changes remain unrelated.
 | DB-03 | Medium | `create_match`: code existence check and unique insert were separate. | Concurrent creation could win the code between check and insert. | Accepted | Insert retries only the join-code unique constraint. | Closed: reset/lint/79 pgTAP pass |
 | DB-04 | Low | `pg_cron` privileges were not explicitly denied to client roles. | Game schemas were explicit; extension schema relied on defaults. | Accepted | Client schema/table/routine privileges revoked; owner job retained. | Closed: reset/lint/79 pgTAP pass |
 | DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
+| DB-06 | Medium | `join_match` is not serialized with deletion for the same account. | Join checks the profile before locking only the match; deletion takes the account lock, enumerates memberships and deletes the profile. A paused join can insert a new auth-linked membership after preparation and strand Auth deletion/receipt retry. Existing race uses a different replacement identity. | Accepted | Forward migration takes the existing account advisory lock before profile/rate/match work; add same-identity barrier race and terminal deletion/replay assertions. | Open: next repair package |
 | IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Validate `startsAt <= completedAt <= serverTime`; keep all other fail-closed checks. | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
 | IOS-02 | Medium | Failed sixth-guess command returns efficiency `0`, contradicting the frozen command contract and Swift receipt validator. | Migration sets `v_efficiency := 0` for failed and returns it; the client requires null unless solved, so an accepted request can remain durably pending. | Accepted | Forward migration returns null for unsolved command receipts while stored/snapshot efficiency stays zero; prove failed replay, decode and pending-intent clearance. | Closed in `037f9e3`: reset, 276 pgTAP, three-schema lint, Edge, Swift, real integration and controller focused proof passed |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
@@ -775,6 +778,24 @@ change was required; all pre-existing changes remain unrelated.
   package resolution and scratch baseline. CI-01 is closed; R-01 requires a fresh
   read-only rerun over both accepted repairs.
 
+## R-01 second review checkpoint, 2026-09-26
+
+- Fresh read-only task `01a0dfe2-8e62-7243-a580-3cc3f6865d44` reviewed the updated
+  `656c6ba..7937a78` range without mutations and confirmed IOS-02 and CI-01 closed.
+- DB-06 is confirmed medium severity: `join_match` checks the profile, consumes rate
+  quota and later inserts membership under the match lock, but unlike create, submit
+  and delete it does not take the same account advisory lock. A same-identity join can
+  pause before insertion while deletion prepares existing memberships and removes the
+  profile, then insert a new auth-linked membership that prevents hard Auth deletion
+  and leaves receipt retry stuck. The current deletion/join race uses a third-party
+  replacement identity and therefore does not cover this ordering.
+- The smallest correction is a forward migration adding the existing account lock
+  before profile/rate/match work while preserving the signature, grants and lock order,
+  plus an independent same-identity barrier race proving both legal orderings converge
+  to completed deletion, stale-bearer denial, no live identity/profile/rate state and
+  terminal idempotent receipt replay. No other finding was promoted; sign-out error
+  handling and stack-stop ownership remain questions only.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -816,6 +837,7 @@ Phase 2/3 commits to date:
 | `037f9e3 fix(live): align failed guess receipt` | Return null failed command efficiency while preserving canonical stored/snapshot zero | Complete; IOS-02 closed |
 | `21fd8bd docs(plan): record IOS-02 completion` | Record accepted failed-receipt proof and release CI-01 | Complete |
 | `7937a78 ci(backend): lint app rls schema` | Align hosted database lint scope with the canonical three-schema command | Complete; CI-01 closed, hosted run unclaimed |
+| `244e74d docs(plan): record CI-01 completion` | Record accepted CI evidence and release the fresh R-01 rerun | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
