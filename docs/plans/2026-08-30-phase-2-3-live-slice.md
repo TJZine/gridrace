@@ -240,18 +240,17 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | P2-01..03 | Historical backend owners; existing migrations, seed, handlers/tests | Original contract | Complete baseline; evidence retained below, not proof of new targets |
 | P2-04A Recovery contract corrections | Luna/xhigh worker began the four-path package; controller took over at maintainer direction and added only the two existing SQL fixtures required to make the new RPC parameters genuinely mandatory | PLAN-01 checkpoint | Complete in `a80f282`: atomic create receipts, Boolean deleted-member identity, strict RPC/Edge request ID, forward/reset, negative, rollback, lifecycle and independent concurrency proof; no iOS/project edits |
 | P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, maintained `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Complete in `68bd474` and `f2d7243`: actual Auth/Edge/RLS/Realtime/deletion proof, concurrent transition matrix, local-only harness controls, and all four security-review findings remediated and verified |
-| P3-01 Transport and mapping | One iOS writer; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Pending: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
+| P3-01 Transport and mapping | Primary controller directly; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Ready: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
 | P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Pending: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
 | P3-03 Live UI | Same iOS writer; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Pending: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
-| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; promote the harness command to the runbook after BLK-01 clears |
+| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B is complete; P3-01 remains blocked only by the dictionary/Xcode and
-runbook overlap recorded in BLK-01.
+unit only. P2-04B and BLK-01 are complete; P3-01 is dependency-ready.
 
 ## Risk and evidence gates
 
@@ -369,7 +368,7 @@ backup verification and compatible client/build gating before any rollout.
 | DEC-02 | Accepted 2026-09-22 | Opponent presence deferred by maintainer; own transport status only |
 | DEC-03 | Accepted 2026-09-22 | Retry-safe create and bounded foreground snapshots; P2-04A contract change before Swift |
 | DEC-04 | Accepted 2026-09-22 | $0 initial spend; paid commitments need explicit maintainer approval after revisiting traction |
-| BLK-01 | Open for overlapping files | Maintainer must checkpoint/separate unrelated dictionary work before `DailyViews.swift`, Xcode or overlapping runbook writes; no agent may stage/discard it. P2-04A product paths remain independent |
+| BLK-01 | Resolved 2026-09-26 | Maintainer checkpoint `3763611` committed the dictionary, `DailyViews.swift`, Xcode project and runbook package with its evidence; only the previously recorded non-overlapping scratch/cache files remain untracked |
 | BLK-02 | Resolved 2026-09-26 | P2-04A and P2-04B backend contract, security, integration and concurrency checkpoints are complete; no unresolved material review finding remains |
 | BLK-03 | Later external proof | Maintainer: Apple credentials/revocation, distribution cost, physical devices, hosted environment/retention/backups/usage; not local-slice completion claims |
 | BLK-04 | Known limitation | Trusted client-IP provenance unavailable locally; prove per-user limits and keyed-IP SQL path, do not trust arbitrary forwarded headers; resolve before hosted abuse-control claims |
@@ -377,9 +376,8 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next action: clear BLK-01, then begin P3-01.** The maintainer must first
-checkpoint or separate the unrelated dictionary/Xcode/runbook work. No Swift or
-overlapping runbook write starts while that baseline remains shared.
+**Exact next implementation unit: P3-01.** The controller owns transport and mapping
+directly from full HEAD `3763611`; no worker dispatch or stale `2c6c8a0` base applies.
 
 ## P2-04A execution and acceptance, 2026-09-22
 
@@ -470,12 +468,30 @@ overlapping runbook write starts while that baseline remains shared.
 - Exact maintained invocation:
   `GRIDRACE_LOCAL_INTEGRATION=1 deno run --config supabase/functions/deno.json --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL --allow-net=127.0.0.1,localhost --allow-run=/opt/homebrew/opt/libpq/bin/psql supabase/tests/integration/live_slice_test.ts`
   after loading local `supabase status -o env` values and serving local functions.
-  Promotion into the runbook is held because that file belongs to BLK-01's unrelated
-  dirty baseline; this plan is the authoritative evidence until the overlap clears.
+  The command and three-schema lint scope are promoted to the runbook after the
+  maintainer's BLK-01 checkpoint.
 - Backend portions of E1-E3 and E8/E10 are closed with no unresolved material security
   finding. BLK-04 remains the explicit hosted-abuse limitation; client and simulator
   portions remain Phase 3 work. No remote mutation, deployment, push, release or spend
   occurred, and the unrelated 23-file baseline remained byte-identical.
+
+## BLK-01 maintainer checkpoint, 2026-09-26
+
+- Maintainer commit `3763611efe8a62365f71c6b85e9816904f79fdc0`, parent
+  `2c6c8a092c0e417b73378bd80eb6d5046d7db89a`, coherently commits the Wiktionary
+  corpus/tooling/attribution package and the overlapping runbook, Xcode project and
+  `DailyViews.swift` paths. The index is empty; only the previously recorded
+  non-overlapping OS/cache/planning scratch files remain untracked.
+- Both the checked-in corpus gate and two source-regeneration runs passed from pinned
+  intermediates. The accepted set is 25,545 words, preserving all 725 ordered answers
+  at projection SHA-256 `31330cbe412018d0ea94991c321d032def17def40e725fcadc90363b11cebda9`;
+  final pack SHA-256 is `442fef53b23066ecda6b1048a94c0d562b801398f9934f2928c78121b361d34d`.
+- Xcode project/destination discovery passed, 119 iOS tests passed with one expected
+  opt-in local-Supabase skip and zero failures, and the Debug clean build passed.
+  `Package.resolved` is unchanged. The staged diff check passed before commit.
+- With the overlap removed, the exact P2-04B harness invocation and `app_rls` lint
+  scope are now promoted into `docs/ENGINEERING_RUNBOOK.md`; P3-01 may edit/register
+  its planned iOS paths from the full current HEAD.
 
 ## Current planning review and verification
 
@@ -591,6 +607,8 @@ Phase 2/3 commits to date:
 | `e4462c0 docs(plan): record P2-04A completion` | Record P2-04A evidence and advance the backend dependency | Complete |
 | `68bd474 test(backend): prove live slice integration` | Add actual local Auth/Edge/RLS/Realtime/deletion and concurrency proof | Complete; security-reviewed |
 | `f2d7243 fix(backend): close live slice security findings` | Fail closed to local fixtures and serialize submission receipts/deletion with one account lock | Complete; all accepted review findings verified |
+| `2c6c8a0 docs(plan): close P2-04B security checkpoint` | Record accepted backend evidence, review adjudication and BLK-02 resolution | Complete |
+| `3763611 feat(dictionary): integrate Wiktionary guess corpus` | Commit the previously overlapping dictionary, Daily attribution, Xcode and runbook package | Complete; BLK-01 resolved |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
@@ -606,8 +624,8 @@ the callback lease protocol, corrected model pairing, and P2-04A as the next uni
 Phase 2 baseline evidence remains recorded above. **Phase 2 exits only after P2-04A
 and P2-04B pass the backend portions of E1–E3 and E8/E10 with no unresolved
 material security finding.**
-That backend exit gate passed on 2026-09-26. Phase 3 remains blocked on BLK-01 and its
-own client/simulator evidence; Phase 2 completion does not satisfy those later gates.
+That backend exit gate passed on 2026-09-26. BLK-01 is resolved; Phase 3 remains
+subject to its own client/simulator evidence, which Phase 2 completion does not satisfy.
 
 Phase 3 exits only when E4–E11 and client portions of E2/E5/E8 pass, including real
 independent clients, no-client scheduled finalization, negative secrecy proof,

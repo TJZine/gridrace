@@ -170,7 +170,18 @@ npx --no-install supabase --version
 npx --no-install supabase start
 npx --no-install supabase db reset
 npx --no-install supabase test db
-npx --no-install supabase db lint --local --schema public,private --level warning --fail-on error
+npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error
+# In a separate terminal while the integration command below runs:
+npx --no-install supabase functions serve --log-level error
+set -a
+eval "$(npx --no-install supabase status -o env 2>/dev/null)"
+set +a
+GRIDRACE_LOCAL_INTEGRATION=1 deno run \
+  --config supabase/functions/deno.json \
+  --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL \
+  --allow-net=127.0.0.1,localhost \
+  --allow-run=/opt/homebrew/opt/libpq/bin/psql \
+  supabase/tests/integration/live_slice_test.ts
 xcodebuild -project ios/GridRace.xcodeproj -list
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
