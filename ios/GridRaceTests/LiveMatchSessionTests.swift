@@ -417,6 +417,7 @@ final class LiveMatchSessionTests: XCTestCase {
         session.createMatch()
 
         await eventually(timeout: 2) { attempts.values.count == 5 }
+        await eventually { session.savedMatchID == matchID }
         XCTAssertEqual(Set(attempts.values).count, 1)
         XCTAssertEqual(sleeps.values, timing.retryBackoff)
         XCTAssertEqual(session.savedMatchID, matchID)
