@@ -245,7 +245,7 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for another fresh rerun after DB-06 closed in `80696f9`; IOS-02 and CI-01 remain closed |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires DB-07 Cron/deletion lock order, IOS-03 deterministic failed-path fixture and IOS-04 snapshot-time guards; prior findings remain closed |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
@@ -377,12 +377,13 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: R-01 rerun.** Dispatch a fresh local GridRace project task using
-`gpt-5.6-sol` / medium for a strict read-only review of the complete updated range and
-net diff through `80696f9`, including DB-06's deterministic same-identity race proof.
-Require a terminal pass or confirmed findings separated from hypotheses and accepted
-external limits. The controller retains orchestration, adjudication, integration and
-plan ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: DB-07.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium to forward-migrate the Cron enumerator onto the same match-ID
+lock order as account deletion and prove the former two-match opposite-order cycle with
+a deterministic barrier. After controller acceptance/checkpoint, repair IOS-03 and
+IOS-04 as separate serialized packages, then rerun R-01 in a new read-only task. The
+controller retains orchestration, adjudication, integration and plan ownership. Apply
+the same fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -558,8 +559,11 @@ change was required; all pre-existing changes remain unrelated.
 | DB-04 | Low | `pg_cron` privileges were not explicitly denied to client roles. | Game schemas were explicit; extension schema relied on defaults. | Accepted | Client schema/table/routine privileges revoked; owner job retained. | Closed: reset/lint/79 pgTAP pass |
 | DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
 | DB-06 | Medium | `join_match` is not serialized with deletion for the same account. | Join checks the profile before locking only the match; deletion takes the account lock, enumerates memberships and deletes the profile. A paused join can insert a new auth-linked membership after preparation and strand Auth deletion/receipt retry. Existing race uses a different replacement identity. | Accepted | Forward migration takes the existing account advisory lock before profile/rate/match work; add same-identity barrier race and terminal deletion/replay assertions. | Closed in `80696f9`: deterministic join/delete orderings, Auth/receipt cleanup, 281 pgTAP, three-schema lint, Edge and real integration passed |
+| DB-07 | Medium | Cron finalization and multi-match account deletion acquire match locks in different orders. | Expired-round enumeration orders by `ends_at,id`; deletion orders the user's matches by `match_id`, allowing a two-match M2→M1 versus M1→M2 cycle. | Accepted | Forward-migrate the Cron enumerator to match-ID order and add deterministic two-match deletion/finalizer barrier proof. | Open: next repair package |
 | IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Validate `startsAt <= completedAt <= serverTime`; keep all other fail-closed checks. | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
 | IOS-02 | Medium | Failed sixth-guess command returns efficiency `0`, contradicting the frozen command contract and Swift receipt validator. | Migration sets `v_efficiency := 0` for failed and returns it; the client requires null unless solved, so an accepted request can remain durably pending. | Accepted | Forward migration returns null for unsolved command receipts while stored/snapshot efficiency stays zero; prove failed replay, decode and pending-intent clearance. | Closed in `037f9e3`: reset, 276 pgTAP, three-schema lint, Edge, Swift, real integration and controller focused proof passed |
+| IOS-03 | Low | Real failed-path XCTest hardcodes answer-eligible `ADORE` and expects six failed guesses. | Seed marks `adore` accepted, active and answer-eligible, so random selection can solve on the first guess. | Accepted | Host harness chooses/passes an accepted non-answer without exposing the answer to client processes; rerun full two-client/Cron proof. | Open: serialize after DB-07 |
+| IOS-04 | Low | Snapshot mapper does not bind countdown/playing states to snapshot `server_time`. | It validates interval and names but accepts countdown at/after start and playing before start or at/after end, contrary to server-derived state. | Accepted | Require countdown `serverTime < startsAt` and playing `startsAt <= serverTime < endsAt`; add boundary-focused decode tests and full iOS proof. | Open: serialize after IOS-03 |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 
 ## Prior execution evidence (not rerun by the planning task)
@@ -815,6 +819,27 @@ change was required; all pre-existing changes remain unrelated.
   Cleanup, package resolution, one Active plan, empty index and scratch hashes remained
   unchanged. DB-06 is closed; a new read-only R-01 rerun remains required.
 
+## R-01 third review checkpoint, 2026-09-26
+
+- Fresh read-only task `01a0dff3-0a07-7de3-b0d0-9fac61ae5542` reviewed the complete
+  `656c6ba..80696f9` range without mutations and confirmed IOS-02, CI-01 and DB-06
+  remained closed.
+- DB-07 is confirmed medium severity. `private.finalize_expired_rounds` enumerates
+  expired rounds by `ends_at,id`, while multi-match deletion acquires match locks by
+  `match_id`. For two shared matches whose deadlines sort opposite their IDs, Cron can
+  hold M2 and wait on M1 while deletion holds M1 and waits on M2. Aligning the Cron
+  enumeration to match-ID order is the smallest shared-lock correction and needs a
+  deterministic two-match barrier race.
+- IOS-03 is confirmed low severity because `ADORE` is active, accepted and
+  answer-eligible, yet the real XCTest submits it six times and requires failure. The
+  privileged host must select an accepted non-answer and pass only that guess to client
+  processes before the full two-client/Cron proof is rerun.
+- IOS-04 is confirmed low severity. The mapper checks the 180-second interval but not
+  the canonical snapshot phase boundaries: countdown requires `serverTime < startsAt`,
+  while playing requires `startsAt <= serverTime < endsAt`. Focused boundary fixtures
+  and focused/full iOS proof are required. Timeout cancellation and stack-stop
+  ownership remain questions only; no other finding was promoted.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -859,6 +884,7 @@ Phase 2/3 commits to date:
 | `244e74d docs(plan): record CI-01 completion` | Record accepted CI evidence and release the fresh R-01 rerun | Complete |
 | `f591cca docs(plan): record DB-06 finding` | Record the second final-review finding and bounded repair contract | Complete |
 | `80696f9 fix(backend): serialize join with deletion` | Add account-lock serialization and deterministic same-identity deletion race proof | Complete; DB-06 closed |
+| `69acd05 docs(plan): record DB-06 completion` | Record accepted lock-order proof and release the next R-01 rerun | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
