@@ -705,6 +705,162 @@ try {
     );
   });
 
+  await scenario("same-account join and deletion serialize", async () => {
+    const joinFirstHost = await createUser("join-delete-host");
+    const joinFirst = await createUser("join-delete-member");
+    const created = await edge(joinFirstHost.session, "create-match", {
+      client_build: 1,
+      request_id: crypto.randomUUID(),
+    });
+    const matchIdValue = matchId(created);
+    const joinCode = await matchJoinCode(joinFirstHost, matchIdValue);
+    const lockName = `gridrace-join-delete-${crypto.randomUUID()}`;
+    const held = holdMatchLock(matchIdValue, 5, lockName);
+    await waitForSqlValue(
+      `select count(*) from pg_stat_activity where application_name = '${lockName}' and state = 'active'`,
+      "1",
+      "match barrier acquired",
+    );
+
+    const joinPromise = edge(joinFirst.session, "join-match", {
+      client_build: 1,
+      join_code: joinCode,
+    });
+    await waitForSqlValue(
+      `select not pg_try_advisory_lock(pg_catalog.hashtextextended('${
+        uuid(joinFirst.id)
+      }', 1))`,
+      "t",
+      "join holds account lock",
+    );
+    await waitForSqlValue(
+      `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query ilike '%join_match%'`,
+      "1",
+      "join waits on match lock",
+    );
+
+    const deletePromise = edge(joinFirst.session, "delete-account", {
+      client_build: 1,
+    });
+    await waitForSqlValue(
+      `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query ilike '%begin_account_deletion%'`,
+      "1",
+      "deletion waits on join account lock",
+    );
+    await held;
+    const [joined, deleted] = await Promise.all([joinPromise, deletePromise]);
+    assert(joined.status === 200, "join-before-delete join completes");
+    assert(deleted.status === 200, "join-before-delete deletion completes");
+    createdUsers.delete(joinFirst.id);
+
+    const tokenHash = await sha256(joinFirst.session.access_token);
+    assert(
+      (await edge(joinFirst.session, "delete-account", { client_build: 1 }))
+        .status === 200,
+      "join-before-delete receipt replay remains completed",
+    );
+    assert(
+      (await edge(joinFirst.session, "match-snapshot", {
+        client_build: 1,
+        match_id: matchIdValue,
+      })).status === 401,
+      "join-before-delete stale bearer cannot read",
+    );
+    assert(
+      (await edge(joinFirst.session, "join-match", {
+        client_build: 1,
+        join_code: joinCode,
+      })).status === 401,
+      "join-before-delete stale bearer cannot write",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from auth.users where id = '${uuid(joinFirst.id)}'`,
+      ) === "0",
+      "join-before-delete Auth identity removed",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from public.profiles where id = '${
+          uuid(joinFirst.id)
+        }'`,
+      ) === "0",
+      "join-before-delete profile removed",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from public.match_members where auth_user_id = '${
+          uuid(joinFirst.id)
+        }'`,
+      ) === "0",
+      "join-before-delete membership identity removed",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from private.user_rate_limits where actor_user_id = '${
+          uuid(joinFirst.id)
+        }'`,
+      ) === "0",
+      "join-before-delete rate identity removed",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from private.account_deletion_receipts where token_hash = '${tokenHash}' and status = 'completed' and user_id is null and completed_at is not null`,
+      ) === "1",
+      "join-before-delete receipt is terminal",
+    );
+
+    const deleteFirstHost = await createUser("delete-join-host");
+    const deleteFirst = await createUser("delete-join-member");
+    const deleteFirstCreated = await edge(
+      deleteFirstHost.session,
+      "create-match",
+      { client_build: 1, request_id: crypto.randomUUID() },
+    );
+    const deleteFirstMatch = matchId(deleteFirstCreated);
+    const deleteFirstCode = await matchJoinCode(
+      deleteFirstHost,
+      deleteFirstMatch,
+    );
+    assert(
+      (await edge(deleteFirst.session, "delete-account", { client_build: 1 }))
+        .status === 200,
+      "delete-before-join deletion completes",
+    );
+    createdUsers.delete(deleteFirst.id);
+    assert(
+      (await edge(deleteFirst.session, "join-match", {
+        client_build: 1,
+        join_code: deleteFirstCode,
+      })).status === 401,
+      "delete-before-join stale join rejected",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from public.match_members where auth_user_id = '${
+          uuid(deleteFirst.id)
+        }'`,
+      ) === "0",
+      "delete-before-join creates no membership",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from public.profiles where id = '${
+          uuid(deleteFirst.id)
+        }'`,
+      ) === "0",
+      "delete-before-join profile remains absent",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from private.user_rate_limits where actor_user_id = '${
+          uuid(deleteFirst.id)
+        }'`,
+      ) === "0",
+      "delete-before-join creates no rate row",
+    );
+  });
+
   await scenario(
     "rate-counter concurrency completes without deadlock",
     async () => {
@@ -947,6 +1103,7 @@ async function anotherWord(answer: string, offset = 0): Promise<string> {
 async function holdMatchLock(
   matchIdValue: string,
   seconds: number,
+  applicationName?: string,
 ): Promise<void> {
   assert(
     Number.isInteger(seconds) && seconds > 0 && seconds <= 5,
@@ -956,6 +1113,7 @@ async function holdMatchLock(
     `begin; select 1 from public.matches where id = '${
       uuid(matchIdValue)
     }' for update; select pg_sleep(${seconds}); commit`,
+    applicationName,
   );
 }
 
@@ -1065,7 +1223,10 @@ async function waitForRealtimeSubscription(userId: string): Promise<void> {
   throw new Error("realtime subscription readiness timeout");
 }
 
-async function sql(statement: string): Promise<string> {
+async function sql(
+  statement: string,
+  applicationName?: string,
+): Promise<string> {
   const command = new Deno.Command("psql", {
     args: [
       ...database.args,
@@ -1076,7 +1237,10 @@ async function sql(statement: string): Promise<string> {
       statement,
     ],
     clearEnv: true,
-    env: database.password === "" ? {} : { PGPASSWORD: database.password },
+    env: {
+      ...(database.password === "" ? {} : { PGPASSWORD: database.password }),
+      ...(applicationName === undefined ? {} : { PGAPPNAME: applicationName }),
+    },
     stdout: "piped",
     stderr: "piped",
   });
@@ -1087,6 +1251,19 @@ async function sql(statement: string): Promise<string> {
 
 async function sqlScalar(statement: string): Promise<string> {
   return (await sql(statement)).split("\n").at(-1)?.trim() ?? "";
+}
+
+async function waitForSqlValue(
+  statement: string,
+  expected: string,
+  message: string,
+): Promise<void> {
+  const deadline = performance.now() + 4_000;
+  while (performance.now() < deadline) {
+    if (await sqlScalar(statement) === expected) return;
+    await delay(25);
+  }
+  throw new Error(message);
 }
 
 async function scenario(

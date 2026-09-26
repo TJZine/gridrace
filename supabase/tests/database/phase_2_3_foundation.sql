@@ -56,6 +56,48 @@ select ok(
   (select bool_and(display_name ~ '^[A-Za-z0-9][A-Za-z0-9 ''-]*[A-Za-z0-9]$') from public.profiles),
   'generated profile names satisfy the frozen character contract'
 );
+select is(
+  (
+    select pronargdefaults
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  1::smallint,
+  'join-match keeps only the IP hash argument optional'
+);
+select ok(
+  not (
+    select prosecdef
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  'join-match remains security invoker'
+);
+select is(
+  (
+    select proconfig
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  array['search_path=""']::text[],
+  'join-match keeps an empty search path'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.join_match(uuid,integer,text,text)',
+    'execute'
+  ),
+  'service role keeps join-match execution'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.join_match(uuid,integer,text,text)',
+    'execute'
+  ),
+  'authenticated clients still cannot execute join-match directly'
+);
 
 select is(private.normalize_guess('STONE'), 'stone', 'ASCII uppercase normalization is deterministic');
 select is(private.normalize_guess('st0ne'), null, 'invalid character is rejected');
