@@ -245,7 +245,7 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires IOS-03 and IOS-04 after DB-07 closed in `ded5629`; prior findings remain closed |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires IOS-04 after IOS-03 closed in `f79ce07` and DB-07 in `ded5629`; prior findings remain closed |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
@@ -377,13 +377,13 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: IOS-03.** Dispatch a fresh local GridRace project task using
-`gpt-5.6-sol` / medium to make the real failed-path harness use a disposable accepted,
-non-answer-eligible fixture word passed to client processes without exposing the secret
-answer. Rerun the complete two-client/Cron/relaunch proof from zero. After controller
-acceptance/checkpoint, repair IOS-04 separately, then rerun R-01 in a new read-only
-task. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: IOS-04.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium with ownership of the snapshot mapper and focused transport
+tests. Require countdown `serverTime < startsAt` and playing
+`startsAt <= serverTime < endsAt`, preserve every other fail-closed rule, and add valid
+and boundary-invalid fixtures. After controller acceptance/checkpoint, rerun R-01 in a
+new read-only task. The controller retains orchestration, adjudication, integration and
+plan ownership. Apply the same fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -562,7 +562,7 @@ change was required; all pre-existing changes remain unrelated.
 | DB-07 | Medium | Cron finalization and multi-match account deletion acquire match locks in different orders. | Expired-round enumeration orders by `ends_at,id`; deletion orders the user's matches by `match_id`, allowing a two-match M2→M1 versus M1→M2 cycle. | Accepted | Forward-migrate the Cron enumerator to match-ID order and add deterministic two-match deletion/finalizer barrier proof. | Closed in `ded5629`: deterministic two-match barrier, canonical convergence, 290 pgTAP, three-schema lint, Edge and real integration passed |
 | IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Validate `startsAt <= completedAt <= serverTime`; keep all other fail-closed checks. | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
 | IOS-02 | Medium | Failed sixth-guess command returns efficiency `0`, contradicting the frozen command contract and Swift receipt validator. | Migration sets `v_efficiency := 0` for failed and returns it; the client requires null unless solved, so an accepted request can remain durably pending. | Accepted | Forward migration returns null for unsolved command receipts while stored/snapshot efficiency stays zero; prove failed replay, decode and pending-intent clearance. | Closed in `037f9e3`: reset, 276 pgTAP, three-schema lint, Edge, Swift, real integration and controller focused proof passed |
-| IOS-03 | Low | Real failed-path XCTest hardcodes answer-eligible `ADORE` and expects six failed guesses. | Seed marks `adore` accepted, active and answer-eligible, so random selection can solve on the first guess. | Accepted | Host harness chooses/passes an accepted non-answer without exposing the answer to client processes; rerun full two-client/Cron proof. | Open: serialize after DB-07 |
+| IOS-03 | Low | Real failed-path XCTest hardcodes answer-eligible `ADORE` and expects six failed guesses. | Seed marks `adore` accepted, active and answer-eligible, so random selection can solve on the first guess. | Accepted | Host harness chooses/passes an accepted non-answer without exposing the answer to client processes; rerun full two-client/Cron proof. | Closed in `f79ce07`: disposable non-answer fixture, two failed clients/12 guesses, full two-client/Cron/relaunch and controller checks passed |
 | IOS-04 | Low | Snapshot mapper does not bind countdown/playing states to snapshot `server_time`. | It validates interval and names but accepts countdown at/after start and playing before start or at/after end, contrary to server-derived state. | Accepted | Require countdown `serverTime < startsAt` and playing `startsAt <= serverTime < endsAt`; add boundary-focused decode tests and full iOS proof. | Open: serialize after IOS-03 |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 
@@ -860,6 +860,25 @@ change was required; all pre-existing changes remain unrelated.
   three-schema lint. Cleanup, index, package resolution, active plan and scratch state
   remained unchanged. DB-07 is closed.
 
+## IOS-03 repair and acceptance, 2026-09-26
+
+- Fresh task `01a0e010-808e-7ec2-9fec-2870a826b064` committed `f79ce07` in exactly
+  the two integration-harness paths. After local reset, the privileged host inserts and
+  verifies a five-letter active/accepted word with `is_answer=false`, passes only that
+  wrong guess through a dedicated client environment value, and deletes/unsets it on
+  cleanup. Neither client receives the answer, service credential, database URL or JWT
+  secret.
+- Both real simulator clients submitted the fixture six times and proved failed state,
+  count six, zero canonical efficiency, cleared intent/draft and 12 stored matching
+  guesses. The full zero-state script also passed Realtime/watchdog, stopped-client
+  Cron, relaunch/reveal, backend 122-request/30-snapshot evidence and credential scans.
+  The full iOS suite passed 148 tests with two expected skips and zero failures; clean
+  Debug, shell, project, diff and cleanup gates passed.
+- Controller acceptance verified parent `95513f9`, exact two-path diff, fixture
+  secrecy/non-answer status, environment cleanup and database deletion, then passed
+  shell syntax and the opt-out compile/expected skip. Index, package resolution, one
+  Active plan and scratch hashes remained unchanged. IOS-03 is closed.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -907,6 +926,8 @@ Phase 2/3 commits to date:
 | `69acd05 docs(plan): record DB-06 completion` | Record accepted lock-order proof and release the next R-01 rerun | Complete |
 | `ec1d1b8 docs(plan): record final review findings` | Record DB-07, IOS-03 and IOS-04 with serialized remediation | Complete |
 | `ded5629 fix(backend): align finalizer lock order` | Align scheduled finalization with deletion and prove the two-match race | Complete; DB-07 closed |
+| `95513f9 docs(plan): record DB-07 completion` | Record accepted finalizer ordering proof and release IOS-03 | Complete |
+| `f79ce07 test(live): make failed path deterministic` | Use a disposable accepted non-answer fixture for the real failed-client proof | Complete; IOS-03 closed |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
