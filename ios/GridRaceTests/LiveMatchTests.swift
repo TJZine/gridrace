@@ -64,6 +64,44 @@ final class LiveMatchServiceTests: XCTestCase {
         XCTAssertTrue(revealed.round.players.allSatisfy { $0.board != nil })
     }
 
+    func testSnapshotMapperValidatesCanonicalCompletionWindow() throws {
+        let completedAt = #""completed_at":"2026-09-26T19:40:52.136429+00:00""#
+
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.revealedSnapshot
+                .replacingOccurrences(
+                    of: completedAt,
+                    with: #""completed_at":"2026-09-26T19:43:52+00:00""#
+                )
+                .replacingOccurrences(
+                    of: #""server_time":"2026-09-26T19:40:52.184739+00:00""#,
+                    with: #""server_time":"2026-09-26T19:43:53+00:00""#
+                )
+                .utf8
+        )))
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.revealedSnapshot.replacingOccurrences(
+                of: completedAt,
+                with: #""completed_at":"2026-09-26T19:40:51.514472+00:00""#
+            ).utf8
+        )))
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.revealedSnapshot.replacingOccurrences(
+                of: completedAt,
+                with: #""completed_at":"2026-09-26T19:40:52.184739+00:00""#
+            ).utf8
+        )))
+
+        assertInvalid(Self.revealedSnapshot.replacingOccurrences(
+            of: completedAt,
+            with: #""completed_at":"2026-09-26T19:40:50+00:00""#
+        ))
+        assertInvalid(Self.revealedSnapshot.replacingOccurrences(
+            of: completedAt,
+            with: #""completed_at":"2026-09-26T19:40:53+00:00""#
+        ))
+    }
+
     func testSnapshotMapperRejectsUnsupportedAndSecretLeakingShapes() {
         assertInvalid(Self.lobbySnapshot.replacingOccurrences(of: #""version":1"#, with: #""version":2"#))
         assertInvalid(Self.lobbySnapshot.replacingOccurrences(of: #""is_self":true"#, with: #""is_self":null"#))

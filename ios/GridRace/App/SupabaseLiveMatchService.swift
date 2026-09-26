@@ -289,7 +289,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
                 throw LiveMatchServiceError.invalidResponse
             }
             if let completedAt = value.round.completedAt,
-               !(startsAt...endsAt).contains(completedAt) {
+               completedAt < startsAt || completedAt > value.serverTime {
                 throw LiveMatchServiceError.invalidResponse
             }
         }
