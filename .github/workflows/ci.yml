@@ -62,7 +62,7 @@ jobs:
           npx --no-install supabase start
           npx --no-install supabase db reset
           npx --no-install supabase test db
-          npx --no-install supabase db lint --local --schema public,private --level warning --fail-on error
+          npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error
 
   ios:
     runs-on: macos-26
