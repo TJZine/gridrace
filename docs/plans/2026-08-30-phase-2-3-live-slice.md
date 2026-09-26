@@ -244,7 +244,7 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-01 Transport and mapping | Primary controller directly; `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Complete in `4b6745a`: five live commands mapped, existing deletion boundary reused, actual local Edge fixtures decode, typed status/error mapping and strict fail-closed snapshots, no SDK types in domain |
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
-| P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium task; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Ready: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
+| P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; uncommitted `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | In progress: two-process loop and no-client Cron exposed IOS-01; mapper repair `1d004c1` accepted, full fresh continuation proof/commit pending |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
@@ -377,9 +377,11 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P3-04.** Dispatch a fresh local GridRace project
-task using `gpt-5.6-sol` / medium from the P3-03 tracker checkpoint. Give it exact
-paths, acceptance criteria, verification, a single-writer lease, one conventional
+**Exact next implementation unit: P3-04 continuation.** Dispatch a fresh local
+GridRace project task using `gpt-5.6-sol` / medium from the mapper-repair tracker
+checkpoint. It inherits the preserved uncommitted integration test, executable host
+script and Xcode registration byte-for-byte, then reruns the complete proof. Give it
+exact paths, acceptance criteria, verification, a single-writer lease, one conventional
 implementation commit and one callback attempt. The controller retains orchestration,
 acceptance, integration and plan ownership; use a separate fresh task for read-only
 review. Apply the same fresh-task boundary to each later implementation package.
@@ -557,6 +559,7 @@ change was required; all pre-existing changes remain unrelated.
 | DB-03 | Medium | `create_match`: code existence check and unique insert were separate. | Concurrent creation could win the code between check and insert. | Accepted | Insert retries only the join-code unique constraint. | Closed: reset/lint/79 pgTAP pass |
 | DB-04 | Low | `pg_cron` privileges were not explicitly denied to client roles. | Game schemas were explicit; extension schema relied on defaults. | Accepted | Client schema/table/routine privileges revoked; owner job retained. | Closed: reset/lint/79 pgTAP pass |
 | DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
+| IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Validate `startsAt <= completedAt <= serverTime`; keep all other fail-closed checks. | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
 
 ## Prior execution evidence (not rerun by the planning task)
 
@@ -664,6 +667,28 @@ change was required; all pre-existing changes remain unrelated.
   hosted proof and runtime device accessibility are not claimed. No remote mutation,
   push, deployment, spend or release occurred.
 
+## P3-04 integration blocker checkpoint, 2026-09-26
+
+- The first P3-04 task produced and preserved an uncommitted opt-in integration test,
+  executable host orchestrator and Xcode registration. Its actual loopback run proved
+  the two-process/Auth/Edge/Realtime/watchdog product loop and local scheduled
+  finalization with both client processes stopped.
+- Both relaunched clients then failed closed on the valid scheduled reveal. Controller
+  adjudication traced IOS-01 to the Swift mapper, not PostgreSQL: the server records
+  transaction time for early all-terminal or delayed deadline/Cron completion, so a
+  valid `completed_at` may precede or follow `ends_at`. Snapshot `server_time` is the
+  canonical upper bound.
+- Repair commit `1d004c1` now accepts exactly
+  `startsAt <= completedAt <= serverTime`, including boundary equality and delayed
+  completion after `endsAt`, while rejecting pre-start and future completion and
+  preserving every other fail-closed mapper rule. Focused mapper tests passed 6/6;
+  the worker full suite passed 146 tests with two expected opt-in skips and zero
+  failures; controller focused mapper proof passed 6/6. The three harness paths,
+  executable mode, scratch baseline and unrelated state remained byte-identical.
+- P3-04 is not complete: a fresh continuation must rerun the full integration script
+  from zero, complete E3/E8/E10 plus Debug/Release/cleanup proof, then commit the
+  preserved harness only if every required gate passes.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -697,11 +722,13 @@ Phase 2/3 commits to date:
 | `20347be docs(plan): record P3-02 completion` | Record accepted session evidence and release P3-03 | Complete |
 | `2117d71 feat(live): add live match UI` | Add the complete server-backed live UI and focused presentation proof | Complete |
 | `06955d9 test(live): stabilize recovery backoff proof` | Synchronize the P3-02 retry proof on persisted match state | Complete; controller-verified |
+| `709ed36 docs(plan): record P3-03 completion` | Record accepted live UI evidence and release P3-04 | Complete |
+| `1d004c1 fix(live): accept delayed canonical reveal` | Accept server-valid early or delayed completion bounded by start and snapshot server time | Complete; IOS-01 closed |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation is in progress with P3-03
-complete, and this plan remains Active.
+content matched the reviewed diff. Product implementation is in progress with P3-04
+continuation pending, and this plan remains Active.
 
 Implementation-controller bootstrap checkpoint: **this commit** records the current
 repository/baseline evidence, the maintainer-authorized single-writer Git exception,
