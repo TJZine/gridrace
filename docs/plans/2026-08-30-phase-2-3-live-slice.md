@@ -244,14 +244,14 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-01 Transport and mapping | Primary controller directly; `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Complete in `4b6745a`: five live commands mapped, existing deletion boundary reused, actual local Edge fixtures decode, typed status/error mapping and strict fail-closed snapshots, no SDK types in domain |
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
-| P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; uncommitted `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | In progress: two-process loop and no-client Cron exposed IOS-01; mapper repair `1d004c1` accepted, full fresh continuation proof/commit pending |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
+| P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready: review security/recovery/deletion/accessibility/operations and return confirmed findings separately from hypotheses |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..03 are complete; P3-04 is dependency-ready.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; R-01 is dependency-ready.
 
 ## Risk and evidence gates
 
@@ -377,14 +377,13 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P3-04 continuation.** Dispatch a fresh local
-GridRace project task using `gpt-5.6-sol` / medium from the mapper-repair tracker
-checkpoint. It inherits the preserved uncommitted integration test, executable host
-script and Xcode registration byte-for-byte, then reruns the complete proof. Give it
-exact paths, acceptance criteria, verification, a single-writer lease, one conventional
-implementation commit and one callback attempt. The controller retains orchestration,
-acceptance, integration and plan ownership; use a separate fresh task for read-only
-review. Apply the same fresh-task boundary to each later implementation package.
+**Exact next unit: R-01.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium for a read-only review of the exact integrated implementation
+range and net diff. It must cover security, privacy, correctness, recovery, deletion,
+accessibility, operations and tests; separate confirmed findings from hypotheses; and
+make no file, index or Git mutations. The controller retains orchestration,
+adjudication, integration and plan ownership. Apply the same fresh-task boundary to
+each later implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -685,9 +684,40 @@ change was required; all pre-existing changes remain unrelated.
   the worker full suite passed 146 tests with two expected opt-in skips and zero
   failures; controller focused mapper proof passed 6/6. The three harness paths,
   executable mode, scratch baseline and unrelated state remained byte-identical.
-- P3-04 is not complete: a fresh continuation must rerun the full integration script
-  from zero, complete E3/E8/E10 plus Debug/Release/cleanup proof, then commit the
-  preserved harness only if every required gate passes.
+- At this checkpoint P3-04 was not complete: a fresh continuation still had to rerun
+  the full integration script from zero, complete E3/E8/E10 plus
+  Debug/Release/cleanup proof, then commit the preserved harness only if every required
+  gate passed.
+
+## P3-04 completion and acceptance, 2026-09-26
+
+- Continuation task `01a0dfb0-30b2-7110-b855-ca22de0b6c58` preserved the three-path
+  lease, added only the required Xcode test registration, opt-in two-client XCTest and
+  local host orchestrator, and committed `0fcc113`. Its first attempt found the
+  Supabase status assignments were not exported to the Deno child; the task made the
+  minimal harness-only `set -a` / `set +a` repair, stopped the disposable stack without
+  backup and reran the entire proof from zero.
+- E3 passed through the existing backend matrix: 95 real Edge requests, 21 canonical
+  snapshots, maximum snapshot 1,567 bytes and maximum request 890 ms, including join,
+  receipt, finalizer, deadline/lock, deletion and rate-counter races. E4–E7 passed with
+  two distinct simulator processes, containers and Auth users: real Edge and Realtime
+  convergence, Realtime-disabled watchdog recovery, no creator forfeit, scheduled
+  local pg_cron finalization while both clients were stopped, idempotent repeat
+  finalization and both clients relaunching to canonical reveal.
+- E8 passed the real deletion, account-isolation, partial-stage, stale-credential and
+  lost-response paths plus client storage/account isolation coverage. E10 passed the
+  full 146-test suite with two expected opt-in skips and zero failures, clean Debug and
+  Release builds, iOS 18.0 floor, release exclusion of local-auth/debug and privileged
+  markers, client-container secret scans, shell/project/diff/lockfile checks and clean
+  teardown. No GridRace stack, integration process or temporary directory remained;
+  only the two pre-existing simulators stayed booted.
+- Controller acceptance verified sole parent `38e7309`, exactly the three leased paths,
+  the complete harness, empty index, unchanged scratch hashes and one Active plan.
+  Independent proof passed shell syntax, project plist validation, the opt-in test's
+  default skip and all six focused mapper/transport tests (seven executed, one expected
+  skip, zero failures). Local execution used Xcode 27.0 with iOS 26.5 rather than the
+  documented Xcode 26.6 prerequisite; this forward toolchain deviation is retained as
+  evidence, not treated as hosted, physical-device or distribution proof.
 
 ## Integrated commits
 
@@ -724,11 +754,13 @@ Phase 2/3 commits to date:
 | `06955d9 test(live): stabilize recovery backoff proof` | Synchronize the P3-02 retry proof on persisted match state | Complete; controller-verified |
 | `709ed36 docs(plan): record P3-03 completion` | Record accepted live UI evidence and release P3-04 | Complete |
 | `1d004c1 fix(live): accept delayed canonical reveal` | Accept server-valid early or delayed completion bounded by start and snapshot server time | Complete; IOS-01 closed |
+| `38e7309 docs(plan): record P3-04 mapper repair` | Record IOS-01 acceptance and the preserved continuation lease | Complete |
+| `0fcc113 test(live): prove two-client integration` | Add the opt-in two-client harness and complete the local P3-04 evidence gates | Complete; controller-verified |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation is in progress with P3-04
-continuation pending, and this plan remains Active.
+content matched the reviewed diff. Product implementation and P3-04 local integration
+are complete; R-01 and closeout remain, and this plan stays Active.
 
 Implementation-controller bootstrap checkpoint: **this commit** records the current
 repository/baseline evidence, the maintainer-authorized single-writer Git exception,
@@ -755,7 +787,7 @@ Record each content checkpoint here in the next tracker update. Planning complet
 leaves this plan Active; implementation closeout alone marks it Historical.
 
 - [x] P2-04A/B contract/security gates complete with exact evidence.
-- [ ] P3 client, real transport, concurrency and two-client gates complete.
+- [x] P3 client, real transport, concurrency and two-client gates complete.
 - [ ] Implementation review findings adjudicated; accepted fixes verified.
 - [ ] Authorities and newly proved commands current; beta limitations explicit.
 - [ ] Task-owned changes committed; unrelated work unchanged and unstaged by this task.
