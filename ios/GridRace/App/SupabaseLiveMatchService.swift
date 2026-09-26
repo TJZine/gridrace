@@ -233,6 +233,9 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
             let revealed = value.round.state == .revealed
             guard revealed == (value.match.status == .completed),
                   revealed || value.round.state == .countdown || value.round.state == .playing,
+                  value.round.state != .countdown || value.serverTime < startsAt,
+                  value.round.state != .playing
+                      || (value.serverTime >= startsAt && value.serverTime < endsAt),
                   revealed == (value.round.completedAt != nil),
                   revealed == (value.round.answer != nil),
                   value.round.answer.map(validWord) ?? !revealed

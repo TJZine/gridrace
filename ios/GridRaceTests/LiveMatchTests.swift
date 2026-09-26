@@ -132,6 +132,54 @@ final class LiveMatchServiceTests: XCTestCase {
         ))
     }
 
+    func testSnapshotMapperValidatesCanonicalPhaseWindow() throws {
+        let serverTime = #""server_time":"2026-09-26T19:40:51.769936+00:00""#
+        let countdown = Self.playingSnapshot.replacingOccurrences(
+            of: #""round":{"state":"playing""#,
+            with: #""round":{"state":"countdown""#
+        )
+
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            countdown.replacingOccurrences(
+                of: serverTime,
+                with: #""server_time":"2026-09-26T19:40:51Z""#
+            ).utf8
+        )))
+        assertInvalid(countdown.replacingOccurrences(
+            of: serverTime,
+            with: #""server_time":"2026-09-26T19:40:51.514472+00:00""#
+        ))
+        assertInvalid(countdown.replacingOccurrences(
+            of: serverTime,
+            with: #""server_time":"2026-09-26T19:40:52Z""#
+        ))
+
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.playingSnapshot.replacingOccurrences(
+                of: serverTime,
+                with: #""server_time":"2026-09-26T19:40:51.514472+00:00""#
+            ).utf8
+        )))
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.playingSnapshot.replacingOccurrences(
+                of: serverTime,
+                with: #""server_time":"2026-09-26T19:43:51Z""#
+            ).utf8
+        )))
+        assertInvalid(Self.playingSnapshot.replacingOccurrences(
+            of: serverTime,
+            with: #""server_time":"2026-09-26T19:40:51Z""#
+        ))
+        assertInvalid(Self.playingSnapshot.replacingOccurrences(
+            of: serverTime,
+            with: #""server_time":"2026-09-26T19:43:51.514472+00:00""#
+        ))
+        assertInvalid(Self.playingSnapshot.replacingOccurrences(
+            of: serverTime,
+            with: #""server_time":"2026-09-26T19:43:52Z""#
+        ))
+    }
+
     func testSnapshotMapperRejectsUnsupportedAndSecretLeakingShapes() {
         assertInvalid(Self.lobbySnapshot.replacingOccurrences(of: #""version":1"#, with: #""version":2"#))
         assertInvalid(Self.lobbySnapshot.replacingOccurrences(of: #""is_self":true"#, with: #""is_self":null"#))
