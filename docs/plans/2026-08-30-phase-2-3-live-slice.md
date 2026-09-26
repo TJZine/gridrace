@@ -233,7 +233,7 @@ Swift DTOs depend on it.
 
 All statuses below concern future implementation unless explicitly complete. The
 primary controller owns shared contracts, plan, integration, index and commits.
-Future filenames below are proposed write boundaries, **not existing files**.
+Unimplemented future filenames below are proposed write boundaries, **not existing files**.
 
 | Unit | Owner / exclusive write boundary | Dependency | Acceptance / status |
 | --- | --- | --- | --- |
@@ -243,15 +243,15 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, maintained `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Complete in `68bd474` and `f2d7243`: actual Auth/Edge/RLS/Realtime/deletion proof, concurrent transition matrix, local-only harness controls, and all four security-review findings remediated and verified |
 | P3-01 Transport and mapping | Primary controller directly; `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Complete in `4b6745a`: five live commands mapped, existing deletion boundary reused, actual local Edge fixtures decode, typed status/error mapping and strict fail-closed snapshots, no SDK types in domain |
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
-| P3-03 Live UI | Fresh local project task using `gpt-5.6-sol` / medium; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Ready: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
-| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
+| P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
+| P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium task; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Ready: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01, P3-01 and P3-02 are complete; P3-03 is dependency-ready.
+unit only. P2-04B, BLK-01 and P3-01..03 are complete; P3-04 is dependency-ready.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,14 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P3-03.** Dispatch a fresh local GridRace project
-task using `gpt-5.6-sol` / medium from the P3-02 tracker checkpoint. Give it exact
+**Exact next implementation unit: P3-04.** Dispatch a fresh local GridRace project
+task using `gpt-5.6-sol` / medium from the P3-03 tracker checkpoint. Give it exact
 paths, acceptance criteria, verification, a single-writer lease, one conventional
 implementation commit and one callback attempt. The controller retains orchestration,
 acceptance, integration and plan ownership; use a separate fresh task for read-only
 review. Apply the same fresh-task boundary to each later implementation package.
+Every worker must attempt its structured callback exactly once even when blocked or
+when no commit was created; callback delivery never depends on completing a commit.
 
 ## P2-04A execution and acceptance, 2026-09-22
 
@@ -633,6 +635,35 @@ change was required; all pre-existing changes remain unrelated.
   remained in the final build. No remote mutation, deployment, push, spend or release
   occurred, and the recorded scratch files remain untouched and untracked.
 
+## P3-03 execution and acceptance, 2026-09-26
+
+- Starting checkpoint `20347be`; implementation commit `2117d71` adds the live Home
+  entry, account-gated create/join, Resume, private lobby, canonical countdown and
+  round, terminal wait, recovery/error states and canonical reveal. It reuses the
+  existing session, board, keyboard, avatars, feedback semantics and design tokens;
+  views do not evaluate guesses or invent transitions, opponent detail or reveal.
+- The UI keeps Daily Classic primary and available signed out. It shows only coarse
+  opponent count/state, derives countdown/deadline display from session server time,
+  locks uncertain/deadline input, retains rejected drafts and leaves membership intact
+  on Home. Reveal requires a canonical revealed snapshot and orders the viewing player
+  first, opponents by seat and rows by original sequence.
+- Focused presentation proof passed 6 tests covering join-code presentation,
+  canonical countdown, creator-only Start, privacy-safe opponent labels, reveal order
+  and safe error messages. Code inspection covered Dynamic Type layout, VoiceOver
+  labels/focus structure, Reduce Motion stable reveal, Increased Contrast/Bold Text,
+  non-color tile semantics, 44-point controls, hardware key handlers and haptics
+  preference gating. Runtime assistive-technology and physical-device inspection remain
+  later beta evidence and are not claimed here.
+- Controller review reproduced a pre-existing P3-02 test race: the test observed the
+  fifth create call before the session persisted its resolved match. Repair commit
+  `06955d9` waits for the definitive saved-match state without weakening UUID, attempt
+  or 5/10/20/30-backoff assertions. The repaired test passed 20/20 iterations; the
+  full iOS suite passed 144 tests with one expected opt-in local-Supabase skip and zero
+  failures; the clean Debug simulator build passed. `git diff --check`, active-plan,
+  lockfile and scratch-baseline checks passed. P3-04 two-process/backend convergence,
+  hosted proof and runtime device accessibility are not claimed. No remote mutation,
+  push, deployment, spend or release occurred.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -663,10 +694,13 @@ Phase 2/3 commits to date:
 | `4b6745a feat(live): add match transport boundary` | Add domain models, strict command/snapshot mapping and real-fixture Swift proof | Complete |
 | `445717b docs(plan): record P3-01 completion` | Record accepted transport evidence and release P3-02 | Complete |
 | `d578ec4 feat(live): add session recovery` | Add durable live session recovery, Realtime refresh signals and focused proof | Complete |
+| `20347be docs(plan): record P3-02 completion` | Record accepted session evidence and release P3-03 | Complete |
+| `2117d71 feat(live): add live match UI` | Add the complete server-backed live UI and focused presentation proof | Complete |
+| `06955d9 test(live): stabilize recovery backoff proof` | Synchronize the P3-02 retry proof on persisted match state | Complete; controller-verified |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation is in progress with P3-02
+content matched the reviewed diff. Product implementation is in progress with P3-03
 complete, and this plan remains Active.
 
 Implementation-controller bootstrap checkpoint: **this commit** records the current
