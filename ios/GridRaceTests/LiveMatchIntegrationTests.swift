@@ -11,6 +11,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
               let scenario = environment["GRIDRACE_LIVE_SCENARIO"],
               let email = environment["GRIDRACE_LIVE_EMAIL"],
               let password = environment["GRIDRACE_LIVE_PASSWORD"],
+              let failedGuess = environment["GRIDRACE_LIVE_FAILED_GUESS"],
               let url = environment["GRIDRACE_LOCAL_SUPABASE_URL"],
               let key = environment["GRIDRACE_LOCAL_SUPABASE_KEY"]
         else {
@@ -49,7 +50,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
             session.startMatch()
             try await eventually("host playing") { session.snapshot?.round.state == .playing }
             if scenario == "product" {
-                try await finishRound(session)
+                try await finishRound(session, guess: failedGuess)
                 try await assertReveal(session)
             }
         case "guest":
@@ -60,7 +61,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
             }
             try await eventually("guest playing") { session.snapshot?.round.state == .playing }
             if scenario == "product" {
-                try await finishRound(session)
+                try await finishRound(session, guess: failedGuess)
                 try await assertReveal(session)
             }
         case "resume":
@@ -82,11 +83,11 @@ final class LiveMatchIntegrationTests: XCTestCase {
         )
     }
 
-    private func finishRound(_ session: LiveMatchSession) async throws {
+    private func finishRound(_ session: LiveMatchSession, guess: String) async throws {
         for _ in 0..<6 {
             guard selfPlayer(in: session.snapshot)?.state == .playing else { break }
             let prior = selfPlayer(in: session.snapshot)?.acceptedGuessCount ?? 0
-            session.submitGuess("ADORE")
+            session.submitGuess(guess)
             try await eventually("accepted guess") {
                 guard !session.isCommandInFlight,
                       let player = self.selfPlayer(in: session.snapshot)
@@ -105,6 +106,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
         XCTAssertEqual(player.efficiencyPoints, 0)
         XCTAssertNil(session.pendingIntent)
         XCTAssertEqual(session.guessDraft, "")
+        print("PASS live client failed path: six guesses, failed, zero efficiency, intent cleared")
     }
 
     private func assertReveal(_ session: LiveMatchSession) async throws {

@@ -38,6 +38,7 @@ derived_data="$work_dir/DerivedData"
 function_pid=""
 host_pid=""
 guest_pid=""
+failed_guess=""
 declare -a created_users=()
 declare -a created_matches=()
 declare -a proof_simulators=()
@@ -45,6 +46,7 @@ declare -a client_environment_names=(
   GRIDRACE_LOCAL_INTEGRATION GRIDRACE_LIVE_ROLE GRIDRACE_LIVE_SCENARIO
   GRIDRACE_LIVE_EMAIL GRIDRACE_LIVE_PASSWORD GRIDRACE_LIVE_JOIN_CODE
   GRIDRACE_LIVE_MATCH_ID GRIDRACE_LIVE_DISABLE_REALTIME
+  GRIDRACE_LIVE_FAILED_GUESS
   GRIDRACE_LOCAL_SUPABASE_URL GRIDRACE_LOCAL_SUPABASE_KEY
 )
 
@@ -56,6 +58,8 @@ cleanup() {
   for match_id in ${created_matches[@]+"${created_matches[@]}"}; do
     sql_scalar "delete from public.matches where id = '$match_id' returning id" >/dev/null
   done
+  [[ -z "$failed_guess" ]] || \
+    sql_scalar "delete from private.words where word = '$failed_guess' returning word" >/dev/null
   for user_id in ${created_users[@]+"${created_users[@]}"}; do
     sql_scalar "delete from auth.users where id = '$user_id' returning id" >/dev/null
   done
@@ -133,6 +137,16 @@ sql_scalar() {
     -XAtq -v ON_ERROR_STOP=1 -c "$1" | tail -n 1
 }
 
+[[ $(sql_scalar "select count(*) from private.words where word = 'zzzzz'") == "0" ]] || {
+  echo "REFUSED: deterministic failed-guess fixture already exists" >&2
+  exit 2
+}
+failed_guess=$(sql_scalar \
+  "insert into private.words (word, is_accepted, is_answer, is_active, pack_version) values ('zzzzz', true, false, true, 1) returning word")
+[[ $(sql_scalar \
+  "select concat(word ~ '^[a-z]{5}$', '|', is_accepted, '|', is_active, '|', is_answer) from private.words where word = '$failed_guess'") == "true|true|true|false" ]]
+echo "PASS deterministic failed-guess fixture is valid, accepted, active, and non-answer"
+
 wait_sql() {
   local query=$1 expected=$2 result=""
   for _ in {1..900}; do
@@ -169,6 +183,7 @@ run_client() {
   xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LIVE_JOIN_CODE "$code"
   xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LIVE_MATCH_ID "$match_id"
   xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LIVE_DISABLE_REALTIME "$realtime"
+  xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LIVE_FAILED_GUESS "$failed_guess"
   xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LOCAL_SUPABASE_URL "$API_URL"
   xcrun simctl spawn "$simulator" launchctl setenv GRIDRACE_LOCAL_SUPABASE_KEY "$ANON_KEY"
   set +e
@@ -233,8 +248,10 @@ run_pair() {
   [[ $host_status -eq 0 && $guest_status -eq 0 ]] || return 1
 
   if [[ $scenario == "product" ]]; then
-    [[ $(sql_scalar "select count(*) from public.player_rounds player join public.rounds round on round.id = player.round_id where round.match_id = '$match_id' and player.state <> 'playing'") == "2" ]]
+    [[ $(sql_scalar "select count(*) from public.player_rounds player join public.rounds round on round.id = player.round_id where round.match_id = '$match_id' and player.state = 'failed' and player.accepted_guess_count = 6 and player.efficiency_points = 0") == "2" ]]
+    [[ $(sql_scalar "select count(*) from public.guesses guess join public.rounds round on round.id = guess.round_id where round.match_id = '$match_id' and guess.normalized_guess = '$failed_guess'") == "12" ]]
     [[ $(sql_scalar "select status from public.matches where id = '$match_id'") == "completed" ]]
+    echo "PASS both clients stored six failed guesses with zero efficiency"
     echo "PASS two-process product loop"
     return
   fi
