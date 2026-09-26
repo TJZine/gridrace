@@ -240,8 +240,8 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | P2-01..03 | Historical backend owners; existing migrations, seed, handlers/tests | Original contract | Complete baseline; evidence retained below, not proof of new targets |
 | P2-04A Recovery contract corrections | Luna/xhigh worker began the four-path package; controller took over at maintainer direction and added only the two existing SQL fixtures required to make the new RPC parameters genuinely mandatory | PLAN-01 checkpoint | Complete in `a80f282`: atomic create receipts, Boolean deleted-member identity, strict RPC/Edge request ID, forward/reset, negative, rollback, lifecycle and independent concurrency proof; no iOS/project edits |
 | P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, maintained `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Complete in `68bd474` and `f2d7243`: actual Auth/Edge/RLS/Realtime/deletion proof, concurrent transition matrix, local-only harness controls, and all four security-review findings remediated and verified |
-| P3-01 Transport and mapping | Primary controller directly; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Ready: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
-| P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Pending: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
+| P3-01 Transport and mapping | Primary controller directly; `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Complete in `4b6745a`: five live commands mapped, existing deletion boundary reused, actual local Edge fixtures decode, typed status/error mapping and strict fail-closed snapshots, no SDK types in domain |
+| P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Ready: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
 | P3-03 Live UI | Same iOS writer; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Pending: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
 | P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
@@ -250,7 +250,7 @@ Future filenames below are proposed write boundaries, **not existing files**.
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B and BLK-01 are complete; P3-01 is dependency-ready.
+unit only. P2-04B, BLK-01 and P3-01 are complete; P3-02 is dependency-ready.
 
 ## Risk and evidence gates
 
@@ -376,8 +376,8 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P3-01.** The controller owns transport and mapping
-directly from full HEAD `3763611`; no worker dispatch or stale `2c6c8a0` base applies.
+**Exact next implementation unit: P3-02.** The controller owns session and recovery
+directly from full HEAD after the P3-01 tracker commit; no worker dispatch applies.
 
 ## P2-04A execution and acceptance, 2026-09-22
 
@@ -583,6 +583,28 @@ change was required; all pre-existing changes remain unrelated.
 | Reactivation database tests | `npx --no-install supabase test db --local supabase/tests/database` | Passed: 217 assertions across 5 files |
 | Reactivation database lint | `npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error` | Passed with no errors; existing unused/shadowed-variable extra warnings remain |
 
+## P3-01 execution and acceptance, 2026-09-26
+
+- Controller checkpoint `8727773` resolved BLK-01 and promoted the proved backend
+  harness command. Implementation commit `4b6745a` added the domain-only live model,
+  Supabase command service, strict snapshot mapper, shared authenticated client
+  composition and Xcode registration.
+- The service maps `create-match`, `join-match`, `start-match`, `submit-guess` and
+  `match-snapshot`; `SupabaseAccountService.deleteAccount()` remains the sixth frozen
+  command boundary. Requests preserve build `1`, lowercase UUIDs and the one-round
+  contract. Cancellation propagates; known server errors are trusted only with their
+  documented HTTP statuses; malformed, mismatched and gateway responses fail closed.
+- The mapper accepts UTC `Z`/`+00:00` timestamps through microseconds and rejects
+  unsupported versions/enums, missing required nullable fields, invalid rosters,
+  identity/privacy leaks, contradictory timing/state, malformed boards, clue exposure
+  before reveal and incomplete reveal data. Domain values contain no Supabase types.
+- The local integration harness passed all 95 real Edge requests and 21 snapshots and
+  supplied the exact lobby, playing and revealed fixtures checked into the Swift tests.
+  Focused transport tests passed: 5 tests, 0 failures. The full clean-derived-data iOS
+  run passed: 124 tests, 1 expected opt-in integration skip, 0 failures. The Debug
+  simulator build passed. Only pre-existing Swift concurrency and metadata-extraction
+  warnings remained; no remote mutation, deployment, spend or release occurred.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -609,11 +631,13 @@ Phase 2/3 commits to date:
 | `f2d7243 fix(backend): close live slice security findings` | Fail closed to local fixtures and serialize submission receipts/deletion with one account lock | Complete; all accepted review findings verified |
 | `2c6c8a0 docs(plan): close P2-04B security checkpoint` | Record accepted backend evidence, review adjudication and BLK-02 resolution | Complete |
 | `3763611 feat(dictionary): integrate Wiktionary guess corpus` | Commit the previously overlapping dictionary, Daily attribution, Xcode and runbook package | Complete; BLK-01 resolved |
+| `8727773 docs(plan): unblock live transport implementation` | Record BLK-01 evidence, promote the live harness command and release P3-01 | Complete |
+| `4b6745a feat(live): add match transport boundary` | Add domain models, strict command/snapshot mapping and real-fixture Swift proof | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation remains pending and this
-plan remains Active.
+content matched the reviewed diff. Product implementation is in progress with P3-01
+complete, and this plan remains Active.
 
 Implementation-controller bootstrap checkpoint: **this commit** records the current
 repository/baseline evidence, the maintainer-authorized single-writer Git exception,
