@@ -2,7 +2,7 @@ Status: Active
 Scope: GridRace Phase 2 backend foundation and Phase 3 two-player live slice
 Owner: Primary orchestrator
 Started: 2026-08-30
-Last updated: 2026-09-22
+Last updated: 2026-09-26
 
 # Phase 2 and Phase 3 Live Slice Plan
 
@@ -34,8 +34,9 @@ spending, publication, release, and unrelated dictionary work remain excluded.
   and Daily sync. `SupabaseAccountService` owns the SDK client and already supplies
   Daily transport. Reuse its authenticated client through composition; do not create
   competing Auth sessions or put live state in `DailyAccountCoordinator`.
-- No live Swift domain, command service, session model, Realtime service, or UI exists.
-  Existing Edge tests inject dependencies; SQL assertions are not proof of independent
+- Live Swift transport, strict mapping, session recovery and Realtime signal handling
+  now exist. Live UI and two-process app integration proof remain pending. Existing
+  Edge tests inject dependencies; SQL assertions are not proof of independent
   concurrent transactions or of actual Edge gateway/Realtime delivery.
 - Staging/Release configuration placeholders and CI already exist. Remote deployment,
   a passing hosted CI run, and real Apple exchange are not established by those files.
@@ -241,8 +242,8 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | P2-04A Recovery contract corrections | Luna/xhigh worker began the four-path package; controller took over at maintainer direction and added only the two existing SQL fixtures required to make the new RPC parameters genuinely mandatory | PLAN-01 checkpoint | Complete in `a80f282`: atomic create receipts, Boolean deleted-member identity, strict RPC/Edge request ID, forward/reset, negative, rollback, lifecycle and independent concurrency proof; no iOS/project edits |
 | P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, maintained `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Complete in `68bd474` and `f2d7243`: actual Auth/Edge/RLS/Realtime/deletion proof, concurrent transition matrix, local-only harness controls, and all four security-review findings remediated and verified |
 | P3-01 Transport and mapping | Primary controller directly; `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Complete in `4b6745a`: five live commands mapped, existing deletion boundary reused, actual local Edge fixtures decode, typed status/error mapping and strict fail-closed snapshots, no SDK types in domain |
-| P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Ready: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
-| P3-03 Live UI | Same iOS writer; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Pending: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
+| P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
+| P3-03 Live UI | Fresh local project task using `gpt-5.6-sol` / medium; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Ready: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
 | P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; backend harness command is promoted in the runbook |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
@@ -250,7 +251,7 @@ Future filenames below are proposed write boundaries, **not existing files**.
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01 are complete; P3-02 is dependency-ready.
+unit only. P2-04B, BLK-01, P3-01 and P3-02 are complete; P3-03 is dependency-ready.
 
 ## Risk and evidence gates
 
@@ -376,8 +377,12 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P3-02.** The controller owns session and recovery
-directly from full HEAD after the P3-01 tracker commit; no worker dispatch applies.
+**Exact next implementation unit: P3-03.** Dispatch a fresh local GridRace project
+task using `gpt-5.6-sol` / medium from the P3-02 tracker checkpoint. Give it exact
+paths, acceptance criteria, verification, a single-writer lease, one conventional
+implementation commit and one callback attempt. The controller retains orchestration,
+acceptance, integration and plan ownership; use a separate fresh task for read-only
+review. Apply the same fresh-task boundary to each later implementation package.
 
 ## P2-04A execution and acceptance, 2026-09-22
 
@@ -605,6 +610,29 @@ change was required; all pre-existing changes remain unrelated.
   simulator build passed. Only pre-existing Swift concurrency and metadata-extraction
   warnings remained; no remote mutation, deployment, spend or release occurred.
 
+## P3-02 execution and acceptance, 2026-09-26
+
+- Starting checkpoint `445717b`; implementation commit `d578ec4` adds the account-
+  scoped recovery store, one live session state machine, filtered match Realtime
+  signals, shared-client composition and focused tests. The change contains no P3-03
+  live UI.
+- Create and guess request UUIDs are persisted before dispatch and reused across
+  timeout, relaunch and capped 5/10/20/30-second retry. A recovered match pointer is
+  persisted before exposure. Disk failure blocks dispatch, account changes clear the
+  previous account state and generation guards discard late callbacks.
+- Realtime subscribes before catch-up; payloads are refresh signals only. Canonical
+  snapshots own state, signals coalesce behind one fetch with a trailing refresh, and
+  a five-second foreground watchdog recovers silent loss. Commands and snapshots use
+  a ten-second timeout, refresh authentication once, cancel on background, and resume
+  on foreground. Display time advances from monotonic uptime; local deadlines lock
+  input and request canonical refresh without locally revealing or completing play.
+- Focused recovery/session tests passed: 14 tests, 0 failures. The full iOS suite
+  passed: 138 tests, 1 expected opt-in integration skip, 0 failures. The
+  clean Debug simulator build passed. `git diff --check` passed; Xcode's incidental
+  package-resolution rewrite was removed. Only the pre-existing metadata warning
+  remained in the final build. No remote mutation, deployment, push, spend or release
+  occurred, and the recorded scratch files remain untouched and untracked.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -633,10 +661,12 @@ Phase 2/3 commits to date:
 | `3763611 feat(dictionary): integrate Wiktionary guess corpus` | Commit the previously overlapping dictionary, Daily attribution, Xcode and runbook package | Complete; BLK-01 resolved |
 | `8727773 docs(plan): unblock live transport implementation` | Record BLK-01 evidence, promote the live harness command and release P3-01 | Complete |
 | `4b6745a feat(live): add match transport boundary` | Add domain models, strict command/snapshot mapping and real-fixture Swift proof | Complete |
+| `445717b docs(plan): record P3-01 completion` | Record accepted transport evidence and release P3-02 | Complete |
+| `d578ec4 feat(live): add session recovery` | Add durable live session recovery, Realtime refresh signals and focused proof | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation is in progress with P3-01
+content matched the reviewed diff. Product implementation is in progress with P3-02
 complete, and this plan remains Active.
 
 Implementation-controller bootstrap checkpoint: **this commit** records the current
