@@ -7,10 +7,14 @@ import {
 
 type Json = Record<string, unknown>;
 
-const apiUrl = required("API_URL");
+assert(
+  required("GRIDRACE_LOCAL_INTEGRATION") === "1",
+  "local integration opt-in required",
+);
+const apiUrl = localApiUrl(required("API_URL"));
+const database = localDatabase(required("DB_URL"));
 const anonKey = required("ANON_KEY");
 const serviceKey = required("SERVICE_ROLE_KEY");
-const databaseUrl = required("DB_URL");
 const clientOptions = {
   auth: {
     autoRefreshToken: false,
@@ -37,6 +41,11 @@ interface EdgeResult {
   body: Json;
   bytes: number;
   elapsedMs: number;
+}
+
+interface LocalDatabase {
+  args: string[];
+  password: string;
 }
 
 try {
@@ -406,18 +415,33 @@ try {
     );
 
     const crossMatchId = crypto.randomUUID();
-    const firstDomain = await edge(
-      host.session,
-      "submit-guess",
-      guessBody(firstMatch, crossMatchId, wrong),
+    const crossMatch = await Promise.all([
+      edge(
+        host.session,
+        "submit-guess",
+        guessBody(firstMatch, crossMatchId, wrong),
+      ),
+      edge(
+        host.session,
+        "submit-guess",
+        guessBody(secondMatch, crossMatchId, wrong),
+      ),
+    ]);
+    assert(
+      crossMatch.filter((result) => result.status === 200).length === 1,
+      "one cross-match receipt winner",
     );
-    const secondDomain = await edge(
-      host.session,
-      "submit-guess",
-      guessBody(secondMatch, crossMatchId, wrong),
+    const crossMatchLoser = crossMatch.find((result) => result.status !== 200);
+    assert(crossMatchLoser !== undefined, "cross-match receipt loser");
+    assertError(crossMatchLoser, 409, "request_conflict");
+    assert(
+      await sqlScalar(
+        `select count(*) from public.guesses where request_id = '${
+          uuid(crossMatchId)
+        }'`,
+      ) === "1",
+      "one cross-match canonical guess",
     );
-    assert(firstDomain.status === 200, "first receipt domain accepted");
-    assertError(secondDomain, 409, "request_conflict");
   });
 
   await scenario("finalizer and sixth guess converge", async () => {
@@ -558,14 +582,30 @@ try {
     const submitGuest = await createUser("delete-submit-guest");
     const submitMatch = await createPlayingMatch(submitHost, submitGuest);
     const wrong = await anotherWord(await matchAnswer(submitMatch));
-    const [submit, submitDelete] = await Promise.all([
-      edge(
+    assert(
+      (await edge(
         submitGuest.session,
         "submit-guess",
         guessBody(submitMatch, crypto.randomUUID(), wrong),
-      ),
-      edge(submitGuest.session, "delete-account", { client_build: 1 }),
+      )).status === 200,
+      "submit-race rate row seeded",
+    );
+    const held = holdMatchLock(submitMatch, 1);
+    await delay(150);
+    const submitPromise = edge(
+      submitGuest.session,
+      "submit-guess",
+      guessBody(submitMatch, crypto.randomUUID(), wrong),
+    );
+    await delay(150);
+    const deletePromise = edge(submitGuest.session, "delete-account", {
+      client_build: 1,
+    });
+    const [submit, submitDelete] = await Promise.all([
+      submitPromise,
+      deletePromise,
     ]);
+    await held;
     assert(submitDelete.status === 200, "submit-race deletion completes");
     createdUsers.delete(submitGuest.id);
     assert(
@@ -944,7 +984,16 @@ async function waitForRealtimeSubscription(userId: string): Promise<void> {
 
 async function sql(statement: string): Promise<string> {
   const command = new Deno.Command("psql", {
-    args: [databaseUrl, "-XAtq", "-v", "ON_ERROR_STOP=1", "-c", statement],
+    args: [
+      ...database.args,
+      "-XAtq",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      statement,
+    ],
+    clearEnv: true,
+    env: database.password === "" ? {} : { PGPASSWORD: database.password },
     stdout: "piped",
     stderr: "piped",
   });
@@ -1066,6 +1115,44 @@ function required(name: string): string {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`missing ${name}`);
   return value;
+}
+
+function localApiUrl(value: string): string {
+  const url = new URL(value);
+  assert(
+    url.protocol === "http:" &&
+      ["127.0.0.1", "localhost"].includes(url.hostname) &&
+      url.port === "54321",
+    "API_URL must target local Supabase",
+  );
+  return url.origin;
+}
+
+function localDatabase(value: string): LocalDatabase {
+  const url = new URL(value);
+  assert(
+    ["postgres:", "postgresql:"].includes(url.protocol) &&
+      ["127.0.0.1", "localhost"].includes(url.hostname) &&
+      url.port === "54322" &&
+      url.pathname === "/postgres",
+    "DB_URL must target local Supabase",
+  );
+  const password = decodeURIComponent(url.password);
+  const args = [
+    "--host",
+    url.hostname,
+    "--port",
+    url.port,
+    "--username",
+    decodeURIComponent(url.username),
+    "--dbname",
+    decodeURIComponent(url.pathname.slice(1)),
+  ];
+  assert(
+    !args.includes(value) && !args.includes("--password"),
+    "database password argv",
+  );
+  return { args, password };
 }
 
 function isJson(value: unknown): value is Json {
