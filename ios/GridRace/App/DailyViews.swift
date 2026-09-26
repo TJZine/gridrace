@@ -3,6 +3,7 @@ import UIKit
 
 enum AppRoute: Hashable {
     case daily
+    case live
     case statistics
     case account
     case settings
@@ -14,15 +15,18 @@ enum AppRoute: Hashable {
 struct DailyAppView: View {
     @Bindable var app: DailyAccountCoordinator
     @Environment(\.scenePhase) private var scenePhase
+    @State private var path: [AppRoute] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             DailyHomeView(
                 model: app.daily,
                 account: app.account,
+                live: app.live,
                 syncMessage: app.syncMessage,
                 isDailyPlayable: app.isDailyPlayable,
-                retryDailyStorage: { app.retrySync() }
+                retryDailyStorage: { app.retrySync() },
+                openRoute: { path.append($0) }
             )
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
@@ -32,6 +36,12 @@ struct DailyAppView: View {
                         } else {
                             DailyStorageUnavailableView(retry: { app.retrySync() })
                         }
+                    case .live:
+                        LiveMatchFlowView(
+                            session: app.live,
+                            hapticsEnabled: app.daily.settings.hapticsEnabled,
+                            highContrast: app.daily.settings.highContrastEnabled
+                        )
                     case .statistics: DailyStatisticsView(model: app.daily)
                     case .account: accountDestination
                     case .settings: DailySettingsView(model: app.daily)
@@ -85,10 +95,13 @@ struct DailyAppView: View {
 struct DailyHomeView: View {
     @Bindable var model: DailyClassicModel
     @Bindable var account: AccountModel
+    @Bindable var live: LiveMatchSession
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let syncMessage: String?
     let isDailyPlayable: Bool
     let retryDailyStorage: () -> Void
+    let openRoute: (AppRoute) -> Void
+    @State private var joinCode = ""
 
     var body: some View {
         ZStack {
@@ -98,6 +111,7 @@ struct DailyHomeView: View {
                     brandHeader
                     dailyCard
                     statisticsStrip
+                    liveCard
                     accountCard
                     secondaryRoutes
                 }
@@ -253,6 +267,101 @@ struct DailyHomeView: View {
         }
         .padding(.top, 12)
         .buttonStyle(.plain)
+    }
+
+    private var liveCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LIVE RACE")
+                        .font(.caption.weight(.black))
+                        .tracking(1.2)
+                        .foregroundStyle(Color.raceIndigo)
+                    Text("Private two-player race")
+                        .font(.headline)
+                    Text("One server-authoritative round")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "person.2.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.raceIndigo)
+                    .accessibilityHidden(true)
+            }
+
+            if live.hasSavedMatch {
+                Button {
+                    live.resumeSavedMatch()
+                    openRoute(.live)
+                } label: {
+                    Label("Resume live match", systemImage: "arrow.clockwise.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) { liveControls }
+                } else {
+                    HStack(spacing: 10) { liveControls }
+                }
+            }
+
+            if !account.isSignedIn {
+                Text("Create and Join open Account first. Daily Classic stays available without signing in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.raceLine, lineWidth: 1.5)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var liveControls: some View {
+        Button("Create") {
+            guard account.isSignedIn else {
+                openRoute(.account)
+                return
+            }
+            live.createMatch()
+            openRoute(.live)
+        }
+        .buttonStyle(.bordered)
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
+        .disabled(live.isCommandInFlight)
+
+        TextField("Room code", text: $joinCode)
+            .textFieldStyle(.roundedBorder)
+            .frame(minHeight: 44)
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled()
+            .textContentType(.oneTimeCode)
+            .font(.body.monospaced())
+            .accessibilityLabel("Six-character room code")
+            .onChange(of: joinCode) { _, value in
+                let normalized = LiveMatchPresentation.normalizedJoinCode(value)
+                if normalized != value { joinCode = normalized }
+            }
+
+        Button("Join") {
+            guard account.isSignedIn else {
+                openRoute(.account)
+                return
+            }
+            live.joinMatch(code: joinCode)
+            openRoute(.live)
+        }
+        .buttonStyle(.bordered)
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
+        .disabled(joinCode.count != 6 || live.isCommandInFlight)
     }
 
     private var accountCard: some View {
