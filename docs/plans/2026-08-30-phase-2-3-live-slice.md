@@ -161,8 +161,8 @@ production retention choice, or dictionary changes are part of this milestone.
 
 [`../live-api-contract.md`](../live-api-contract.md) is the normative wire and recovery
 contract. P2-04A now implements its create-receipt and deleted-member identity
-checkpoint. P2-04B must finish the backend security/integration proof before Swift
-DTOs depend on it.
+checkpoint. P2-04B now supplies the backend security/integration proof required before
+Swift DTOs depend on it.
 
 1. Add required `request_id` to create. An authenticated actor's identical retry,
    including concurrent/lost-response retry, returns the original match ID without
@@ -239,27 +239,28 @@ Future filenames below are proposed write boundaries, **not existing files**.
 | PLAN-01 | Primary; this plan, API, architecture, privacy, flow, product, decisions, NOW | Accepted brainstorming | Complete: accepted direction revised and independently reviewed; documentation proof below; no product writes |
 | P2-01..03 | Historical backend owners; existing migrations, seed, handlers/tests | Original contract | Complete baseline; evidence retained below, not proof of new targets |
 | P2-04A Recovery contract corrections | Luna/xhigh worker began the four-path package; controller took over at maintainer direction and added only the two existing SQL fixtures required to make the new RPC parameters genuinely mandatory | PLAN-01 checkpoint | Complete in `a80f282`: atomic create receipts, Boolean deleted-member identity, strict RPC/Edge request ID, forward/reset, negative, rollback, lifecycle and independent concurrency proof; no iOS/project edits |
-| P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, future `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Pending: current RLS/grants/secret/deletion/revision/lock audit, negative and concurrent proof, accepted fixes closed |
+| P2-04B Backend security/integration checkpoint | Primary plus fresh read-only security reviewer; integrated backend, maintained `supabase/tests/integration/live_slice_test.ts`, and exact reproduced repair paths assigned serially | P2-04A | Complete in `68bd474` and `f2d7243`: actual Auth/Edge/RLS/Realtime/deletion proof, concurrent transition matrix, local-only harness controls, and all four security-review findings remediated and verified |
 | P3-01 Transport and mapping | One iOS writer; future `ios/GridRace/App/LiveMatch.swift`, `SupabaseLiveMatchService.swift`, `ios/GridRaceTests/LiveMatchTests.swift`; existing `SupabaseAccountService.swift`; serialized project registration | P2-04B and dictionary overlap resolved | Pending: all six command boundaries reused or mapped, real fixtures decode, typed HTTP/errors, no SDK types in domain |
 | P3-02 Session and recovery | Same iOS writer; future `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; controller approves exact composition edits | P3-01 | Pending: single session, durable IDs, lifecycle cancellation, bounded refresh, auth/account isolation, clock and uncertainty proof |
 | P3-03 Live UI | Same iOS writer; future `ios/GridRace/App/LiveMatchViews.swift`; existing `DailyViews.swift`, `GridRaceApp.swift`, `DailyAccountCoordinator.swift` only for composition/routing; serialized project | P3-02 | Pending: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume, accessibility; retain Daily ownership and settings |
-| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, future `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness is established during P2-04B | Pending: actual Edge/Auth/Realtime, independent users/connections and two simulator apps; promote exact new commands only after successful runs |
+| P3-04 Real integration and race proof | Primary; future `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, existing `supabase/tests/integration/live_slice_test.ts`, disposable local fixtures and simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Pending: two independent app processes use the proved backend and converge; promote the harness command to the runbook after BLK-01 clears |
 | R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Pending: security/recovery/deletion/accessibility/operations findings adjudicated |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Pending: record evidence, mark historical only when the slice is complete |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only; P2-04B is the next dependency-ready backend unit and remains independent
-of the dictionary/Xcode overlap.
+unit only. P2-04B is complete; P3-01 remains blocked only by the dictionary/Xcode and
+runbook overlap recorded in BLK-01.
 
 ## Risk and evidence gates
 
 Cross-boundary architecture and this implementation are **High** risk. The earlier
 planning checkpoint changed documentation only; P2-04A now has the implementation
 and risk-matched evidence recorded below. Do not mislabel the planning review or
-P2-04A's focused proof as the pending P2-04B security audit or P3 implementation
-review. No unrelated application builds are required for backend-only units.
+P2-04A's focused proof as the completed P2-04B security audit or the pending P3
+implementation review. No unrelated application builds are required for backend-only
+units.
 
 Existing commands are owned by [`../ENGINEERING_RUNBOOK.md`](../ENGINEERING_RUNBOOK.md).
 Use its current Deno, seed, Supabase reset/test/lint and Xcode discovery/test/build
@@ -369,18 +370,16 @@ backup verification and compatible client/build gating before any rollout.
 | DEC-03 | Accepted 2026-09-22 | Retry-safe create and bounded foreground snapshots; P2-04A contract change before Swift |
 | DEC-04 | Accepted 2026-09-22 | $0 initial spend; paid commitments need explicit maintainer approval after revisiting traction |
 | BLK-01 | Open for overlapping files | Maintainer must checkpoint/separate unrelated dictionary work before `DailyViews.swift`, Xcode or overlapping runbook writes; no agent may stage/discard it. P2-04A product paths remain independent |
-| BLK-02 | Open implementation gate | P2-04A corrections are complete; P2-04B security/concurrency checkpoint still precedes iOS dependency |
+| BLK-02 | Resolved 2026-09-26 | P2-04A and P2-04B backend contract, security, integration and concurrency checkpoints are complete; no unresolved material review finding remains |
 | BLK-03 | Later external proof | Maintainer: Apple credentials/revocation, distribution cost, physical devices, hosted environment/retention/backups/usage; not local-slice completion claims |
 | BLK-04 | Known limitation | Trusted client-IP provenance unavailable locally; prove per-user limits and keyed-IP SQL path, do not trust arbitrary forwarded headers; resolve before hosted abuse-control claims |
 
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next implementation unit: P2-04B.** Establish the maintained local backend
-integration harness, then perform the fresh read-only security review over the
-integrated backend and actual evidence. Close the backend portions of E1–E3 and E8/E10
-before Swift work. Actual gateway/Realtime/deletion-flow proof remains pending; the
-P2-04A injected Edge and direct PostgreSQL evidence does not substitute for it.
+**Exact next action: clear BLK-01, then begin P3-01.** The maintainer must first
+checkpoint or separate the unrelated dictionary/Xcode/runbook work. No Swift or
+overlapping runbook write starts while that baseline remains shared.
 
 ## P2-04A execution and acceptance, 2026-09-22
 
@@ -427,6 +426,56 @@ P2-04A injected Edge and direct PostgreSQL evidence does not substitute for it.
   task staging, and no remote mutation, deployment, push, spend or release occurred.
 - P2-04A tracker/authority checkpoint: **this commit** records controller acceptance
   and advances the dependency-ready unit to P2-04B without claiming its pending proof.
+
+## P2-04B execution and acceptance, 2026-09-26
+
+- Integration evidence commit `68bd474bbd46934cd46d24e1fb7a691c39a6b9c7`
+  added the single maintained local harness. It uses real local Auth users, the six
+  Edge endpoints, RLS/REST, Realtime, privileged disposable fixtures and independent
+  concurrent requests; no production handler is replaced by a mock.
+- The cold-reset Realtime run exposed a local tenant startup race: channel
+  `SUBSCRIBED` preceded registration in `realtime.subscription`. The harness now waits
+  up to ten seconds for the authenticated user's actual `public.matches` subscription
+  row, then still requires the real published event. It neither sleeps blindly nor
+  retries the event, and publication/authorization failure remains fatal.
+- The fresh required reviewer task `GridRace P2-04B security review`
+  (`01a0ddf2-bf23-7a13-85ad-787de8387e8c`, `gpt-5.6-luna` / xhigh) was read-only and
+  returned four Medium findings: database credentials in `psql` argv, no fail-closed
+  local target guard, concurrent same request ID across matches returning an internal
+  error, and inverted submit/deletion lock order around an existing rate row.
+- All four findings were accepted. Remediation commit
+  `f2d7243` requires explicit `GRIDRACE_LOCAL_INTEGRATION=1`, rejects non-loopback or
+  unexpected Supabase ports before client construction, passes the database password
+  only through the child environment, and adds forward migration
+  `202609260001_submit_guess_lock_order.sql`. One existing per-account advisory lock,
+  acquired before receipt/match/rate locks, serializes both cross-match receipt reuse
+  and submission versus deletion without a second locking scheme.
+- The strengthened harness proves malformed/version/unknown HTTP rejection; retry-safe
+  create; member/outsider/anonymous/private/RPC/direct-write boundaries; timing-safe
+  Realtime projection; pre-reveal answer/opponent secrecy and reveal; competing joins;
+  identical, conflicting, different and concurrent cross-match request IDs;
+  finalizer versus sixth guess; deadline equality and a lock wait crossing the
+  deadline; deletion versus join/start/submit with a pre-existing rate row; solved,
+  lobby, both-account and partial-stage deletion; and rate-counter concurrency.
+- Final verification passed on the disposable local stack: Deno format/check/lint;
+  remote-looking API and database configurations rejected before I/O; clean reset
+  through eight migrations; 266 pgTAP assertions across six files; three-schema lint
+  with no errors and only the recorded pre-existing unused/shadow warnings; and the
+  harness with 95 real Edge requests, 21 snapshots, maximum snapshot 1569 bytes and
+  maximum observed request 891 ms. A second run after resetting to the exact seven
+  prior migrations and applying only the new migration passed the same harness with
+  maximum snapshot 1568 bytes and request 889 ms; service-only execution grants and
+  the account lock were present. The prior 99 passing Edge tests remain applicable
+  because remediation changed only SQL and the integration harness.
+- Exact maintained invocation:
+  `GRIDRACE_LOCAL_INTEGRATION=1 deno run --config supabase/functions/deno.json --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL --allow-net=127.0.0.1,localhost --allow-run=/opt/homebrew/opt/libpq/bin/psql supabase/tests/integration/live_slice_test.ts`
+  after loading local `supabase status -o env` values and serving local functions.
+  Promotion into the runbook is held because that file belongs to BLK-01's unrelated
+  dirty baseline; this plan is the authoritative evidence until the overlap clears.
+- Backend portions of E1-E3 and E8/E10 are closed with no unresolved material security
+  finding. BLK-04 remains the explicit hosted-abuse limitation; client and simulator
+  portions remain Phase 3 work. No remote mutation, deployment, push, release or spend
+  occurred, and the unrelated 23-file baseline remained byte-identical.
 
 ## Current planning review and verification
 
@@ -539,6 +588,9 @@ Phase 2/3 commits to date:
 | `656c6ba docs(plan): record reviewed planning checkpoint` | Record the accepted planning content checkpoint and keep this plan Active for implementation | Complete |
 | `dd8230a docs(plan): establish live-slice worker execution` | Record the single-writer lease protocol, unrelated baseline and P2-04A dispatch checkpoint | Complete |
 | `a80f282 feat(backend): make live creation retry-safe` | Implement strict retry-safe creation, Boolean deleted-member identity and focused database/Edge proof | Complete; accepted by controller |
+| `e4462c0 docs(plan): record P2-04A completion` | Record P2-04A evidence and advance the backend dependency | Complete |
+| `68bd474 test(backend): prove live slice integration` | Add actual local Auth/Edge/RLS/Realtime/deletion and concurrency proof | Complete; security-reviewed |
+| `f2d7243 fix(backend): close live slice security findings` | Fail closed to local fixtures and serialize submission receipts/deletion with one account lock | Complete; all accepted review findings verified |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
@@ -554,7 +606,8 @@ the callback lease protocol, corrected model pairing, and P2-04A as the next uni
 Phase 2 baseline evidence remains recorded above. **Phase 2 exits only after P2-04A
 and P2-04B pass the backend portions of E1–E3 and E8/E10 with no unresolved
 material security finding.**
-The current planning review does not satisfy that gate.
+That backend exit gate passed on 2026-09-26. Phase 3 remains blocked on BLK-01 and its
+own client/simulator evidence; Phase 2 completion does not satisfy those later gates.
 
 Phase 3 exits only when E4–E11 and client portions of E2/E5/E8 pass, including real
 independent clients, no-client scheduled finalization, negative secrecy proof,
@@ -568,7 +621,7 @@ Checkpoint coherent units with conventional commits after their evidence and rev
 Record each content checkpoint here in the next tracker update. Planning completion
 leaves this plan Active; implementation closeout alone marks it Historical.
 
-- [ ] P2-04A/B contract/security gates complete with exact evidence.
+- [x] P2-04A/B contract/security gates complete with exact evidence.
 - [ ] P3 client, real transport, concurrency and two-client gates complete.
 - [ ] Implementation review findings adjudicated; accepted fixes verified.
 - [ ] Authorities and newly proved commands current; beta limitations explicit.
