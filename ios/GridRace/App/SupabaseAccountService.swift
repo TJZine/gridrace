@@ -127,6 +127,10 @@ final class SupabaseAccountService: AccountServicing {
         SupabaseLiveMatchService(client: client, clientBuild: clientBuild)
     }
 
+    func makeLiveRealtimeService() -> SupabaseMatchRealtimeService {
+        SupabaseMatchRealtimeService(client: client)
+    }
+
     private static func accountSession(_ session: Session) -> AccountSession {
         AccountSession(
             userID: session.user.id,

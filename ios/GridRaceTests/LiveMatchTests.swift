@@ -6,7 +6,7 @@ import XCTest
 final class LiveMatchServiceTests: XCTestCase {
     func testAllMatchCommandsUseFrozenNamesAndRequestShapes() async throws {
         let recorder = InvocationRecorder()
-        let matchID = UUID(uuidString: "00000000-0000-0000-0000-000000000100")!
+        let matchID = UUID(uuidString: "efcb6cfe-dd34-4244-862a-22591c2b2f7f")!
         let requestID = UUID(uuidString: "00000000-0000-0000-0000-000000000200")!
         let service = SupabaseLiveMatchService { function, body in
             await recorder.append(function: function, body: body)
@@ -16,7 +16,7 @@ final class LiveMatchServiceTests: XCTestCase {
             if function == "match-snapshot" {
                 return Data(Self.lobbySnapshot.utf8)
             }
-            return Data(#"{"data":{"match_id":"00000000-0000-0000-0000-000000000100"}}"#.utf8)
+            return Data(#"{"data":{"match_id":"efcb6cfe-dd34-4244-862a-22591c2b2f7f"}}"#.utf8)
         }
 
         let createdID = try await service.createMatch(requestID: requestID)

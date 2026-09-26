@@ -19,6 +19,7 @@ final class DailyAccountCoordinator {
 
     private(set) var daily: DailyClassicModel
     let tutorial: TutorialModel
+    let live: LiveMatchSession
     private(set) var syncStatus = DailySyncStatus.idle
     private(set) var conflicts: [DailySyncConflict] = []
     private(set) var canImportGuestHistory = false
@@ -45,6 +46,16 @@ final class DailyAccountCoordinator {
         self.guestStore = guestStore
         self.accountService = accountService
         self.accountStoreFactory = accountStoreFactory
+        live = LiveMatchSession(
+            service: accountService?.makeLiveMatchService(),
+            realtime: accountService?.makeLiveRealtimeService(),
+            refreshAuth: { userID in
+                guard let refreshed = try? await accountService?.refreshSession() else {
+                    return false
+                }
+                return refreshed.userID == userID
+            }
+        )
         let guestDaily = try DailyClassicModel(pack: dailyPack, store: guestStore)
         self.guestDaily = guestDaily
         daily = guestDaily
@@ -62,6 +73,7 @@ final class DailyAccountCoordinator {
     }
 
     func sessionChanged(to userID: UUID?) {
+        live.changeAccount(to: userID)
         guard userID != currentUserID || activationUserID != nil else { return }
         syncLifecycle?.invalidate()
         syncTask?.cancel()
@@ -128,12 +140,17 @@ final class DailyAccountCoordinator {
     }
 
     func foregrounded() {
+        live.foregrounded()
         if isDailyPlayable { daily.refreshForCurrentDay() }
         guard account.session != nil else { return }
         schedule {
             await self.account.refreshSession()
             await self.synchronizeCurrent()
         }
+    }
+
+    func backgrounded() {
+        live.backgrounded()
     }
 
     func retrySync() {
@@ -265,6 +282,7 @@ final class DailyAccountCoordinator {
     }
 
     private func activateGuest() {
+        live.changeAccount(to: nil)
         syncLifecycle?.invalidate()
         syncTask?.cancel()
         currentUserID = nil
@@ -282,6 +300,7 @@ final class DailyAccountCoordinator {
     }
 
     private func deleteLocalAccount(_ userID: UUID) throws {
+        live.changeAccount(to: nil)
         if currentUserID == userID || activationUserID == userID {
             syncLifecycle?.invalidate()
         }

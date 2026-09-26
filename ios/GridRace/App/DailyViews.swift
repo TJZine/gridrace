@@ -50,7 +50,11 @@ struct DailyAppView: View {
         }
         .tint(Color.raceIndigo)
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { app.foregrounded() }
+            if phase == .active {
+                app.foregrounded()
+            } else {
+                app.backgrounded()
+            }
         }
         .task { await app.start() }
         .task(id: app.daily.puzzle.id) {

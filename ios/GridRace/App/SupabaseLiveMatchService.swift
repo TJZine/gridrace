@@ -85,7 +85,9 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
             function: "match-snapshot",
             request: MatchRequest(clientBuild: clientBuild, matchID: matchID)
         )
-        return try Self.map(response)
+        let snapshot = try Self.map(response)
+        guard snapshot.match.id == matchID else { throw LiveMatchServiceError.invalidResponse }
+        return snapshot
     }
 
     private func matchID<Request: Encodable & Sendable>(
