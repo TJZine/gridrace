@@ -1,0 +1,32 @@
+{
+  "acceptedGuessCount": 25545,
+  "baselineCount": 8508,
+  "baselineSha256": "f045112edcf1fb2889b58a947f0e4323323247c0a8190ed885fb734bfcd11853",
+  "formatVersion": 1,
+  "inputs": {
+    "absentNeededRelationshipTargets": 7471,
+    "candidateNeededRelationshipTargets": 12412,
+    "dumpSha256": "0b7f554b1884e52e1c06de74cecab5e370c6b9f765711cedb0759f6d14c5e719",
+    "excludedRelationshipTargets": 26923,
+    "fiveLetterRevisionIndexSha256": "b140a40bf5d0e327d99d1ef032719b83319387a67b35defd7736e2f6264ab70d",
+    "parentRevisionsSha256": "ab853cd9beec3f320d23e6c73fc2d2f1efca4c489cde8fc5575c1ae5dcdbe5f6",
+    "referencedRelationshipTargets": 33900,
+    "supportedRelationshipTargets": 55783,
+    "targetJsonChunks": 7,
+    "targetJsonRecords": 12880,
+    "targetJsonTitles": 7471,
+    "uncoveredNeededRelationshipTargets": 0,
+    "unresolvedRelationshipTargets": 17367,
+    "wikitextprocessorCommit": "4deed5191c9e4cb61ee1a4c822e3f6686ae8541b",
+    "wiktextractCommit": "ccec6f120efedd84f57fe0f1631e89408e9cb62a",
+    "wiktionaryJsonChunks": 99,
+    "wiktionaryJsonRecords": 125730
+  },
+  "packFile": "daily-classic-en-US-v1.json",
+  "packSha256": "442fef53b23066ecda6b1048a94c0d562b801398f9934f2928c78121b361d34d",
+  "provenanceCount": 24089,
+  "provenanceFile": "daily-classic-en-US-v1-PROVENANCE.jsonl",
+  "provenanceSha256": "29dc69f47cbcac2a254a786f6334d9d1fd5f7513e2d908365dd9cff774b7a33a",
+  "wiktionaryCount": 24089,
+  "wiktionaryTransform": "tightened explicit forms + relationship eligibility (standalone|explicit_arg|explicit_altsection|explicit_reciprocal)"
+}

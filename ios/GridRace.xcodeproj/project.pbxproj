@@ -21,6 +21,7 @@
 		A00000000000000000000212 /* DailyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000113 /* DailyViews.swift */; };
 		A00000000000000000000213 /* DailyClassicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000114 /* DailyClassicTests.swift */; };
 		A00000000000000000000214 /* daily-classic-en-US-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000115 /* daily-classic-en-US-v1.json */; };
+		A00000000000000000000216 /* ATTRIBUTION.md in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000117 /* ATTRIBUTION.md */; };
 		A00000000000000000000215 /* DailyClassicModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000116 /* DailyClassicModelTests.swift */; };
 		B00000000000000000000201 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000701 /* Supabase */; };
 		B00000000000000000000202 /* AccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000102 /* AccountSession.swift */; };
@@ -62,6 +63,7 @@
 		A00000000000000000000113 /* DailyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyViews.swift; sourceTree = "<group>"; };
 		A00000000000000000000114 /* DailyClassicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyClassicTests.swift; sourceTree = "<group>"; };
 		A00000000000000000000115 /* daily-classic-en-US-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "../shared/word-packs/daily-classic-en-US-v1.json"; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000117 /* ATTRIBUTION.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../shared/word-packs/ATTRIBUTION.md"; sourceTree = SOURCE_ROOT; };
 		A00000000000000000000116 /* DailyClassicModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyClassicModelTests.swift; sourceTree = "<group>"; };
 		B00000000000000000000101 /* GridRace.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GridRace.entitlements; sourceTree = "<group>"; };
 		B00000000000000000000102 /* AccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSession.swift; sourceTree = "<group>"; };
@@ -113,7 +115,7 @@
 		};
 		A00000000000000000000006 /* Shared Resources */ = {
 			isa = PBXGroup;
-			children = (A00000000000000000000107, A00000000000000000000115, A00000000000000000000108);
+			children = (A00000000000000000000107, A00000000000000000000115, A00000000000000000000108, A00000000000000000000117);
 			name = "Shared Resources";
 			sourceTree = "<group>";
 		};
@@ -172,7 +174,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A00000000000000000000303 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000207, A00000000000000000000214); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000303 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000207, A00000000000000000000214, A00000000000000000000216); runOnlyForDeploymentPostprocessing = 0; };
 		A00000000000000000000306 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000208, A00000000000000000000209); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 

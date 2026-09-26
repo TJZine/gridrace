@@ -186,10 +186,21 @@ output as product verification. Scope every diff review by appending `--` and
 concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
-The checked-in-only word-pack command is portable and validates canonical encoding,
-structure, policy constraints, and manifest hashes. The second command additionally
-regenerates the Daily pack from the exact checksum-pinned macOS `/usr/share/dict/web2`
-source and is the provenance/release gate; do not substitute another dictionary.
+The portable word-pack gate `python3 scripts/check_word_pack.py --checked-in-only`
+validates canonical encoding, structure, policy constraints, and the complete
+checked-in evidence chain (frozen baseline, ordered answers, provenance rules and
+revision references, and pack/provenance/baseline/sidecar hash agreement) without
+reading the Wiktionary intermediates. The source gate `python3 scripts/check_word_pack.py`
+revalidates that chain, then regenerates the pack and provenance from the pinned
+Wiktionary intermediates into a temporary directory and compares hashes; it is
+fail-closed, so builder, execution, and comparison failures are errors, and
+absent intermediates report UNAVAILABLE with a nonzero exit (never a pass).
+`--probe-intermediates` is the separate informational probe.
+The Daily Classic accepted-guess corpus is maintained by
+`scripts/build_accepted_guesses.py` from pinned Wiktionary intermediates (see
+`shared/word-packs/daily-classic-en-US-v1-SOURCES.md`); the historical web2 generator
+`scripts/generate_daily_word_pack.py` is retained as history, not a gate. Ordinary
+builds and CI must not download or extract Wiktionary.
 
 The checked-in project currently proves these Deno, local Supabase, and Xcode commands
 with Deno 2.9.5, the lockfile-pinned Supabase CLI 2.116.0, Xcode 26.6, the
@@ -222,7 +233,7 @@ Expected gate families are:
 | iOS build and tests | Proved above for the checked-in `GridRace` project and scheme | Rediscover the destination UUID when the supported local simulator changes. |
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
 | Edge Functions | Proved above for the six checked-in command handlers and their tests | Run from the repository root with the explicit `--config supabase/functions/deno.json` shown above; `fmt` and `lint` need no config. |
-| Word pack | Portable `python3 scripts/check_word_pack.py --checked-in-only`; source gate `python3 scripts/check_word_pack.py` | The portable gate validates checked-in artifacts on every runner. Full regeneration additionally requires the exact pinned macOS corpus. |
+| Word pack | Portable `python3 scripts/check_word_pack.py --checked-in-only`; source gate `python3 scripts/check_word_pack.py` | The portable gate validates the checked-in evidence chain on every runner (CI runs this). The source gate is fail-closed: it regenerates from the pinned Wiktionary intermediates and compares hashes, erroring on any builder/execution/comparison failure and reporting UNAVAILABLE with a nonzero exit when intermediates are absent. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
 Remote deployment commands remain undefined until that surface exists. Never invent
