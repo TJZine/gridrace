@@ -147,6 +147,27 @@ Deno.test("submits a guess through the submit_guess RPC", async () => {
   assertEquals(invoked.authenticateCalls, 1);
 });
 
+Deno.test("returns the failed sixth-guess receipt shape unchanged", async () => {
+  const failed = {
+    accepted: true,
+    sequence: 6,
+    feedback: [0, 0, 0, 0, 0],
+    player_state: "failed",
+    accepted_guess_count: 6,
+    solve_duration_ms: null,
+    efficiency_points: null,
+    server_time: "2026-09-26T12:00:00Z",
+    round_end_time: "2026-09-26T12:03:00Z",
+  };
+  const invoked = await invoke({
+    request: post(validBody()),
+    rpcResults: [ok(failed)],
+  });
+
+  assertEquals(invoked.response.status, 200);
+  assertEquals(invoked.body, { data: failed });
+});
+
 interface FailureCase {
   name: string;
   request: () => Request;

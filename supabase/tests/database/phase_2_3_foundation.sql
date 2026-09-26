@@ -259,6 +259,114 @@ select is(
   'pre-reveal snapshot omits the answer'
 );
 
+do $$
+declare
+  v_request_ids uuid[] := array[
+    '30000000-0000-0000-0000-000000000001'::uuid,
+    '30000000-0000-0000-0000-000000000002'::uuid,
+    '30000000-0000-0000-0000-000000000003'::uuid,
+    '30000000-0000-0000-0000-000000000004'::uuid,
+    '30000000-0000-0000-0000-000000000005'::uuid
+  ];
+  v_request_id uuid;
+begin
+  foreach v_request_id in array v_request_ids loop
+    if not public.submit_guess(
+      '10000000-0000-0000-0000-000000000002',
+      1,
+      (select match_id from test_context),
+      1::smallint,
+      v_request_id,
+      'crane',
+      null
+    ) ? 'data' then
+      raise exception 'failed-guess fixture submission was rejected';
+    end if;
+  end loop;
+end;
+$$;
+
+create temporary table failed_guess_receipt as
+select
+  '30000000-0000-0000-0000-000000000006'::uuid as request_id,
+  public.submit_guess(
+    '10000000-0000-0000-0000-000000000002',
+    1,
+    (select match_id from test_context),
+    1::smallint,
+    '30000000-0000-0000-0000-000000000006',
+    'crane',
+    null
+  ) as response;
+
+select is((select response #>> '{data,player_state}' from failed_guess_receipt), 'failed', 'sixth wrong guess returns failed state');
+select is((select response #>> '{data,accepted_guess_count}' from failed_guess_receipt), '6', 'failed receipt returns count six');
+select is((select response #> '{data,solve_duration_ms}' from failed_guess_receipt), 'null'::jsonb, 'failed receipt returns null solve duration');
+select is((select response #> '{data,efficiency_points}' from failed_guess_receipt), 'null'::jsonb, 'failed receipt returns null efficiency');
+select is(
+  (select efficiency_points from public.player_rounds where round_id = (select round_id from test_context) and member_id = (select member_member_id from test_context)),
+  0::smallint,
+  'failed player storage retains zero efficiency'
+);
+select is(
+  (
+    select player ->> 'efficiency_points'
+    from jsonb_array_elements(
+      public.match_snapshot(
+        '10000000-0000-0000-0000-000000000002',
+        1,
+        (select match_id from test_context)
+      ) #> '{data,round,players}'
+    ) as player
+    where player ->> 'member_id' = (select member_member_id::text from test_context)
+  ),
+  '0',
+  'failed player snapshot reports zero efficiency'
+);
+select is(
+  (
+    select response_data
+    from private.guess_requests
+    where actor_user_id = '10000000-0000-0000-0000-000000000002'
+      and request_id = (select request_id from failed_guess_receipt)
+  ),
+  (select response -> 'data' from failed_guess_receipt),
+  'failed receipt stores the corrected response'
+);
+create temporary table failed_submit_rate_before_retry as
+select attempt_count
+from private.user_rate_limits
+where actor_user_id = '10000000-0000-0000-0000-000000000002'
+  and action = 'submit_guess';
+select is(
+  public.submit_guess(
+    '10000000-0000-0000-0000-000000000002',
+    1,
+    (select match_id from test_context),
+    1::smallint,
+    (select request_id from failed_guess_receipt),
+    'CRANE',
+    null
+  ),
+  (select response from failed_guess_receipt),
+  'failed receipt replay returns the identical accepted result'
+);
+select is(
+  (select count(*) from public.guesses where round_id = (select round_id from test_context) and member_id = (select member_member_id from test_context)),
+  6::bigint,
+  'failed receipt replay creates no duplicate guess'
+);
+select is(
+  (
+    select attempt_count
+    from private.user_rate_limits
+    where actor_user_id = '10000000-0000-0000-0000-000000000002'
+      and action = 'submit_guess'
+  ),
+  (select attempt_count from failed_submit_rate_before_retry),
+  'failed receipt replay does not consume another rate attempt'
+);
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -312,7 +420,7 @@ select set_config(
 select is((select count(*) from public.matches), 1::bigint, 'second rostered player reads match');
 select is((select count(*) from public.rounds), 1::bigint, 'second rostered player reads round');
 select is((select count(*) from public.player_rounds), 2::bigint, 'second rostered player reads both player round summaries');
-select is((select count(*) from public.guesses), 0::bigint, 'opponent board is hidden before reveal');
+select is((select count(*) from public.guesses), 6::bigint, 'player reads only their own board before reveal');
 reset role;
 
 set local role authenticated;
@@ -391,7 +499,7 @@ select set_config(
   '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
   true
 );
-select is((select count(*) from public.guesses), 1::bigint, 'opponent board becomes visible after reveal');
+select is((select count(*) from public.guesses), 7::bigint, 'opponent board becomes visible after reveal');
 reset role;
 
 select ok(
@@ -411,7 +519,7 @@ select is(
   null,
   'retained result has no auth identity'
 );
-select is((select count(*) from public.guesses), 1::bigint, 'survivor-required accepted board remains');
+select is((select count(*) from public.guesses), 7::bigint, 'survivor-required accepted boards remain');
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',

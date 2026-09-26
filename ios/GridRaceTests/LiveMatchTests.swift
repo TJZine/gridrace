@@ -64,6 +64,36 @@ final class LiveMatchServiceTests: XCTestCase {
         XCTAssertTrue(revealed.round.players.allSatisfy { $0.board != nil })
     }
 
+    func testFailedGuessReceiptRequiresNullEfficiency() async throws {
+        let matchID = UUID(uuidString: "efcb6cfe-dd34-4244-862a-22591c2b2f7f")!
+        let valid = SupabaseLiveMatchService { _, _ in Data(Self.failedGuessReceipt.utf8) }
+
+        let receipt = try await valid.submitGuess(
+            matchID: matchID,
+            requestID: UUID(),
+            guess: "CRANE"
+        )
+
+        XCTAssertEqual(receipt.playerState, .failed)
+        XCTAssertEqual(receipt.acceptedGuessCount, 6)
+        XCTAssertNil(receipt.solveDurationMilliseconds)
+        XCTAssertNil(receipt.efficiencyPoints)
+
+        let invalid = SupabaseLiveMatchService { _, _ in
+            Data(Self.failedGuessReceipt.replacingOccurrences(
+                of: #""efficiency_points":null"#,
+                with: #""efficiency_points":0"#
+            ).utf8)
+        }
+        await assertError(.invalidResponse) {
+            _ = try await invalid.submitGuess(
+                matchID: matchID,
+                requestID: UUID(),
+                guess: "CRANE"
+            )
+        }
+    }
+
     func testSnapshotMapperValidatesCanonicalCompletionWindow() throws {
         let completedAt = #""completed_at":"2026-09-26T19:40:52.136429+00:00""#
 
@@ -197,6 +227,10 @@ final class LiveMatchServiceTests: XCTestCase {
 
     private static let guessReceipt = #"""
     {"data":{"accepted":true,"sequence":1,"feedback":[2,2,2,2,2],"player_state":"solved","accepted_guess_count":1,"solve_duration_ms":1250,"efficiency_points":6,"server_time":"2026-08-30T12:00:04.250123+00:00","round_end_time":"2026-08-30T12:03:03Z"}}
+    """#
+
+    private static let failedGuessReceipt = #"""
+    {"data":{"accepted":true,"sequence":6,"feedback":[0,0,0,0,0],"player_state":"failed","accepted_guess_count":6,"solve_duration_ms":null,"efficiency_points":null,"server_time":"2026-08-30T12:00:09Z","round_end_time":"2026-08-30T12:03:03Z"}}
     """#
 
     // Captured from the local Edge/SQL integration harness on 2026-09-26.

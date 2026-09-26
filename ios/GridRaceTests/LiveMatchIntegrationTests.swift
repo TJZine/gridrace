@@ -83,10 +83,10 @@ final class LiveMatchIntegrationTests: XCTestCase {
     }
 
     private func finishRound(_ session: LiveMatchSession) async throws {
-        for word in ["ADORE", "AMPLE", "APPLE", "ARISE", "ARRAY", "BEACH"] {
+        for _ in 0..<6 {
             guard selfPlayer(in: session.snapshot)?.state == .playing else { break }
             let prior = selfPlayer(in: session.snapshot)?.acceptedGuessCount ?? 0
-            session.submitGuess(word)
+            session.submitGuess("ADORE")
             try await eventually("accepted guess") {
                 guard !session.isCommandInFlight,
                       let player = self.selfPlayer(in: session.snapshot)
@@ -99,6 +99,12 @@ final class LiveMatchIntegrationTests: XCTestCase {
         try await eventually("terminal player") {
             self.selfPlayer(in: session.snapshot)?.state.isTerminal == true
         }
+        let player = try XCTUnwrap(selfPlayer(in: session.snapshot))
+        XCTAssertEqual(player.state, .failed)
+        XCTAssertEqual(player.acceptedGuessCount, 6)
+        XCTAssertEqual(player.efficiencyPoints, 0)
+        XCTAssertNil(session.pendingIntent)
+        XCTAssertEqual(session.guessDraft, "")
     }
 
     private func assertReveal(_ session: LiveMatchSession) async throws {

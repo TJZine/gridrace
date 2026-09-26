@@ -125,6 +125,44 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertFalse(session.isInputLocked)
     }
 
+    func testAcceptedFailedReceiptClearsPendingGuessAndRefreshesCanonicalState() async throws {
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
+        let realtime = RealtimeHub()
+        let snapshots = LockedCounter()
+        let service = LiveServiceMock(
+            submit: { _, _, _ in Self.failedReceipt() },
+            snapshot: { requestedID in
+                if snapshots.increment() == 1 {
+                    return Self.snapshot(matchID: requestedID, status: .inProgress, round: .playing)
+                }
+                return Self.snapshot(
+                    matchID: requestedID,
+                    status: .inProgress,
+                    round: .playing,
+                    selfPlayerState: .failed
+                )
+            }
+        )
+        let session = makeSession(service: service, realtime: realtime, store: store)
+        session.changeAccount(to: UUID())
+        await eventually { realtime.subscriptionCount == 1 }
+        realtime.send(.ready)
+        await eventually { session.phase == .ready }
+
+        session.submitGuess("CRANE")
+
+        await eventually {
+            !session.isCommandInFlight
+                && session.phase == .ready
+                && session.snapshot?.round.players.first?.state == .failed
+        }
+        XCTAssertNil(session.pendingIntent)
+        XCTAssertNil(try store.load().pendingIntent)
+        XCTAssertEqual(session.guessDraft, "")
+        XCTAssertGreaterThanOrEqual(snapshots.value, 2)
+    }
+
     func testSignalsCoalesceAndPreCommandSnapshotCannotOverwriteCommandRecovery() async throws {
         let matchID = UUID()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
@@ -532,12 +570,26 @@ final class LiveMatchSessionTests: XCTestCase {
         )
     }
 
+    nonisolated private static func failedReceipt() -> LiveGuessReceipt {
+        LiveGuessReceipt(
+            sequence: 6,
+            feedback: [.absent, .absent, .absent, .absent, .absent],
+            playerState: .failed,
+            acceptedGuessCount: 6,
+            solveDurationMilliseconds: nil,
+            efficiencyPoints: nil,
+            serverTime: Date(timeIntervalSince1970: 1_006),
+            roundEndTime: Date(timeIntervalSince1970: 1_180)
+        )
+    }
+
     nonisolated private static func snapshot(
         matchID: UUID,
         status: LiveMatchStatus,
         round state: LiveRoundState,
         serverTime: Date = Date(timeIntervalSince1970: 1_000),
-        endsAt: Date? = Date(timeIntervalSince1970: 1_180)
+        endsAt: Date? = Date(timeIntervalSince1970: 1_180),
+        selfPlayerState: LivePlayerState? = nil
     ) -> LiveMatchSnapshot {
         let memberID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         return LiveMatchSnapshot(
@@ -566,7 +618,19 @@ final class LiveMatchSessionTests: XCTestCase {
                 endsAt: state == .pending ? nil : endsAt,
                 completedAt: state == .revealed ? serverTime : nil,
                 answer: state == .revealed ? "stone" : nil,
-                players: []
+                players: selfPlayerState.map {
+                    [
+                        LiveRoundPlayer(
+                            memberID: memberID,
+                            state: $0,
+                            acceptedGuessCount: $0 == .failed ? 6 : 0,
+                            solveDurationMilliseconds: nil,
+                            efficiencyPoints: $0 == .failed ? 0 : nil,
+                            placement: nil,
+                            board: []
+                        ),
+                    ]
+                } ?? []
             )
         )
     }

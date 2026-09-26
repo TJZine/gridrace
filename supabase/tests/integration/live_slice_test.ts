@@ -469,15 +469,30 @@ try {
       );
     }
     const roundId = await matchRoundId(matchIdValue);
+    const sixthRequestId = crypto.randomUUID();
     const [sixth, finalized] = await Promise.all([
       edge(
         host.session,
         "submit-guess",
-        guessBody(matchIdValue, crypto.randomUUID(), wrong),
+        guessBody(matchIdValue, sixthRequestId, wrong),
       ),
       sql(`select private.finalize_round('${uuid(roundId)}')`),
     ]);
     assert(sixth.status === 200, "sixth guess accepted");
+    const failedReceipt = data(sixth);
+    assert(
+      failedReceipt.player_state === "failed",
+      "sixth receipt failed state",
+    );
+    assert(failedReceipt.accepted_guess_count === 6, "sixth receipt count");
+    assert(
+      failedReceipt.solve_duration_ms === null,
+      "failed receipt duration null",
+    );
+    assert(
+      failedReceipt.efficiency_points === null,
+      "failed receipt efficiency null",
+    );
     assert(["t", "f"].includes(finalized), "concurrent finalizer bounded");
     assert(
       await sqlScalar(
@@ -494,6 +509,74 @@ try {
         }'`,
       ) === "7",
       "canonical guess total",
+    );
+    assert(
+      await sqlScalar(
+        `select efficiency_points from public.player_rounds player join public.match_members member on member.id = player.member_id where player.round_id = '${
+          uuid(roundId)
+        }' and member.auth_user_id = '${uuid(host.id)}'`,
+      ) === "0",
+      "failed player storage efficiency zero",
+    );
+    assert(
+      await sqlScalar(
+        `select response_data ->> 'efficiency_points' from private.guess_requests where actor_user_id = '${
+          uuid(host.id)
+        }' and request_id = '${uuid(sixthRequestId)}'`,
+      ) === "",
+      "stored failed receipt efficiency null",
+    );
+    const rateBeforeReplay = await sqlScalar(
+      `select attempt_count from private.user_rate_limits where actor_user_id = '${
+        uuid(host.id)
+      }' and action = 'submit_guess'`,
+    );
+    const replay = await edge(
+      host.session,
+      "submit-guess",
+      guessBody(matchIdValue, sixthRequestId, wrong),
+    );
+    assert(replay.status === 200, "failed receipt replay accepted");
+    assert(
+      JSON.stringify(replay.body) === JSON.stringify(sixth.body),
+      "failed receipt replay identical",
+    );
+    assert(
+      await sqlScalar(
+        `select count(*) from public.guesses where round_id = '${
+          uuid(roundId)
+        }' and request_id = '${uuid(sixthRequestId)}'`,
+      ) === "1",
+      "failed receipt replay has one guess",
+    );
+    assert(
+      await sqlScalar(
+        `select attempt_count from private.user_rate_limits where actor_user_id = '${
+          uuid(host.id)
+        }' and action = 'submit_guess'`,
+      ) === rateBeforeReplay,
+      "failed receipt replay leaves rate counter unchanged",
+    );
+    const failedSnapshot = data(
+      await edge(host.session, "match-snapshot", {
+        client_build: 1,
+        match_id: matchIdValue,
+      }),
+    );
+    const selfMember = array(failedSnapshot.members).filter(isJson).find((
+      member,
+    ) => member.is_self === true);
+    assert(
+      isJson(selfMember) && typeof selfMember.id === "string",
+      "failed snapshot self member",
+    );
+    const selfPlayer = array(nested(failedSnapshot, "round", "players"))
+      .filter(isJson)
+      .find((player) => player.member_id === selfMember.id);
+    assert(
+      isJson(selfPlayer) && selfPlayer.state === "failed" &&
+        selfPlayer.efficiency_points === 0,
+      "failed snapshot efficiency zero",
     );
   });
 
