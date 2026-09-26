@@ -98,6 +98,60 @@ select ok(
   ),
   'authenticated clients still cannot execute join-match directly'
 );
+select is(
+  pg_get_function_result('private.finalize_expired_rounds()'::regprocedure),
+  'integer',
+  'scheduled finalizer keeps its integer return contract'
+);
+select ok(
+  not (
+    select prosecdef
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  'scheduled finalizer remains security invoker'
+);
+select is(
+  (
+    select provolatile
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  'v'::"char",
+  'scheduled finalizer remains volatile'
+);
+select is(
+  (
+    select proconfig
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  array['search_path=""']::text[],
+  'scheduled finalizer keeps an empty search path'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'private.finalize_expired_rounds()',
+    'execute'
+  ),
+  'service role keeps scheduled-finalizer execution'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'private.finalize_expired_rounds()',
+    'execute'
+  ),
+  'authenticated clients cannot execute the scheduled finalizer'
+);
+select ok(
+  position(
+    'order by round.match_id, round.id'
+    in lower(pg_get_functiondef('private.finalize_expired_rounds()'::regprocedure))
+  ) > 0,
+  'scheduled finalizer uses stable match lock order'
+);
 
 select is(private.normalize_guess('STONE'), 'stone', 'ASCII uppercase normalization is deterministic');
 select is(private.normalize_guess('st0ne'), null, 'invalid character is rejected');
@@ -497,14 +551,16 @@ select throws_ok(
 );
 reset role;
 
+select is(private.finalize_expired_rounds(), 0, 'scheduled finalizer ignores an unexpired round');
 update public.rounds
 set starts_at = transaction_timestamp() - interval '181 seconds',
     ends_at = transaction_timestamp() - interval '1 second'
 where id = (select round_id from test_context);
 
-select ok(private.finalize_round((select round_id from test_context)), 'elapsed round finalizes');
+select is(private.finalize_expired_rounds(), 1, 'scheduled finalizer returns one elapsed round');
 update test_context
 set completed_at = (select completed_at from public.rounds where id = test_context.round_id);
+select is(private.finalize_expired_rounds(), 0, 'repeated scheduled finalizer is idempotent');
 select ok(private.finalize_round((select round_id from test_context)), 'repeated finalizer succeeds');
 select is(
   (select completed_at from public.rounds where id = (select round_id from test_context)),

@@ -620,6 +620,174 @@ try {
     assertError(atDeadline, 409, "round_already_finished");
   });
 
+  await scenario(
+    "scheduled finalization and multi-match deletion share lock order",
+    async () => {
+      const deleting = await createUser("finalize-delete-member");
+      const firstGuest = await createUser("finalize-delete-first-guest");
+      const secondGuest = await createUser("finalize-delete-second-guest");
+      await sql(
+        "select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'gridrace-finalize-rounds'), active := false)",
+      );
+      try {
+        await sql("select private.finalize_expired_rounds()");
+        const firstMatchId = await createPlayingMatch(deleting, firstGuest);
+        const secondMatchId = await createPlayingMatch(deleting, secondGuest);
+        const matchIds = [firstMatchId, secondMatchId].sort();
+        const [lowerMatchId, higherMatchId] = matchIds;
+        await sql(
+          `update public.rounds set starts_at = transaction_timestamp() - interval '181 seconds', ends_at = transaction_timestamp() - interval '1 second' where match_id = '${
+            uuid(lowerMatchId)
+          }'; update public.rounds set starts_at = transaction_timestamp() - interval '182 seconds', ends_at = transaction_timestamp() - interval '2 seconds' where match_id = '${
+            uuid(higherMatchId)
+          }'`,
+        );
+        assert(
+          await sqlScalar(
+            `select (select ends_at from public.rounds where match_id = '${
+              uuid(higherMatchId)
+            }') < (select ends_at from public.rounds where match_id = '${
+              uuid(lowerMatchId)
+            }')`,
+          ) === "t",
+          "deadline order opposes match ID order",
+        );
+
+        const barrierName = `gridrace-fd-barrier-${crypto.randomUUID()}`;
+        const finalizerName = `gridrace-fd-finalizer-${crypto.randomUUID()}`;
+        const barrier = await holdMatchLockBarrier(lowerMatchId, barrierName);
+        let finalizerPromise: Promise<string> | undefined;
+        let deletionPromise: Promise<EdgeResult> | undefined;
+        try {
+          finalizerPromise = sql(
+            "select private.finalize_expired_rounds()",
+            finalizerName,
+          );
+          await waitForSqlValue(
+            `select count(*) from pg_stat_activity where application_name = '${finalizerName}' and wait_event_type = 'Lock'`,
+            "1",
+            "scheduled finalizer waits on lower match ID",
+          );
+          await assertMatchLockAvailable(
+            higherMatchId,
+            "scheduled finalizer has not locked higher match ID",
+          );
+
+          deletionPromise = edge(deleting.session, "delete-account", {
+            client_build: 1,
+          });
+          await waitForSqlValue(
+            "select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query ilike '%begin_account_deletion%'",
+            "1",
+            "deletion waits on lower match ID",
+          );
+          await assertMatchLockAvailable(
+            higherMatchId,
+            "deletion has not locked higher match ID",
+          );
+        } finally {
+          await barrier.release();
+        }
+
+        assert(finalizerPromise !== undefined, "finalizer started");
+        assert(deletionPromise !== undefined, "deletion started");
+        const [finalized, deleted] = await Promise.all([
+          finalizerPromise,
+          deletionPromise,
+        ]);
+        assert(finalized === "2", "scheduled finalizer completes both rounds");
+        assert(deleted.status === 200, "multi-match deletion completes");
+        createdUsers.delete(deleting.id);
+
+        assert(
+          await sqlScalar(
+            `select count(*) from public.matches where id in ('${
+              uuid(lowerMatchId)
+            }', '${uuid(higherMatchId)}') and status = 'completed'`,
+          ) === "2",
+          "both matches complete canonically",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from public.rounds where match_id in ('${
+              uuid(lowerMatchId)
+            }', '${
+              uuid(higherMatchId)
+            }') and state = 'revealed' and revealed_answer is not null`,
+          ) === "2",
+          "both rounds reveal canonically",
+        );
+        for (
+          const [guest, matchIdValue] of [
+            [firstGuest, firstMatchId],
+            [secondGuest, secondMatchId],
+          ] as const
+        ) {
+          const snapshot = data(
+            await edge(guest.session, "match-snapshot", {
+              client_build: 1,
+              match_id: matchIdValue,
+            }),
+          );
+          assert(
+            nested(snapshot, "round", "answer") !== null,
+            "survivor sees reveal",
+          );
+          assertDeletedMemberIdentity(snapshot);
+        }
+
+        const tokenHash = await sha256(deleting.session.access_token);
+        assert(
+          (await edge(deleting.session, "delete-account", { client_build: 1 }))
+            .status === 200,
+          "multi-match deletion receipt replay completes",
+        );
+        assert(
+          (await edge(deleting.session, "match-snapshot", {
+            client_build: 1,
+            match_id: lowerMatchId,
+          })).status === 401,
+          "multi-match stale bearer cannot read",
+        );
+        assert(
+          (await edge(deleting.session, "create-match", {
+            client_build: 1,
+            request_id: crypto.randomUUID(),
+          })).status === 401,
+          "multi-match stale bearer cannot write",
+        );
+        assert(
+          await sqlScalar(
+            `select (select count(*) from auth.users where id = '${
+              uuid(deleting.id)
+            }') + (select count(*) from public.profiles where id = '${
+              uuid(deleting.id)
+            }') + (select count(*) from public.match_members where auth_user_id = '${
+              uuid(deleting.id)
+            }') + (select count(*) from private.user_rate_limits where actor_user_id = '${
+              uuid(deleting.id)
+            }') + (select count(*) from private.create_requests where actor_user_id = '${
+              uuid(deleting.id)
+            }') + (select count(*) from private.guess_requests where actor_user_id = '${
+              uuid(deleting.id)
+            }')`,
+          ) === "0",
+          "multi-match deletion leaves no live auth-linked state",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from private.account_deletion_receipts where token_hash = '${tokenHash}' and status = 'completed' and user_id is null and completed_at is not null`,
+          ) === "1",
+          "multi-match deletion receipt is terminal",
+        );
+      } finally {
+        await sql(
+          "select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'gridrace-finalize-rounds'), active := true)",
+        );
+      }
+    },
+  );
+
   await scenario("deletion races preserve canonical state", async () => {
     const startHost = await createUser("delete-start-host");
     const startGuest = await createUser("delete-start-guest");
@@ -1117,6 +1285,61 @@ async function holdMatchLock(
   );
 }
 
+async function holdMatchLockBarrier(
+  matchIdValue: string,
+  applicationName: string,
+): Promise<{ release: () => Promise<void> }> {
+  const child = new Deno.Command("psql", {
+    args: [
+      ...database.args,
+      "-XAtq",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      `begin; select 1 from public.matches where id = '${
+        uuid(matchIdValue)
+      }' for update; select pg_sleep(30); commit`,
+    ],
+    clearEnv: true,
+    env: {
+      ...(database.password === "" ? {} : { PGPASSWORD: database.password }),
+      PGAPPNAME: applicationName,
+    },
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+  await waitForSqlValue(
+    `select count(*) from pg_stat_activity where application_name = '${applicationName}' and state = 'active' and wait_event = 'PgSleep'`,
+    "1",
+    "match lock barrier acquired",
+    10_000,
+  );
+  return {
+    release: async () => {
+      assert(
+        await sqlScalar(
+          `select pg_cancel_backend(pid) from pg_stat_activity where application_name = '${applicationName}'`,
+        ) === "t",
+        "match lock barrier cancellation",
+      );
+      const result = await child.output();
+      assert(!result.success, "match lock barrier released");
+    },
+  };
+}
+
+async function assertMatchLockAvailable(
+  matchIdValue: string,
+  message: string,
+): Promise<void> {
+  await sql(
+    `begin; select 1 from public.matches where id = '${
+      uuid(matchIdValue)
+    }' for update nowait; rollback`,
+  );
+  console.log(`PASS ${message}`);
+}
+
 function edge(
   session: Session | null,
   name: string,
@@ -1257,8 +1480,9 @@ async function waitForSqlValue(
   statement: string,
   expected: string,
   message: string,
+  timeoutMilliseconds = 4_000,
 ): Promise<void> {
-  const deadline = performance.now() + 4_000;
+  const deadline = performance.now() + timeoutMilliseconds;
   while (performance.now() < deadline) {
     if (await sqlScalar(statement) === expected) return;
     await delay(25);
