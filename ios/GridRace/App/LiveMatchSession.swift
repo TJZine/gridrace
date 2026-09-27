@@ -116,7 +116,13 @@ final class LiveMatchSession {
     }
 
     func changeAccount(to userID: UUID?) {
-        guard accountID != userID else { return }
+        guard accountID != userID else {
+            if hasRequestedAccountChange {
+                requestedAccountID = nil
+                hasRequestedAccountChange = false
+            }
+            return
+        }
         let oldAccountID = accountID
         let oldStore = store
         resetRuntime()

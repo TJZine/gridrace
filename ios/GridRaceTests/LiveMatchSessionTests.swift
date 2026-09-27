@@ -477,6 +477,132 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(try signOutStore.load(), LiveRecoveryState())
     }
 
+    func testAuthReversionCancelsFailedAccountSwitchBeforeRetryingCurrentAccount() async throws {
+        let firstUser = UUID()
+        let secondUser = UUID()
+        let firstRequestID = UUID()
+        let secondRequestID = UUID()
+        let firstMatchID = UUID()
+        let firstStore = MemoryLiveRecoveryStore()
+        let secondStore = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: secondRequestID))
+        )
+        let factory = MemoryLiveRecoveryStoreFactory([
+            firstUser: firstStore,
+            secondUser: secondStore,
+        ])
+        let creates = LockedValues<UUID>()
+        let service = LiveServiceMock(create: { requestID in
+            creates.append(requestID)
+            return firstMatchID
+        })
+        let session = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) },
+            makeUUID: { firstRequestID }
+        )
+        session.changeAccount(to: firstUser)
+        firstStore.rejectsClears = true
+
+        session.changeAccount(to: secondUser)
+        session.changeAccount(to: firstUser)
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertEqual(factory.requestedAccountIDs, [firstUser])
+
+        factory.rejectsConstruction = true
+        session.retry()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertEqual(factory.requestedAccountIDs, [firstUser, firstUser])
+
+        factory.rejectsConstruction = false
+        session.retry()
+        XCTAssertEqual(session.phase, .inactive)
+        session.createMatch()
+
+        await eventually { session.savedMatchID == firstMatchID }
+        XCTAssertEqual(creates.values, [firstRequestID])
+        XCTAssertFalse(factory.requestedAccountIDs.contains(secondUser))
+        XCTAssertEqual(
+            secondStore.storedState,
+            LiveRecoveryState(pendingIntent: .create(requestID: secondRequestID))
+        )
+
+        let relaunched = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+        relaunched.changeAccount(to: firstUser)
+        await Task.yield()
+
+        XCTAssertEqual(relaunched.savedMatchID, firstMatchID)
+        XCTAssertNil(relaunched.pendingIntent)
+        XCTAssertEqual(creates.values, [firstRequestID])
+        XCTAssertTrue(factory.requestedAccountIDs.allSatisfy { $0 == firstUser })
+        XCTAssertEqual(try firstStore.load().matchID, firstMatchID)
+    }
+
+    func testAuthReversionCancelsFailedSignOutBeforeDiscardingCurrentAccount() async throws {
+        let userID = UUID()
+        let requestID = UUID()
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        store.rejectsLoads = true
+        let factory = MemoryLiveRecoveryStoreFactory([userID: store])
+        let creates = LockedValues<UUID>()
+        let service = LiveServiceMock(create: { receivedRequestID in
+            creates.append(receivedRequestID)
+            return matchID
+        })
+        let session = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) },
+            makeUUID: { requestID }
+        )
+        session.changeAccount(to: userID)
+        store.rejectsClears = true
+
+        session.changeAccount(to: nil)
+        session.changeAccount(to: userID)
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canDiscardRecovery)
+
+        session.discardRecovery()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canDiscardRecovery)
+
+        store.rejectsClears = false
+        session.discardRecovery()
+        XCTAssertEqual(session.phase, .inactive)
+        session.createMatch()
+
+        await eventually { session.savedMatchID == matchID }
+        XCTAssertEqual(creates.values, [requestID])
+        XCTAssertEqual(try store.load().matchID, matchID)
+
+        let relaunched = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+        relaunched.changeAccount(to: userID)
+        await Task.yield()
+
+        XCTAssertEqual(relaunched.savedMatchID, matchID)
+        XCTAssertNil(relaunched.pendingIntent)
+        XCTAssertEqual(creates.values, [requestID])
+    }
+
     func testFactoryRecoveryDiscardClearFailureRemainsControllable() {
         let userID = UUID()
         let store = MemoryLiveRecoveryStore(
