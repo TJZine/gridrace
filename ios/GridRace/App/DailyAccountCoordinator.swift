@@ -8,6 +8,7 @@ final class DailyAccountCoordinator {
     private let guestStore: DailyClassicStore
     private let guestDaily: DailyClassicModel
     private let accountService: SupabaseAccountService?
+    private let accountModelService: (any AccountServicing)?
     private let accountStoreFactory: (UUID) throws -> AccountDailyClassicStore
     private var accountStore: AccountDailyClassicStore?
     private var syncEngine: DailySyncEngine?
@@ -27,9 +28,9 @@ final class DailyAccountCoordinator {
 
     @ObservationIgnored
     lazy var account = AccountModel(
-        service: accountService,
+        service: accountModelService,
         didChangeSession: { [weak self] userID in self?.sessionChanged(to: userID) },
-        didSignOut: { [weak self] _ in self?.activateGuest() },
+        didSignOut: { [weak self] _ in self?.activateGuest() == .completed },
         didDeleteAccount: { [weak self] userID in try self?.deleteLocalAccount(userID) }
     )
 
@@ -38,17 +39,23 @@ final class DailyAccountCoordinator {
         tutorialPack: WordPack,
         guestStore: DailyClassicStore,
         accountService: SupabaseAccountService? = SupabaseAccountService.configured(),
+        accountModelService: (any AccountServicing)? = nil,
         accountStoreFactory: @escaping (UUID) throws -> AccountDailyClassicStore = {
             try AccountDailyClassicStore.applicationSupport(userID: $0)
+        },
+        liveStoreFactory: @escaping LiveMatchSession.StoreFactory = {
+            try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         }
     ) throws {
         self.dailyPack = dailyPack
         self.guestStore = guestStore
         self.accountService = accountService
+        self.accountModelService = accountModelService ?? accountService
         self.accountStoreFactory = accountStoreFactory
         live = LiveMatchSession(
             service: accountService?.makeLiveMatchService(),
             realtime: accountService?.makeLiveRealtimeService(),
+            storeFactory: liveStoreFactory,
             refreshAuth: { userID in
                 guard let refreshed = try? await accountService?.refreshSession() else {
                     return false
@@ -281,8 +288,9 @@ final class DailyAccountCoordinator {
         daily.acceptedStateChanged = { [weak self] in self?.dailyAcceptedStateChanged() }
     }
 
-    private func activateGuest() {
-        live.changeAccount(to: nil)
+    @discardableResult
+    private func activateGuest() -> LiveAccountChangeOutcome {
+        let liveOutcome = live.changeAccount(to: nil)
         syncLifecycle?.invalidate()
         syncTask?.cancel()
         currentUserID = nil
@@ -297,17 +305,16 @@ final class DailyAccountCoordinator {
         isDailyPlayable = true
         daily = guestDaily
         configureDailyCallback()
+        return liveOutcome
     }
 
     private func deleteLocalAccount(_ userID: UUID) throws {
-        live.changeAccount(to: nil)
-        if currentUserID == userID || activationUserID == userID {
-            syncLifecycle?.invalidate()
-        }
-        syncTask?.cancel()
+        let liveOutcome = activateGuest()
         let store = try accountStoreFactory(userID)
         try store.deleteAccountCache()
-        if currentUserID == userID { activateGuest() }
+        if liveOutcome == .recoveryCleanupPending {
+            throw LiveMatchRecoveryError.unavailable
+        }
     }
 
     private func hasGuestDailyData() -> Bool {

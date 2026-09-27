@@ -290,7 +290,19 @@ struct DailyHomeView: View {
                     .accessibilityHidden(true)
             }
 
-            if live.hasSavedMatch {
+            if live.phase == .storageUnavailable {
+                Button {
+                    openRoute(.live)
+                } label: {
+                    Label("Resolve saved live data", systemImage: "externaldrive.badge.exclamationmark")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Text("Live recovery data could not be removed. Retry or discard it before creating or joining another race.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if live.hasSavedMatch {
                 Button {
                     live.resumeSavedMatch()
                     openRoute(.live)
@@ -301,18 +313,20 @@ struct DailyHomeView: View {
                 .buttonStyle(.borderedProminent)
             }
 
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: 10) { liveControls }
-                } else {
-                    HStack(spacing: 10) { liveControls }
+            if live.phase != .storageUnavailable {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 10) { liveControls }
+                    } else {
+                        HStack(spacing: 10) { liveControls }
+                    }
                 }
-            }
 
-            if !account.isSignedIn {
-                Text("Create and Join open Account first. Daily Classic stays available without signing in.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if !account.isSignedIn {
+                    Text("Create and Join open Account first. Daily Classic stays available without signing in.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(16)

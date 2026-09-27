@@ -7,7 +7,7 @@ import Observation
 final class AccountModel {
     private let service: (any AccountServicing)?
     private let didChangeSession: @MainActor (UUID?) -> Void
-    private let didSignOut: @MainActor (UUID) async -> Void
+    private let didSignOut: @MainActor (UUID) async -> Bool
     private let didDeleteAccount: @MainActor (UUID) async throws -> Void
     private var authObservation: Task<Void, Never>?
     private var started = false
@@ -32,7 +32,7 @@ final class AccountModel {
     init(
         service: (any AccountServicing)?,
         didChangeSession: @escaping @MainActor (UUID?) -> Void = { _ in },
-        didSignOut: @escaping @MainActor (UUID) async -> Void = { _ in },
+        didSignOut: @escaping @MainActor (UUID) async -> Bool = { _ in true },
         didDeleteAccount: @escaping @MainActor (UUID) async throws -> Void = { _ in }
     ) {
         self.service = service
@@ -151,7 +151,9 @@ final class AccountModel {
         do {
             try await service.signOut()
             clearAccountState()
-            await didSignOut(userID)
+            if !(await didSignOut(userID)) {
+                presentError("You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it.")
+            }
         } catch is CancellationError {
         } catch {
             presentError("Sign out didn't finish. Try again.")
@@ -167,8 +169,7 @@ final class AccountModel {
                 try await didDeleteAccount(userID)
             } catch {
                 clearAccountState()
-                didChangeSession(nil)
-                presentError("Your account was deleted, but its local data could not be removed. Reinstall GridRace before sharing this device.")
+                presentError("Your account was deleted, but some local data could not be removed. Resolve saved live data if shown, or reinstall GridRace before sharing this device.")
                 return
             }
             clearAccountState()

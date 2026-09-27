@@ -10,6 +10,11 @@ enum LiveMatchSessionPhase: Equatable, Sendable {
     case storageUnavailable
 }
 
+enum LiveAccountChangeOutcome: Equatable, Sendable {
+    case completed
+    case recoveryCleanupPending
+}
+
 struct LiveMatchSessionTiming: Sendable {
     let requestTimeout: Duration
     let staleAfter: Duration
@@ -115,13 +120,14 @@ final class LiveMatchSession {
         cancelTasks()
     }
 
-    func changeAccount(to userID: UUID?) {
+    @discardableResult
+    func changeAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
         guard accountID != userID else {
             if hasRequestedAccountChange {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
             }
-            return
+            return .completed
         }
         let oldAccountID = accountID
         let oldStore = store
@@ -135,13 +141,14 @@ final class LiveMatchSession {
                 requestedAccountID = userID
                 hasRequestedAccountChange = true
                 phase = .storageUnavailable
-                return
+                return .recoveryCleanupPending
             }
         }
         requestedAccountID = nil
         hasRequestedAccountChange = false
         accountID = userID
         loadRecovery()
+        return .completed
     }
 
     func discardRecovery() {

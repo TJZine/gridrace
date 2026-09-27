@@ -211,18 +211,43 @@ final class LiveMatchSessionTests: XCTestCase {
             realtime: realtime,
             storeFactory: { $0 == firstUser ? firstStore : secondStore }
         )
-        session.changeAccount(to: firstUser)
+        XCTAssertEqual(session.changeAccount(to: firstUser), .completed)
         await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
         await eventually { await script.callCount == 1 }
 
-        session.changeAccount(to: secondUser)
+        XCTAssertEqual(session.changeAccount(to: secondUser), .completed)
         await script.releaseFirst()
         await Task.yield()
 
         XCTAssertNil(session.snapshot)
         XCTAssertEqual(session.phase, .inactive)
         XCTAssertEqual(try firstStore.load(), LiveRecoveryState())
+    }
+
+    func testAccountChangeReportsPendingCleanupUntilDurableClearSucceeds() throws {
+        let firstUser = UUID()
+        let secondUser = UUID()
+        let firstStore = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let secondStore = MemoryLiveRecoveryStore()
+        let session = LiveMatchSession(
+            service: LiveServiceMock(),
+            realtime: nil,
+            storeFactory: { $0 == firstUser ? firstStore : secondStore }
+        )
+        XCTAssertEqual(session.changeAccount(to: firstUser), .completed)
+        firstStore.rejectsClears = true
+
+        XCTAssertEqual(session.changeAccount(to: secondUser), .recoveryCleanupPending)
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertNotNil(firstStore.storedState.pendingIntent)
+
+        firstStore.rejectsClears = false
+        XCTAssertEqual(session.changeAccount(to: secondUser), .completed)
+        XCTAssertEqual(try firstStore.load(), LiveRecoveryState())
+        XCTAssertEqual(session.phase, .inactive)
     }
 
     func testAuthenticationRefreshesOnceThenRetriesTheSameSnapshot() async throws {

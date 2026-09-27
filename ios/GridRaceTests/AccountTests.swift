@@ -209,6 +209,174 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.isDailyPlayable)
         XCTAssertEqual(coordinator.daily.game.draft, "G")
     }
+
+    func testSignOutHidesAccountDataAndKeepsFailedLiveCleanupReachable() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.liveStore.rejectsLoads = true
+        fixture.liveStore.rejectsClears = true
+        fixture.coordinator.daily.typeLetter("G")
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "A")
+
+        await fixture.coordinator.account.signOut()
+
+        XCTAssertEqual(fixture.accountService.signOutCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertEqual(
+            fixture.coordinator.account.errorMessage,
+            "You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it."
+        )
+
+        fixture.liveStore.rejectsLoads = false
+        fixture.liveStore.rejectsClears = false
+        fixture.coordinator.live.discardRecovery()
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        let relaunchedService = AccountServiceMock()
+        relaunchedService.appleSession = AccountSession(
+            userID: fixture.userID,
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        relaunchedService.loadedProfile = fixture.profile
+        let relaunched = try makeCoordinator(
+            root: fixture.root,
+            guestStore: DailyClassicStore(directory: fixture.root.appending(path: "Guest")),
+            accountModelService: relaunchedService,
+            liveStore: fixture.liveStore
+        )
+        await relaunched.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+
+        XCTAssertEqual(relaunched.live.phase, .inactive)
+        XCTAssertNil(relaunched.live.pendingIntent)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+    }
+
+    func testDeletionClearsDailyCacheOnceAndKeepsFailedLiveCleanupReachable() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.liveStore.rejectsLoads = true
+        fixture.liveStore.rejectsClears = true
+        fixture.coordinator.daily.typeLetter("G")
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        let accountDirectory = AccountDailyClassicStore(
+            rootDirectory: fixture.root,
+            userID: fixture.userID
+        ).directory
+        XCTAssertTrue(FileManager.default.fileExists(atPath: accountDirectory.path))
+
+        await fixture.coordinator.account.deleteAccount()
+
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: accountDirectory.path))
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertTrue(fixture.coordinator.account.errorMessage?.contains("account was deleted") == true)
+
+        fixture.liveStore.rejectsLoads = false
+        fixture.liveStore.rejectsClears = false
+        fixture.coordinator.live.discardRecovery()
+
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+    }
+
+    func testSuccessfulAccountLifecycleCleanupRemainsSilent() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await fixture.coordinator.account.signOut()
+
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await fixture.coordinator.account.deleteAccount()
+
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+    }
+
+    private func makeLifecycleFixture() throws -> LifecycleFixture {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceAccountLifecycleTests-\(UUID().uuidString)")
+        let userID = UUID()
+        let accountService = AccountServiceMock()
+        accountService.appleSession = AccountSession(
+            userID: userID,
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        let profile = PlayerProfile(
+            userID: userID,
+            displayName: "Alex",
+            avatarSeed: "seed",
+            createdAt: .distantPast,
+            updatedAt: .distantPast
+        )
+        accountService.loadedProfile = profile
+        let liveStore = AccountLifecycleLiveStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let coordinator = try makeCoordinator(
+            root: root,
+            guestStore: guestStore,
+            accountModelService: accountService,
+            liveStore: liveStore
+        )
+        return LifecycleFixture(
+            root: root,
+            userID: userID,
+            profile: profile,
+            accountService: accountService,
+            liveStore: liveStore,
+            coordinator: coordinator
+        )
+    }
+
+    private func makeCoordinator(
+        root: URL,
+        guestStore: DailyClassicStore,
+        accountModelService: any AccountServicing,
+        liveStore: AccountLifecycleLiveStore
+    ) throws -> DailyAccountCoordinator {
+        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+            urlString: "http://127.0.0.1:54321",
+            publishableKey: "local-test-key"
+        ))
+        return try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main),
+            tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore,
+            accountService: SupabaseAccountService(configuration: configuration),
+            accountModelService: accountModelService,
+            accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+            liveStoreFactory: { _ in liveStore }
+        )
+    }
+}
+
+@MainActor
+private struct LifecycleFixture {
+    let root: URL
+    let userID: UUID
+    let profile: PlayerProfile
+    let accountService: AccountServiceMock
+    let liveStore: AccountLifecycleLiveStore
+    let coordinator: DailyAccountCoordinator
 }
 
 @MainActor
@@ -310,10 +478,8 @@ final class AccountModelTests: XCTestCase {
         let service = AccountServiceMock()
         service.appleSession = session(userID)
         service.loadedProfile = profile(userID: userID, name: "Alex")
-        var isolatedSession = false
         let model = AccountModel(
             service: service,
-            didChangeSession: { if $0 == nil { isolatedSession = true } },
             didDeleteAccount: { _ in throw TestError.failed }
         )
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
@@ -321,7 +487,6 @@ final class AccountModelTests: XCTestCase {
         await model.deleteAccount()
 
         XCTAssertNil(model.session)
-        XCTAssertTrue(isolatedSession)
         XCTAssertTrue(model.errorMessage?.contains("local data") == true)
     }
 
@@ -331,7 +496,10 @@ final class AccountModelTests: XCTestCase {
         service.appleSession = session(userID)
         service.loadedProfile = profile(userID: userID, name: "Alex")
         var signedOutUserID: UUID?
-        let model = AccountModel(service: service, didSignOut: { signedOutUserID = $0 })
+        let model = AccountModel(service: service, didSignOut: {
+            signedOutUserID = $0
+            return true
+        })
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
 
         await model.signOut()
@@ -406,6 +574,8 @@ private final class AccountServiceMock: AccountServicing {
     var appleCredentials: (idToken: String, nonce: String)?
     var loadedUserIDs: [UUID] = []
     var profileUpdateCount = 0
+    var signOutCount = 0
+    var deleteCount = 0
     var lastProfileUpdate: (name: String, seed: String)?
 
     init() {
@@ -448,14 +618,49 @@ private final class AccountServiceMock: AccountServicing {
         return updatedProfile
     }
 
-    func signOut() async throws {}
+    func signOut() async throws { signOutCount += 1 }
 
     func deleteAccount() async throws {
+        deleteCount += 1
         if let deleteError { throw deleteError }
     }
 
     func emit(_ session: AccountSession?) {
         continuation.yield(session)
+    }
+}
+
+private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: LiveRecoveryState
+    var rejectsLoads = false
+    var rejectsClears = false
+
+    var storedState: LiveRecoveryState {
+        lock.withLock { state }
+    }
+
+    init(_ state: LiveRecoveryState) {
+        self.state = state
+    }
+
+    func load() throws -> LiveRecoveryState {
+        try lock.withLock {
+            if rejectsLoads { throw TestError.failed }
+            return state
+        }
+    }
+
+    func save(_ state: LiveRecoveryState) throws {
+        lock.withLock { self.state = state }
+    }
+
+    func clear() throws {
+        try lock.withLock {
+            if rejectsClears { throw TestError.failed }
+            state = LiveRecoveryState()
+            rejectsLoads = false
+        }
     }
 }
 
