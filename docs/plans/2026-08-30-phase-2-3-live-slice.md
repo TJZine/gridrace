@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires IOS-06, then API-01 and DOC-02; prior IOS-01..04, CI-01 and DB-01..07 remain closed |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-06 closed in `b476a53`; requires API-01 then DOC-02; prior findings remain closed |
 | C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Reopened for DOC-02 after serialized product repairs; no Historical status before terminal R-01 PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..04 are complete; IOS-06 remediation is next.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; API-01 remediation is next.
 
 ## Risk and evidence gates
 
@@ -377,15 +377,14 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: IOS-06.** Dispatch a fresh local GridRace project task using
-`gpt-5.6-sol` / medium with ownership of the live session, recovery store, unavailable
-UI and focused tests. Keep account transitions fail-closed when store construction
-throws; provide a controllable retry/discard path when construction later succeeds;
-and prove durable discard prevents stale replay across relaunch/re-authentication while
-switch/sign-out cannot advance silently. After acceptance/checkpoint, repair API-01 in
-a separate fresh task, then reconcile DOC-02 in controller-owned docs before another
-fresh R-01. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: API-01.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium with ownership of the join-match Edge handler and focused tests,
+plus only proven necessary integration/contract proof paths. Align malformed and
+ambiguous local join-code validation with the frozen typed `match_not_joinable` HTTP
+409 mapping while preserving validation and the safe envelope. After controller
+acceptance/checkpoint, reconcile DOC-02 before another fresh R-01. The controller
+retains orchestration, adjudication, integration and plan ownership. Apply the same
+fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -567,7 +566,7 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-03 | Low | Real failed-path XCTest hardcodes answer-eligible `ADORE` and expects six failed guesses. | Seed marks `adore` accepted, active and answer-eligible, so random selection can solve on the first guess. | Accepted | Host harness chooses/passes an accepted non-answer without exposing the answer to client processes; rerun full two-client/Cron proof. | Closed in `f79ce07`: disposable non-answer fixture, two failed clients/12 guesses, full two-client/Cron/relaunch and controller checks passed |
 | IOS-04 | Low | Snapshot mapper does not bind countdown/playing states to snapshot `server_time`. | It validates interval and names but accepts countdown at/after start and playing before start or at/after end, contrary to server-derived state. | Accepted | Require countdown `serverTime < startsAt` and playing `startsAt <= serverTime < endsAt`; add boundary-focused decode tests and full iOS proof. | Closed in `0b37297`: boundary mapper proof, focused 8/8, full 149 with two expected skips, clean Debug and controller focused 8/8 passed |
 | IOS-05 | Medium | Recovery storage load/clear failures can replay stale commands or strand live play. | `changeAccount` and invalid-match cleanup suppress `clear()` failure; failed load drops the new store, leaving no reset path; storage-unavailable copy can falsely claim no command was sent. | Accepted | Retain controllable store access on load failure; add explicit safe discard/reset; surface failed deletion; use uncertainty-accurate copy; inject load/clear failures and prove relaunch/re-auth behavior. | Closed in `21cbd01`: durable discard/reset, failure-latched account transitions, uncertainty copy, focused 20/20, full 154 with two expected skips, clean Debug and controller focused 20/20 passed |
-| IOS-06 | Medium | A throwing recovery-store factory bypasses IOS-05's controllable-store repair. | Construction failure leaves `store == nil`; the UI exposes no discard, and later switch/sign-out treats nil clear as success so a recovered factory can reload and replay stale intent. | Accepted | Keep the transition fail-closed; expose retry/discard once construction recovers; prove durable discard and no stale replay across relaunch/re-auth plus non-advancing switch/sign-out. | Open |
+| IOS-06 | Medium | A throwing recovery-store factory bypasses IOS-05's controllable-store repair. | Construction failure leaves `store == nil`; the UI exposes no discard, and later switch/sign-out treats nil clear as success so a recovered factory can reload and replay stale intent. | Accepted | Keep the transition fail-closed; expose retry/discard once construction recovers; prove durable discard and no stale replay across relaunch/re-auth plus non-advancing switch/sign-out. | Closed in `b476a53`: retry/discard with nil store, failure-latched pending account transition, focused 25/25, full 159 with two expected skips, clean Debug and controller focused 25/25 passed |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Open: serialize after IOS-06 |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
@@ -972,6 +971,25 @@ change was required; all pre-existing changes remain unrelated.
   review reconfirmed IOS-01..04, CI-01 and DB-01..07 closed; IOS-05 and DOC-01 remain
   incomplete only in the newly identified factory and authority branches.
 
+## IOS-06 repair and acceptance, 2026-09-26
+
+- Fresh task `01a0e03d-39eb-7153-8e9e-9cdda15ecc1a` committed `b476a53` from exact
+  parent `b7fd79a` in `LiveMatchSession.swift`, `LiveMatchViews.swift` and
+  `LiveMatchSessionTests.swift`; `LiveMatchRecoveryStore.swift` required no change.
+- A factory failure now keeps storage unavailable with both Retry and Discard even
+  before a store exists. Retry reconstructs and loads only by explicit choice; discard
+  reconstructs and durably clears without first loading or replaying saved intent.
+  Account switch/sign-out retain old ownership and a pending target until old-account
+  storage constructs and clears, and live commands remain blocked throughout failure.
+- Injected proof covers factory failure, repeated failure, recovery and original-ID
+  retry, create/guess discard without replay across relaunch/re-authentication,
+  switch/sign-out non-advancement, and construction/clear failures remaining
+  controllable. Worker proof passed focused 25/25, full iOS 159 tests with two expected
+  integration skips and zero failures, and clean Debug. Controller inspected every
+  transition and changed line and independently passed focused 25/25. Xcode's incidental
+  package rewrite was removed; index, one Active plan and scratch hashes were unchanged.
+  IOS-06 is closed.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1028,6 +1046,8 @@ Phase 2/3 commits to date:
 | `21cbd01 fix(live): make recovery discard durable` | Preserve and explicitly clear uncertain recovery state without silent durable failure | Complete; IOS-05 closed |
 | `93f7d01 docs(plan): record IOS-05 completion` | Record accepted durable-recovery proof and release DOC-01 reconciliation | Complete |
 | `1628e83 docs: reconcile live slice authorities` | Reconcile implemented local live behavior and preserve external/later gates | Complete; DOC-01 closed pending final review |
+| `b7fd79a docs(plan): record final review findings` | Record IOS-06, API-01 and DOC-02 with serialized remediation | Complete |
+| `b476a53 fix(live): recover from storage factory failures` | Keep storage construction, discard and account transitions fail-closed and controllable | Complete; IOS-06 closed |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
