@@ -94,7 +94,7 @@ final class LiveMatchServiceTests: XCTestCase {
         }
     }
 
-    func testSnapshotMapperValidatesCanonicalCompletionWindow() throws {
+    func testSnapshotMapperValidatesCanonicalCompletionTimesIncludingLockInversion() throws {
         let completedAt = #""completed_at":"2026-09-26T19:40:52.136429+00:00""#
 
         XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
@@ -126,10 +126,12 @@ final class LiveMatchServiceTests: XCTestCase {
             of: completedAt,
             with: #""completed_at":"2026-09-26T19:40:50+00:00""#
         ))
-        assertInvalid(Self.revealedSnapshot.replacingOccurrences(
-            of: completedAt,
-            with: #""completed_at":"2026-09-26T19:40:53+00:00""#
-        ))
+        XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Data(
+            Self.revealedSnapshot.replacingOccurrences(
+                of: completedAt,
+                with: #""completed_at":"2026-09-26T19:40:53+00:00""#
+            ).utf8
+        )))
     }
 
     func testSnapshotMapperValidatesCanonicalPhaseWindow() throws {
