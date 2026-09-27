@@ -245,8 +245,8 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-08 and IOS-09 closed in `cffedf0` and `482fa40`; requires final authority/evidence refresh; prior findings remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Reopened for post-repair authority/evidence refresh; no Historical status before terminal R-01 PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for a fresh terminal review after IOS-08/09 repair and final authority refresh through `fd6ca0b` |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Authority/evidence refresh complete; no Historical status before terminal R-01 PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
@@ -378,12 +378,11 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: C-02 authority/evidence refresh.** Reconcile the final IOS-09
-focused/full iOS totals and cleanup-failure behavior in directly stale authorities,
-without expanding scope or marking this plan Historical. Then dispatch a fresh,
-read-only terminal R-01 over the complete owned range. The controller retains
-orchestration, adjudication, integration and plan ownership. Apply the same fresh-task
-boundary to each implementation package.
+**Exact next unit: terminal R-01.** Dispatch a fresh, read-only review over the complete
+owned implementation and authority range through the current plan checkpoint. Require
+an explicit `PASS` or concrete findings; only a terminal PASS releases the separate
+Historical closeout commit. The controller retains orchestration, adjudication,
+integration and plan ownership.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -1108,6 +1107,17 @@ change was required; all pre-existing changes remain unrelated.
   package rewrite was removed; index, one Active plan and scratch paths stayed
   unchanged. IOS-09 is closed.
 
+## C-02 final authority/evidence refresh, 2026-09-26
+
+- `fd6ca0b` updates `NOW.md` to the accepted full iOS 165/163/two-skip result and
+  focused account/recovery 48/48 result. Architecture, privacy, live API and screen-flow
+  authorities now describe former-account isolation, partial local cleanup semantics
+  and the signed-out retry/discard route.
+- The plan remains the sole Active tracker. Hosted, distribution, physical-device,
+  retention and broader-MVP limitations remain explicit; no remote mutation, paid
+  commitment or external completion claim was introduced. A fresh terminal R-01 is
+  still required before Historical closeout.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1178,6 +1188,8 @@ Phase 2/3 commits to date:
 | `cffedf0 fix(live): accept reveal timestamp inversion` | Accept canonical reveal completion later than an earlier blocked snapshot transaction time | Complete; IOS-08 closed |
 | `7363b37 docs(plan): record IOS-08 completion` | Record accepted timestamp-inversion proof and release IOS-09 | Complete |
 | `482fa40 fix(account): preserve failed live cleanup` | Surface account cleanup failure while preserving privacy isolation and reachable recovery controls | Complete; IOS-09 closed |
+| `1b9ff50 docs(plan): record IOS-09 completion` | Record independent IOS-09 acceptance and release final authority refresh | Complete |
+| `fd6ca0b docs: update final account cleanup evidence` | Reconcile final iOS totals and account-cleanup behavior across current authorities | Complete; terminal R-01 remains |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
