@@ -299,6 +299,208 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertNil(session.savedMatchID)
     }
 
+    func testFactoryFailureBlocksCommandsUntilExplicitStorageRetry() async {
+        let userID = UUID()
+        let requestID = UUID()
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: requestID))
+        )
+        let factory = MemoryLiveRecoveryStoreFactory([userID: store])
+        factory.rejectsConstruction = true
+        let creates = LockedValues<UUID>()
+        let session = LiveMatchSession(
+            service: LiveServiceMock(create: { receivedRequestID in
+                creates.append(receivedRequestID)
+                return matchID
+            }),
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+
+        session.changeAccount(to: userID)
+        session.createMatch()
+        await Task.yield()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertTrue(session.canDiscardRecovery)
+        XCTAssertNil(session.pendingIntent)
+        XCTAssertTrue(creates.values.isEmpty)
+
+        session.retry()
+        await Task.yield()
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(creates.values.isEmpty)
+
+        factory.rejectsConstruction = false
+        session.retry()
+
+        await eventually { session.savedMatchID == matchID }
+        XCTAssertEqual(creates.values, [requestID])
+    }
+
+    func testFactoryRecoveryCanDiscardCreateWithoutLoadingOrReplayingIt() async throws {
+        let userID = UUID()
+        let requestID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: requestID))
+        )
+        let factory = MemoryLiveRecoveryStoreFactory([userID: store])
+        factory.rejectsConstruction = true
+        let creates = LockedCounter()
+        let service = LiveServiceMock(create: { _ in
+            creates.increment()
+            return UUID()
+        })
+        let session = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+        session.changeAccount(to: userID)
+
+        factory.rejectsConstruction = false
+        session.discardRecovery()
+        session.changeAccount(to: nil)
+        session.changeAccount(to: userID)
+        await Task.yield()
+        let relaunched = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+        relaunched.changeAccount(to: userID)
+        await Task.yield()
+
+        XCTAssertEqual(try store.load(), LiveRecoveryState())
+        XCTAssertEqual(session.phase, .inactive)
+        XCTAssertEqual(relaunched.phase, .inactive)
+        XCTAssertEqual(creates.value, 0)
+    }
+
+    func testFactoryRecoveryCanDiscardGuessWithoutLoadingOrReplayingIt() async throws {
+        let userID = UUID()
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(
+                matchID: matchID,
+                pendingIntent: .guess(matchID: matchID, requestID: UUID(), word: "STONE")
+            )
+        )
+        let factory = MemoryLiveRecoveryStoreFactory([userID: store])
+        factory.rejectsConstruction = true
+        let submits = LockedCounter()
+        let service = LiveServiceMock(submit: { _, _, _ in
+            submits.increment()
+            return Self.receipt()
+        })
+        let session = LiveMatchSession(
+            service: service,
+            realtime: RealtimeHub(),
+            storeFactory: { try factory.make($0) }
+        )
+        session.changeAccount(to: userID)
+
+        factory.rejectsConstruction = false
+        session.discardRecovery()
+        session.changeAccount(to: nil)
+        session.changeAccount(to: userID)
+        let relaunched = LiveMatchSession(
+            service: service,
+            realtime: RealtimeHub(),
+            storeFactory: { try factory.make($0) }
+        )
+        relaunched.changeAccount(to: userID)
+        await Task.yield()
+
+        XCTAssertEqual(try store.load(), LiveRecoveryState())
+        XCTAssertEqual(session.phase, .inactive)
+        XCTAssertEqual(relaunched.phase, .inactive)
+        XCTAssertEqual(submits.value, 0)
+    }
+
+    func testFactoryFailureKeepsAccountSwitchAndSignOutOnOldAccountUntilClearSucceeds() throws {
+        let firstUser = UUID()
+        let secondUser = UUID()
+        let switchStore = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let secondStore = MemoryLiveRecoveryStore()
+        let switchFactory = MemoryLiveRecoveryStoreFactory([
+            firstUser: switchStore,
+            secondUser: secondStore,
+        ])
+        switchFactory.rejectsConstruction = true
+        let switching = LiveMatchSession(
+            service: LiveServiceMock(),
+            realtime: nil,
+            storeFactory: { try switchFactory.make($0) }
+        )
+        switching.changeAccount(to: firstUser)
+
+        switching.changeAccount(to: secondUser)
+
+        XCTAssertEqual(switching.phase, .storageUnavailable)
+        XCTAssertEqual(switchFactory.requestedAccountIDs, [firstUser, firstUser])
+        XCTAssertNotNil(switchStore.storedState.pendingIntent)
+
+        switchFactory.rejectsConstruction = false
+        switching.retry()
+
+        XCTAssertEqual(switching.phase, .inactive)
+        XCTAssertEqual(switchFactory.requestedAccountIDs.suffix(2), [firstUser, secondUser])
+        XCTAssertEqual(try switchStore.load(), LiveRecoveryState())
+
+        let signOutStore = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let signOutFactory = MemoryLiveRecoveryStoreFactory([firstUser: signOutStore])
+        signOutFactory.rejectsConstruction = true
+        let signingOut = LiveMatchSession(
+            service: LiveServiceMock(),
+            realtime: nil,
+            storeFactory: { try signOutFactory.make($0) }
+        )
+        signingOut.changeAccount(to: firstUser)
+
+        signingOut.changeAccount(to: nil)
+
+        XCTAssertEqual(signingOut.phase, .storageUnavailable)
+        XCTAssertEqual(signOutFactory.requestedAccountIDs, [firstUser, firstUser])
+        XCTAssertNotNil(signOutStore.storedState.pendingIntent)
+
+        signOutFactory.rejectsConstruction = false
+        signingOut.discardRecovery()
+
+        XCTAssertEqual(signingOut.phase, .inactive)
+        XCTAssertEqual(try signOutStore.load(), LiveRecoveryState())
+    }
+
+    func testFactoryRecoveryDiscardClearFailureRemainsControllable() {
+        let userID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        store.rejectsClears = true
+        let factory = MemoryLiveRecoveryStoreFactory([userID: store])
+        factory.rejectsConstruction = true
+        let session = LiveMatchSession(
+            service: LiveServiceMock(),
+            realtime: nil,
+            storeFactory: { try factory.make($0) }
+        )
+        session.changeAccount(to: userID)
+
+        factory.rejectsConstruction = false
+        session.discardRecovery()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertTrue(session.canDiscardRecovery)
+        XCTAssertNotNil(store.storedState.pendingIntent)
+    }
+
     func testFailedLoadCanBeExplicitlyDiscarded() throws {
         let requestID = UUID()
         let store = MemoryLiveRecoveryStore(
@@ -803,6 +1005,22 @@ private final class MemoryLiveRecoveryStore: LiveMatchRecoveryStoring, @unchecke
         if rejectsClears { throw TestFailure.failed }
         state = LiveRecoveryState()
         rejectsLoads = false
+    }
+}
+
+@MainActor
+private final class MemoryLiveRecoveryStoreFactory {
+    private let stores: [UUID: MemoryLiveRecoveryStore]
+    private(set) var requestedAccountIDs: [UUID] = []
+    var rejectsConstruction = false
+
+    init(_ stores: [UUID: MemoryLiveRecoveryStore]) { self.stores = stores }
+
+    func make(_ userID: UUID) throws -> any LiveMatchRecoveryStoring {
+        requestedAccountIDs.append(userID)
+        if rejectsConstruction { throw TestFailure.failed }
+        guard let store = stores[userID] else { throw TestFailure.failed }
+        return store
     }
 }
 

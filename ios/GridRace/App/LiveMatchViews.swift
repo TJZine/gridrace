@@ -162,7 +162,7 @@ struct LiveMatchFlowView: View {
                 title: "Live recovery unavailable",
                 message: "GridRace could not read or remove saved live recovery data. A previous command may still be unresolved.",
                 symbol: "externaldrive.badge.exclamationmark",
-                retry: nil,
+                retry: session.canRetryRecoveryStorage ? { session.retry() } : nil,
                 discardTitle: "Discard saved recovery data",
                 discard: session.canDiscardRecovery ? { session.discardRecovery() } : nil
             )

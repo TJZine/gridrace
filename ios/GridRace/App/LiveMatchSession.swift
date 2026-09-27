@@ -38,6 +38,8 @@ final class LiveMatchSession {
     private let makeUUID: @MainActor () -> UUID
 
     private var accountID: UUID?
+    private var requestedAccountID: UUID?
+    private var hasRequestedAccountChange = false
     private var store: (any LiveMatchRecoveryStoring)?
     private var recovery = LiveRecoveryState()
     private var generation = 0
@@ -63,7 +65,8 @@ final class LiveMatchSession {
     var hasSavedMatch: Bool { recovery.matchID != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
-    var canDiscardRecovery: Bool { phase == .storageUnavailable && store != nil }
+    var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
+    var canDiscardRecovery: Bool { canRetryRecoveryStorage }
 
     var displayedServerTime: Date? {
         guard let snapshot, let snapshotUptime else { return nil }
@@ -114,32 +117,45 @@ final class LiveMatchSession {
 
     func changeAccount(to userID: UUID?) {
         guard accountID != userID else { return }
+        let oldAccountID = accountID
         let oldStore = store
-        let hadAccount = accountID != nil
         resetRuntime()
-        accountID = userID
-        if hadAccount {
+        if let oldAccountID {
             do {
-                try oldStore?.clear()
+                let oldStore = try oldStore ?? storeFactory(oldAccountID)
+                try oldStore.clear()
             } catch {
                 store = oldStore
+                requestedAccountID = userID
+                hasRequestedAccountChange = true
                 phase = .storageUnavailable
                 return
             }
         }
+        requestedAccountID = nil
+        hasRequestedAccountChange = false
+        accountID = userID
         loadRecovery()
     }
 
     func discardRecovery() {
-        guard canDiscardRecovery, let store else { return }
+        guard canDiscardRecovery, let accountID else { return }
         do {
+            let store = try store ?? storeFactory(accountID)
             try store.clear()
+            resetRuntime()
+            if hasRequestedAccountChange {
+                let userID = requestedAccountID
+                requestedAccountID = nil
+                hasRequestedAccountChange = false
+                self.accountID = userID
+                loadRecovery()
+            } else {
+                self.store = store
+            }
         } catch {
             phase = .storageUnavailable
-            return
         }
-        resetRuntime()
-        loadRecovery()
     }
 
     func createMatch() {
@@ -204,7 +220,15 @@ final class LiveMatchSession {
     }
 
     func retry() {
-        guard accountID != nil, phase != .storageUnavailable else { return }
+        guard accountID != nil else { return }
+        if phase == .storageUnavailable {
+            if hasRequestedAccountChange {
+                changeAccount(to: requestedAccountID)
+            } else {
+                loadRecovery()
+            }
+            return
+        }
         lastError = nil
         if recovery.pendingIntent != nil, !isCommandInFlight {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
@@ -690,6 +714,7 @@ final class LiveMatchSession {
             let store = try storeFactory(accountID)
             self.store = store
             recovery = try store.load()
+            phase = .inactive
             guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
             isOpen = true
             phase = .recovering
