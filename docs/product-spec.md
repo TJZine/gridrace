@@ -77,15 +77,15 @@ sessions, owner-private profiles, intentional guest import, account-scoped cache
 and compact cloud synchronization are implemented. Every current Daily result is an
 imported/client-originated personal record, never server-verified competition.
 
-The active Phase 2 work establishes the local authoritative backend foundation:
+Phase 2 implements the local authoritative backend foundation:
 Supabase Auth and profiles, private words and round secrets, grants and RLS, transactional commands,
 deterministic development-word seeding, account deletion, and database/Edge tests.
 
-The active Phase 3 plan targets the first networked vertical slice: exactly two
+Phase 3 implements the first local networked vertical slice: exactly two
 authenticated players, one round, a server-selected answer, server-validated guesses, clue-free progress,
 reconnect from canonical snapshots, deadline finalization, and shared reveal. It
-must prove answer isolation, RLS denial, idempotent submission, server time, and
-state convergence before broader match flow is added. Opponent online/offline labels
+proves answer isolation, RLS denial, idempotent submission, server time, and state
+convergence locally before broader match flow is added. Opponent online/offline labels
 are deferred for this slice; the client shows its own connection/recovery status and
 opponent count/game state. Daily remains the primary, account-optional home action.
 
@@ -105,12 +105,12 @@ not Phase 3 behavior.
 | Screen | Responsibility | Current phase scope |
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
-| Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic and accounts implemented; live create/join planned |
-| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 3; broader configuration and links are later |
-| Lobby | Show the private roster; only the creator starts, with no readiness state. | Phase 3 |
-| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 local tutorial and Phase 3 server-backed slice |
-| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 prototype and Phase 3 shared reveal |
-| Results | Show exact round/match placement and summary. | Local comparison only |
+| Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic, accounts, live create/join and Resume implemented |
+| Create/join | Create the fixed live slice or enter a manual six-character room code. | Fixed Phase 3 slice implemented; broader configuration and links are later |
+| Lobby | Show the private roster; only the creator starts, with no readiness state. | Fixed Phase 3 slice implemented |
+| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 tutorial and fixed Phase 3 server-backed slice implemented |
+| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 tutorial and fixed Phase 3 shared reveal implemented |
+| Results | Show exact round/match placement and summary. | Fixed-slice round placement implemented; broader multi-round results later |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Derive personal Daily statistics from synchronized immutable imported results. | Implemented for Daily Classic; competitive history later |
 | Profile | Manage display name, generated avatar, synchronization, sign out, and account deletion. Email is never exposed. | Implemented; blocks later |

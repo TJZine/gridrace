@@ -26,8 +26,8 @@ the answer or guessed letters.
 
 This is the authority for Blind Race rules and cross-runtime behavior. Production
 state is server-owned. Phase 1 executes the same pure rules against local tutorial
-fixtures; Phase 2 establishes the backend authority; Phase 3 proves it with exactly
-two players and one round.
+fixtures; Phase 2 establishes the backend authority; Phase 3 locally proves it with
+exactly two players and one round.
 
 ## Match and round contract
 

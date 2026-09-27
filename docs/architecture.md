@@ -2,7 +2,7 @@
 
 This document is the current architecture authority. It separates the permanent
 local Daily Classic mode, the Phase 1 tutorial, and the active Phase 2/3 backend
-and planned live-race client.
+and implemented fixed live-race client.
 
 ## Daily Classic architecture
 
@@ -94,12 +94,12 @@ Type behavior; domain rules do not depend on those presentation choices.
 
 ## Phase 2 backend and Phase 3 live boundary
 
-The production design is a native SwiftUI client backed by authoritative Supabase.
-Phase 2 implements the local backend/authentication trust boundary. Phase 3 connects
+The implemented local slice is a native SwiftUI client backed by authoritative
+Supabase. Phase 2 owns the backend/authentication trust boundary. Phase 3 connects
 the fixed two-player, one-round client slice to it. The complete 2–8 player,
 multi-round MVP remains later work.
 
-The client eventually displays server-owned state and submits authenticated intents.
+The client displays server-owned state and submits authenticated intents.
 The backend selects answers, validates accepted words, computes feedback and scores,
 timestamps actions, and advances matches, rounds, and players. A normal authenticated
 client cannot read a round answer before reveal or directly mutate authoritative game
@@ -116,10 +116,10 @@ Phase 2/3 responsibilities are intentionally narrow:
 | Edge Functions | Authenticate callers, validate build and input, invoke explicit transactional commands, and map stable typed results. Service credentials stay here and never ship in the app. |
 | Realtime | Signal that relevant state may have changed. It does not carry secret clues or replace a canonical snapshot. |
 | Cron | Ask server-owned finalization commands to resolve elapsed deadlines and other scheduled game transitions. It does not introduce a second clock or transition implementation. |
-| APNs | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
+| APNs (later) | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
 
-Phase 2 implements the local backend rows above; Phase 3 client integration remains
-pending. APNs, reports/blocks and opponent presence are later. The exact six-command and
+The local Phase 2 backend and Phase 3 client integration above are implemented.
+APNs, reports/blocks and opponent presence remain later. The exact six-command and
 versioned snapshot shapes live in [`live-api-contract.md`](live-api-contract.md).
 The client uses only create, join, creator start, guess submission, snapshot, and
 account deletion commands; profile updates remain owner-scoped RLS writes.
@@ -171,7 +171,7 @@ the result. If a command response is lost, the client follows the command-specif
 retry/snapshot rules rather than guessing whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
 opponent feedback, keyboard evidence, starting words, and exact solve times.
 
-The pending Phase 3 session serializes/coalesces refreshes with commands, rejects
+The implemented Phase 3 session serializes/coalesces refreshes with commands, rejects
 late results from another account/match, and requests a trailing fetch for signals
 received during a fetch. Snapshot v1 has no state revision; neither delivery order
 nor its transaction timestamp is a revision. An open foreground unfinished match
@@ -179,10 +179,12 @@ also refreshes after five seconds without a successful snapshot, with bounded
 failure backoff. Stop on background/exit/reveal/expiry or loss of authorization.
 This covers silent event loss; subscriptions alone do not prove convergence.
 
-The client owns no offline live guess queue. Implemented P2-04A creation receipts and
-planned Phase 3 account-scoped recovery storage preserve request IDs across lost
+The client owns no offline live guess queue. Creation receipts and implemented
+account-scoped recovery storage preserve request IDs across lost
 responses and relaunch; the client resolves uncertainty before accepting another intent.
-It saves no authoritative board, answer, opponent payload or credential. Exact retry,
+Failed recovery reads retain a controllable store for explicit discard; failed durable
+deletion remains storage-unavailable rather than claiming success. Recovery saves no
+authoritative board, answer, opponent payload or credential. Exact retry,
 nullability, timing, error and recovery rules live in the live API contract.
 
 Use the existing authenticated SDK client through service composition. One live
@@ -246,9 +248,10 @@ pre-production decisions rather than defaults inferred by the client.
 
 ## Phase boundary
 
-Phase 2 proves the local backend, authentication/profile boundary, private storage,
-RLS, commands, deletion, seed, and database/Edge tests before the client relies on
-them. Phase 3 proves the smallest two-player, one-round live race, including server
+Phase 2 locally proves the backend, authentication/profile boundary, private storage,
+RLS, commands, deletion, seed, and database/Edge tests used by the client. Phase 3
+locally proves the smallest two-player, one-round live race, including server
 authority, idempotency, deadline finalization, snapshot recovery, Realtime
-convergence, and answer secrecy. Later phases must not generalize the implementation
-until that proof is complete.
+convergence, and answer secrecy. Hosted and physical-device gates remain separate;
+later phases must not generalize the implementation beyond this proved slice without
+their own accepted scope and evidence.

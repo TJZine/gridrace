@@ -409,11 +409,12 @@ Unknown HTTP/gateway/non-JSON failures remain transport errors, not typed game d
 | Snapshot | Safe to repeat, including its idempotent deadline finalization |
 | Delete account | Preserve the initiating SDK-held bearer for receipt retry; never persist it in live recovery files or expose it to views; do not clear owned caches or claim completion before success |
 
-Pending target live recovery stores only the latest match pointer and one pending
+Implemented live recovery stores only the latest match pointer and one pending
 intent in account-scoped protected local storage. Relaunch resolves uncertainty and
-fetches a snapshot before new input. Clearing it on sign-out does not leave/forfeit a
-server match; rejoining by code remains possible. See the active plan for lifecycle,
-clock display, storage-failure and verification requirements. There is no offline
+fetches a snapshot before new input. Durable clearing on sign-out does not leave or
+forfeit a server match; failed reads or deletion require explicit recovery-data discard
+and never claim success. Rejoining by code remains possible. See the active plan for
+lifecycle, clock display, storage-failure and verification evidence. There is no offline
 submission queue, opponent presence, competitive history, or authoritative board cache.
 
 ## Profiles and local authentication

@@ -28,7 +28,7 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-The active Phase 3 plan adds these routes alongside Daily Classic:
+The implemented Phase 3 slice adds these routes alongside Daily Classic:
 
 ```text
 Home (Daily remains primary)
@@ -85,7 +85,7 @@ authority demonstration.
 
 ### Home, create/join, and lobby
 
-Phase 3 adds fixed Create, manual-code Join and Resume alongside the existing Daily,
+Phase 3 provides fixed Create, manual-code Join and Resume alongside the existing Daily,
 tutorial and Account routes; authentication never gates Daily.
 Create always makes exactly two seats and one round; configuration and invite links
 remain later. Lobby shows the private roster, room code, this client's connection/

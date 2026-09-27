@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-05 closed in `21cbd01`; rerun after DOC-01 authority reconciliation; all prior findings remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Active: reconcile implemented live/recovery authority drift; do not mark Historical before terminal R-01 PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for a fresh rerun after IOS-05 and DOC-01 closure; all prior findings remain closed |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Authority reconciliation complete; pending terminal R-01 PASS before marking Historical |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..04 are complete; DOC-01 reconciliation is next.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; the fresh R-01 rerun is next.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,12 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: C-02 DOC-01 reconciliation.** The controller updates the durable
-current-state authorities to describe the implemented local live client and recovery
-behavior accurately while preserving every external/later gate. Commit that docs-only
-package separately without marking this plan Historical, then rerun R-01 in a new
-read-only task. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: R-01.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium for a strict read-only review of the complete updated
+implementation and authority net diff. Recheck every prior finding, the IOS-05 durable
+discard state machine, the reconciled authorities and all required quality dimensions.
+The controller retains orchestration, adjudication, integration and plan ownership.
+Apply the same fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -565,7 +565,7 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-04 | Low | Snapshot mapper does not bind countdown/playing states to snapshot `server_time`. | It validates interval and names but accepts countdown at/after start and playing before start or at/after end, contrary to server-derived state. | Accepted | Require countdown `serverTime < startsAt` and playing `startsAt <= serverTime < endsAt`; add boundary-focused decode tests and full iOS proof. | Closed in `0b37297`: boundary mapper proof, focused 8/8, full 149 with two expected skips, clean Debug and controller focused 8/8 passed |
 | IOS-05 | Medium | Recovery storage load/clear failures can replay stale commands or strand live play. | `changeAccount` and invalid-match cleanup suppress `clear()` failure; failed load drops the new store, leaving no reset path; storage-unavailable copy can falsely claim no command was sent. | Accepted | Retain controllable store access on load failure; add explicit safe discard/reset; surface failed deletion; use uncertainty-accurate copy; inject load/clear failures and prove relaunch/re-auth behavior. | Closed in `21cbd01`: durable discard/reset, failure-latched account transitions, uncertainty copy, focused 20/20, full 154 with two expected skips, clean Debug and controller focused 20/20 passed |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
-| DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Open: C-02 |
+| DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
 
 ## Prior execution evidence (not rerun by the planning task)
 
@@ -934,6 +934,21 @@ change was required; all pre-existing changes remain unrelated.
   Package resolution was restored after Xcode's incidental rewrite; index, one Active
   plan and scratch hashes remained unchanged. IOS-05 is closed.
 
+## C-02 authority reconciliation, 2026-09-26
+
+- The controller reconciled `NOW.md`, architecture, privacy map, product spec, screen
+  flow, game rules and live API contract with the implemented fixed two-player local
+  slice and its durable recovery behavior. Planned/pending claims now describe current
+  code, including create/join/Resume, canonical snapshots, Realtime convergence,
+  shared reveal and explicit failure-preserving recovery discard.
+- The authorities continue to separate Daily Classic's local behavior and imported
+  personal history from verified competition. Hosted deployment/Cron/backups/retention,
+  hosted CI, Apple credentials/distribution, physical-device accessibility, production
+  word provenance, trusted hosted client-IP provenance, 2–8 players/multiple rounds,
+  moderation, notifications and broader results remain explicitly external or later.
+- This reconciliation closes DOC-01 but intentionally leaves the plan Active. A fresh
+  read-only R-01 PASS remains mandatory before the separate Historical closeout.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -988,6 +1003,7 @@ Phase 2/3 commits to date:
 | `ee24013 docs(plan): record IOS-04 completion` | Record accepted phase-window proof and release the fresh R-01 rerun | Complete |
 | `2765953 docs(plan): record recovery review finding` | Record IOS-05 and DOC-01 from the fourth final-review pass | Complete |
 | `21cbd01 fix(live): make recovery discard durable` | Preserve and explicitly clear uncertain recovery state without silent durable failure | Complete; IOS-05 closed |
+| `93f7d01 docs(plan): record IOS-05 completion` | Record accepted durable-recovery proof and release DOC-01 reconciliation | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
