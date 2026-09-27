@@ -47,10 +47,13 @@ roster membership, and prevents late joining after countdown begins.
   credentials compile out of Release.
 - Report and block controls are later product requirements. There is no persistence
   or moderation system in Phase 1.
-- Complete in-app account deletion for implemented Phase 2/3 data removes the local
-  Auth identity, profile, Daily progress, imported results, and that UUID's local
-  cache; it removes invalid lobbies and irreversibly anonymizes only survivor-required
-  live results. Later device/report/block data must extend this rule before launch.
+- Complete in-app account deletion for implemented Phase 2/3 data removes the Auth
+  identity, profile, Daily progress, imported results, invalid lobbies and that UUID's
+  local Daily cache, while irreversibly anonymizing only survivor-required live results.
+  A failed device write leaves live recovery hidden from former-account presentation
+  but reachable through an explicit signed-out retry/discard route; it is never reported
+  as successful local cleanup. Later device/report/block data must extend this rule
+  before launch.
 - Imported Daily results are not competitive evidence. Future friend comparisons or
   leaderboards must use a structurally separate server-verified result surface and
   must not silently mix imported data into competitive statistics.

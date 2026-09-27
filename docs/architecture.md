@@ -224,9 +224,11 @@ database or logs. Real Apple provider-token revocation remains a production-hard
 proof when provider credentials are unavailable locally.
 
 Daily progress and imported personal results are deleted in the same authenticated
-database preparation transaction. The iOS client removes only that UUID's local
-account cache after the Edge Function reports successful server deletion, then drops
-the active session and returns to the untouched guest store.
+database preparation transaction. After the Edge Function reports successful server
+deletion, the iOS client returns to the untouched guest store and attempts to clear
+only that UUID's Daily cache and live-recovery file. If durable live cleanup fails,
+former-account Daily and account presentation remain hidden while signed-out Home
+exposes retry/discard remediation; the already-confirmed remote deletion is not retried.
 
 ## Secrets, privacy, and logs
 

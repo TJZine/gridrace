@@ -73,7 +73,10 @@ The account screen shows the generated avatar, 2–16 character player-name edit
 simple synced/pending/error status, retry, sign out, and confirmed deletion. A
 divergent attempt explains that devices differ and offers “Use synced attempt” or
 “Keep this device.” It never presents either imported attempt as verified. Network
-failure leaves the local game available.
+failure leaves the local game available. If sign-out or confirmed deletion cannot
+durably clear live recovery, former-account Daily/account data stays hidden and Home
+replaces Create/Join/Resume with “Resolve saved live data,” which opens Live Race for
+retry or discard.
 
 ### Onboarding and tutorial
 
