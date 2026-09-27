@@ -22,7 +22,7 @@ export function makeHandler(dependencies?: Dependencies) {
       const build = clientBuild(body.client_build);
       if (build === null) return errorResponse("client_update_required");
       const code = joinCode(body.join_code);
-      if (code === null) return errorResponse("match_not_joinable", 400);
+      if (code === null) return errorResponse("match_not_joinable");
       const authorized = await authorize(token, dependencies);
       if (!authorized.ok) return authorized.response;
       return databaseEnvelope(

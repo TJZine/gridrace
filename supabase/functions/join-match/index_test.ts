@@ -217,7 +217,7 @@ const failures: FailureCase[] = [
   {
     name: "rejects a malformed join code",
     request: () => post({ ...validBody(), join_code: "abc!!!" }),
-    status: 400,
+    status: 409,
     code: "match_not_joinable",
     rpcCalls: 0,
     authenticateCalls: 0,
@@ -225,7 +225,7 @@ const failures: FailureCase[] = [
   {
     name: "rejects an ambiguous join code",
     request: () => post({ ...validBody(), join_code: "oooooo" }),
-    status: 400,
+    status: 409,
     code: "match_not_joinable",
     rpcCalls: 0,
     authenticateCalls: 0,
