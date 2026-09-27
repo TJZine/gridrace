@@ -4,7 +4,7 @@ This file preserves stable product and architecture decisions whose rationale sh
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
 [Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
-is active; its current checkpoint strengthens the local slice before implementation.
+is active and tracks final review and closeout of the implemented local slice.
 
 ## 2026-09-22 — Keep the Focused Native/Supabase Slice With Bounded Recovery
 

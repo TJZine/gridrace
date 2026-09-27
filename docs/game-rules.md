@@ -85,7 +85,7 @@ pending -> countdown -> playing -> revealed
 | --- | --- | --- |
 | `pending -> countdown` | Authorized creator command selects a nonrepeating private answer and records absolute `startsAt` and `endsAt`. | Transactional PostgreSQL command; private answer storage has no client grant. |
 | `countdown -> playing` | Effective server time reaches `startsAt`; countdown never pauses for a client lifecycle event. | Canonical PostgreSQL snapshot interpretation of server timestamps. |
-| `playing -> revealed` | All round players are terminal, or `serverNow >= endsAt`; active players become `timedOut`, scoring and placement finalize, and reveal data becomes readable atomically. | Idempotent PostgreSQL finalizer, reached from command paths and the later Cron safety path. |
+| `playing -> revealed` | All round players are terminal, or `serverNow >= endsAt`; active players become `timedOut`, scoring and placement finalize, and reveal data becomes readable atomically. | Idempotent PostgreSQL finalizer, reached from command paths and the local Cron safety path. |
 
 Supabase Realtime only signals that clients should refresh. Canonical snapshots
 own recovery on entry, reconnect, foregrounding, timeout, inconsistency, and an

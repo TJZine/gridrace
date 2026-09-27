@@ -1,9 +1,9 @@
 # GridRace Live API Contract
 
 This document freezes the Phase 2 backend and Phase 3 two-player live-slice wire
-contract. P2-04A now implements the retry-safe create and Boolean deleted-member
-identity corrections locally; the remaining backend security/integration checkpoint
-must pass before the live client ships.
+contract. The local backend and live client implement this fixed contract, including
+retry-safe creation, Boolean deleted-member identity, security/RLS integration,
+durable recovery and two-client proof. Hosted and broader-MVP gates remain separate.
 [`game-rules.md`](game-rules.md) remains authoritative for gameplay;
 [`architecture.md`](architecture.md) owns component boundaries. All JSON uses
 `snake_case`, UUIDs use canonical lowercase strings, and timestamps use RFC 3339 UTC

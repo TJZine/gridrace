@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-06 and API-01 closed; requires DOC-02 before a fresh rerun; prior findings remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Reopened for DOC-02 after serialized product repairs; no Historical status before terminal R-01 PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for a fresh rerun after IOS-06, API-01 and DOC-02 closure; all prior findings remain closed |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Authority reconciliation complete; pending terminal R-01 PASS before marking Historical |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..04 are complete; DOC-02 reconciliation is next.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; the fresh R-01 rerun is next.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,12 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: C-02 DOC-02 reconciliation.** The controller updates the live API
-header, durable decision checkpoint wording and game-rules Cron ownership statement,
-plus any directly linked stale authority text found by exact inspection. Preserve all
-external/later gates, keep this plan Active, and then dispatch another fresh read-only
-R-01. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: R-01.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium for a strict read-only review of the complete updated
+implementation and authority net diff. Require explicit revalidation of IOS-06,
+API-01 and DOC-02 alongside every prior finding and all quality dimensions. The
+controller retains orchestration, adjudication, integration and plan ownership.
+Apply the same fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -568,7 +568,7 @@ change was required; all pre-existing changes remain unrelated.
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
-| DOC-02 | Low | Three current authorities retain superseded phase wording. | The live API header says only P2-04A is implemented, `DECISIONS.md` says review occurs before client reliance, and game rules call the active Cron safety path later. | Accepted | Reconcile the three statements after API-01 without changing product scope or closing the plan. | Open: C-02 |
+| DOC-02 | Low | Three current authorities retain superseded phase wording. | The live API header says only P2-04A is implemented, `DECISIONS.md` says review occurs before client reliance, and game rules call the active Cron safety path later. | Accepted | Reconcile the three statements after API-01 without changing product scope or closing the plan. | Closed: implemented contract/security/client proof, current closeout state and local Cron ownership now match code; plan remains Active pending review |
 
 ## Prior execution evidence (not rerun by the planning task)
 
@@ -1002,6 +1002,17 @@ change was required; all pre-existing changes remain unrelated.
   on 409; index, package resolution, one Active plan and scratch hashes stayed clean.
   API-01 is closed.
 
+## DOC-02 authority reconciliation, 2026-09-26
+
+- The controller updated the live API header from the superseded P2-04A-only state to
+  the implemented fixed backend/client contract and local security, recovery and
+  two-client proof; hosted and broader-MVP gates remain separate.
+- `DECISIONS.md` now identifies the active plan as final review/closeout tracking for
+  the implemented local slice, while preserving the durable decision and rationale.
+  Game rules now identify the exercised local Cron safety path as a current owner.
+- Exact stale-text search found no additional linked current-authority occurrence.
+  DOC-02 is closed, but this plan remains Active pending a fresh terminal R-01 PASS.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1062,6 +1073,7 @@ Phase 2/3 commits to date:
 | `b476a53 fix(live): recover from storage factory failures` | Keep storage construction, discard and account transitions fail-closed and controllable | Complete; IOS-06 closed |
 | `5c5954e docs(plan): record IOS-06 completion` | Record accepted factory-failure recovery proof and release API-01 | Complete |
 | `3647d61 fix(edge): align join validation status` | Return typed local join-code denial with the frozen HTTP 409 mapping | Complete; API-01 closed |
+| `387d704 docs(plan): record API-01 completion` | Record accepted join-status proof and release DOC-02 reconciliation | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
