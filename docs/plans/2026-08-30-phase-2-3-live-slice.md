@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-07 closed in `eef5789`; requires DOC-03 before a fresh rerun; prior findings remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Active for final evidence totals; no Historical status before terminal R-01 PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for a fresh rerun after IOS-07 and DOC-03 closure; all prior findings remain closed |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Current authorities complete; pending terminal R-01 PASS before marking Historical |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..04 are complete; DOC-03 reconciliation is next.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; the fresh R-01 rerun is next.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,12 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: C-02 DOC-03 reconciliation.** The controller updates NOW with the
-actual IOS-07 evidence totals—focused recovery/session 27/27 and full iOS 161 executed,
-159 passed, two expected opt-in skips and zero failures—plus any directly stale adjacent
-ledger wording found by exact inspection. Keep this plan Active, then dispatch another
-fresh R-01. The controller retains orchestration, adjudication, integration and plan
-ownership. Apply the same fresh-task boundary to each implementation package.
+**Exact next unit: R-01.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium for a strict read-only review of the complete updated
+implementation and authority net diff. Require explicit IOS-07/DOC-03 revalidation
+alongside every prior closure and all quality dimensions. The controller retains
+orchestration, adjudication, integration and plan ownership. Apply the same fresh-task
+boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -570,7 +570,7 @@ change was required; all pre-existing changes remain unrelated.
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
 | DOC-02 | Low | Three current authorities retain superseded phase wording. | The live API header says only P2-04A is implemented, `DECISIONS.md` says review occurs before client reliance, and game rules call the active Cron safety path later. | Accepted | Reconcile the three statements after API-01 without changing product scope or closing the plan. | Closed: implemented contract/security/client proof, current closeout state and local Cron ownership now match code; plan remains Active pending review |
-| DOC-03 | Low | `NOW.md` reports pre-IOS-06 iOS evidence totals. | It records full 154 and focused 20/20 after accepted evidence advanced to full 159 and focused 25/25, with IOS-07 still pending. | Accepted | After IOS-07 acceptance, record the actual final focused/full totals and current wording without marking Historical. | Open: C-02 |
+| DOC-03 | Low | `NOW.md` reports pre-IOS-06 iOS evidence totals. | It records full 154 and focused 20/20 after accepted evidence advanced to full 159 and focused 25/25, with IOS-07 still pending. | Accepted | After IOS-07 acceptance, record the actual final focused/full totals and current wording without marking Historical. | Closed: NOW records focused 27/27 and full 161 executed/159 passed/two expected skips/zero failures; plan remains Active pending review |
 
 ## Prior execution evidence (not rerun by the planning task)
 
@@ -1047,6 +1047,14 @@ change was required; all pre-existing changes remain unrelated.
   27/27. Xcode's incidental package rewrite was removed; index, one Active plan and
   scratch hashes stayed unchanged. IOS-07 is closed.
 
+## DOC-03 authority reconciliation, 2026-09-26
+
+- `NOW.md` now records the actual accepted IOS-07 evidence: focused recovery/session
+  27/27 and full iOS 161 executed, 159 passed, two expected opt-in integration skips
+  and zero failures. Adjacent current-work and remaining-gate wording remains accurate.
+- DOC-03 is closed. This plan intentionally remains Active until a new fresh R-01
+  returns terminal `PASS`; Historical closeout remains a separate controller commit.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1111,6 +1119,7 @@ Phase 2/3 commits to date:
 | `c43cf7e docs: reconcile final live authorities` | Reconcile implemented contract, closeout state and local Cron ownership | Complete; DOC-02 closed pending final review |
 | `b4080ae docs(plan): record account reversion finding` | Record IOS-07 and DOC-03 with serialized remediation | Complete |
 | `eef5789 fix(live): cancel reverted account transition` | Cancel stale account targets without escaping fail-closed current-account storage | Complete; IOS-07 closed |
+| `bc53605 docs(plan): record IOS-07 completion` | Record accepted Auth-reversion proof and release final evidence reconciliation | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
