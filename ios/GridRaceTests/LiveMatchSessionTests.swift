@@ -299,6 +299,118 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertNil(session.savedMatchID)
     }
 
+    func testFailedLoadCanBeExplicitlyDiscarded() throws {
+        let requestID = UUID()
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: requestID))
+        )
+        store.rejectsLoads = true
+        let session = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
+
+        session.changeAccount(to: UUID())
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canDiscardRecovery)
+
+        session.leaveToHome()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        session.discardRecovery()
+
+        XCTAssertEqual(session.phase, .inactive)
+        XCTAssertFalse(session.canDiscardRecovery)
+        XCTAssertEqual(try store.load(), LiveRecoveryState())
+    }
+
+    func testFailedRecoveryDiscardRemainsStorageUnavailable() {
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        store.rejectsLoads = true
+        store.rejectsClears = true
+        let session = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
+        session.changeAccount(to: UUID())
+
+        session.discardRecovery()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canDiscardRecovery)
+        XCTAssertNotNil(store.storedState.pendingIntent)
+    }
+
+    func testSuccessfulDiscardDoesNotReplayAfterSignOutAndReauthentication() async {
+        let store = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        store.rejectsLoads = true
+        let creates = LockedCounter()
+        let service = LiveServiceMock(create: { _ in
+            creates.increment()
+            return UUID()
+        })
+        let session = makeSession(service: service, realtime: nil, store: store)
+        let userID = UUID()
+        session.changeAccount(to: userID)
+
+        session.discardRecovery()
+        session.changeAccount(to: nil)
+        session.changeAccount(to: userID)
+        await Task.yield()
+        let relaunched = makeSession(service: service, realtime: nil, store: store)
+        relaunched.changeAccount(to: userID)
+        await Task.yield()
+
+        XCTAssertEqual(session.phase, .inactive)
+        XCTAssertNil(session.pendingIntent)
+        XCTAssertEqual(relaunched.phase, .inactive)
+        XCTAssertNil(relaunched.pendingIntent)
+        XCTAssertEqual(creates.value, 0)
+    }
+
+    func testAccountSwitchAndSignOutClearFailuresAreSurfaced() {
+        let firstUser = UUID()
+        let secondUser = UUID()
+        let firstStore = MemoryLiveRecoveryStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let secondStore = MemoryLiveRecoveryStore()
+        let session = LiveMatchSession(
+            service: LiveServiceMock(),
+            realtime: RealtimeHub(),
+            storeFactory: { $0 == firstUser ? firstStore : secondStore }
+        )
+        session.changeAccount(to: firstUser)
+        firstStore.rejectsClears = true
+
+        session.changeAccount(to: secondUser)
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertTrue(session.canDiscardRecovery)
+        XCTAssertNotNil(firstStore.storedState.pendingIntent)
+
+        session.changeAccount(to: nil)
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertNotNil(firstStore.storedState.pendingIntent)
+    }
+
+    func testInvalidSavedMatchClearFailureIsSurfaced() async {
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
+        store.rejectsClears = true
+        let service = LiveServiceMock(snapshot: { _ in
+            throw LiveMatchServiceError.server(.notAMatchMember)
+        })
+        let session = makeSession(service: service, realtime: nil, store: store)
+
+        session.changeAccount(to: UUID())
+
+        await eventually { session.phase == .storageUnavailable }
+        XCTAssertTrue(session.canDiscardRecovery)
+        XCTAssertEqual(session.savedMatchID, matchID)
+        XCTAssertEqual(store.storedState.matchID, matchID)
+    }
+
     func testBackgroundStopsRecoveryAndForegroundResubscribesBeforeCatchup() async throws {
         let matchID = UUID()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
@@ -660,12 +772,21 @@ private final class MemoryLiveRecoveryStore: LiveMatchRecoveryStoring, @unchecke
     private let lock = NSLock()
     private var state: LiveRecoveryState
     var rejectsWrites = false
+    var rejectsLoads = false
+    var rejectsClears = false
+
+    var storedState: LiveRecoveryState {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
 
     init(_ state: LiveRecoveryState = LiveRecoveryState()) { self.state = state }
 
     func load() throws -> LiveRecoveryState {
         lock.lock()
         defer { lock.unlock() }
+        if rejectsLoads { throw TestFailure.failed }
         return state
     }
 
@@ -679,7 +800,9 @@ private final class MemoryLiveRecoveryStore: LiveMatchRecoveryStoring, @unchecke
     func clear() throws {
         lock.lock()
         defer { lock.unlock() }
+        if rejectsClears { throw TestFailure.failed }
         state = LiveRecoveryState()
+        rejectsLoads = false
     }
 }
 

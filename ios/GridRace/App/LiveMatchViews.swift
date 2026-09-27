@@ -154,15 +154,17 @@ struct LiveMatchFlowView: View {
                 message: "Open Account to sign in, then resume this match from Home.",
                 symbol: "person.crop.circle.badge.exclamationmark",
                 retry: nil,
+                discardTitle: "Discard saved request",
                 discard: nil
             )
         case .storageUnavailable:
             LiveUnavailableView(
                 title: "Live recovery unavailable",
-                message: "GridRace could not safely save this live request. No command was sent.",
+                message: "GridRace could not read or remove saved live recovery data. A previous command may still be unresolved.",
                 symbol: "externaldrive.badge.exclamationmark",
                 retry: nil,
-                discard: discardAction
+                discardTitle: "Discard saved recovery data",
+                discard: session.canDiscardRecovery ? { session.discardRecovery() } : nil
             )
         default:
             if let snapshot = session.snapshot {
@@ -185,6 +187,7 @@ struct LiveMatchFlowView: View {
                         ?? "Return Home or try recovering the saved match.",
                     symbol: "wifi.exclamationmark",
                     retry: session.hasSavedMatch ? { session.retry() } : nil,
+                    discardTitle: "Discard saved request",
                     discard: discardAction
                 )
             }
@@ -264,6 +267,7 @@ private struct LiveUnavailableView: View {
     let message: String
     let symbol: String
     let retry: (() -> Void)?
+    let discardTitle: String
     let discard: (() -> Void)?
 
     var body: some View {
@@ -274,7 +278,7 @@ private struct LiveUnavailableView: View {
         } actions: {
             if let retry { Button("Retry", action: retry).buttonStyle(.borderedProminent) }
             if let discard {
-                Button("Discard saved request", role: .destructive, action: discard)
+                Button(discardTitle, role: .destructive, action: discard)
                     .buttonStyle(.bordered)
             }
             NavigationLink("Open Account", value: AppRoute.account)

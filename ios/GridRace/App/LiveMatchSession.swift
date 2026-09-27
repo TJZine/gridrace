@@ -63,6 +63,7 @@ final class LiveMatchSession {
     var hasSavedMatch: Bool { recovery.matchID != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
+    var canDiscardRecovery: Bool { phase == .storageUnavailable && store != nil }
 
     var displayedServerTime: Date? {
         guard let snapshot, let snapshotUptime else { return nil }
@@ -114,23 +115,31 @@ final class LiveMatchSession {
     func changeAccount(to userID: UUID?) {
         guard accountID != userID else { return }
         let oldStore = store
+        let hadAccount = accountID != nil
         resetRuntime()
-        if accountID != nil { try? oldStore?.clear() }
         accountID = userID
-        guard let userID, service != nil else { return }
+        if hadAccount {
+            do {
+                try oldStore?.clear()
+            } catch {
+                store = oldStore
+                phase = .storageUnavailable
+                return
+            }
+        }
+        loadRecovery()
+    }
 
+    func discardRecovery() {
+        guard canDiscardRecovery, let store else { return }
         do {
-            let store = try storeFactory(userID)
-            let recovery = try store.load()
-            self.store = store
-            self.recovery = recovery
-            guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
-            isOpen = true
-            phase = .recovering
-            beginRecovery()
+            try store.clear()
         } catch {
             phase = .storageUnavailable
+            return
         }
+        resetRuntime()
+        loadRecovery()
     }
 
     func createMatch() {
@@ -195,7 +204,7 @@ final class LiveMatchSession {
     }
 
     func retry() {
-        guard accountID != nil else { return }
+        guard accountID != nil, phase != .storageUnavailable else { return }
         lastError = nil
         if recovery.pendingIntent != nil, !isCommandInFlight {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
@@ -241,12 +250,12 @@ final class LiveMatchSession {
         isOpen = false
         snapshot = nil
         snapshotUptime = nil
-        phase = .inactive
+        if phase != .storageUnavailable { phase = .inactive }
         cancelMatchTasks()
     }
 
     func resumeSavedMatch() {
-        guard let matchID = recovery.matchID else { return }
+        guard phase != .storageUnavailable, let matchID = recovery.matchID else { return }
         isOpen = true
         phase = .recovering
         startRealtime(matchID: matchID)
@@ -274,7 +283,10 @@ final class LiveMatchSession {
     }
 
     private var canBeginCommand: Bool {
-        accountID != nil && service != nil && !isCommandInFlight
+        accountID != nil
+            && service != nil
+            && phase != .storageUnavailable
+            && !isCommandInFlight
     }
 
     private func beginRecovery() {
@@ -639,8 +651,14 @@ final class LiveMatchSession {
     }
 
     private func clearSavedMatch() {
+        do {
+            try store?.clear()
+        } catch {
+            phase = .storageUnavailable
+            stopRecoveryLoop()
+            return
+        }
         recovery = LiveRecoveryState()
-        try? store?.clear()
         snapshot = nil
         snapshotUptime = nil
         isOpen = false
@@ -664,6 +682,21 @@ final class LiveMatchSession {
 
     private func isCurrent(_ accountGeneration: Int) -> Bool {
         generation == accountGeneration && accountID != nil && !Task.isCancelled
+    }
+
+    private func loadRecovery() {
+        guard let accountID, service != nil else { return }
+        do {
+            let store = try storeFactory(accountID)
+            self.store = store
+            recovery = try store.load()
+            guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
+            isOpen = true
+            phase = .recovering
+            beginRecovery()
+        } catch {
+            phase = .storageUnavailable
+        }
     }
 
     private func resetRuntime() {
