@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Ready for a fresh rerun after IOS-07 and DOC-03 closure; all prior findings remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Current authorities complete; pending terminal R-01 PASS before marking Historical |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Requires IOS-08 then IOS-09 and final evidence refresh; prior findings remain closed |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Reopened for post-repair authority/evidence refresh; no Historical status before terminal R-01 PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01 and P3-01..04 are complete; the fresh R-01 rerun is next.
+unit only. P2-04B, BLK-01 and P3-01..04 are complete; IOS-08 remediation is next.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,14 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: R-01.** Dispatch a fresh local GridRace project task using
-`gpt-5.6-sol` / medium for a strict read-only review of the complete updated
-implementation and authority net diff. Require explicit IOS-07/DOC-03 revalidation
-alongside every prior closure and all quality dimensions. The controller retains
-orchestration, adjudication, integration and plan ownership. Apply the same fresh-task
-boundary to each implementation package.
+**Exact next unit: IOS-08.** Dispatch a fresh local GridRace project task using
+`gpt-5.6-sol` / medium with ownership of the snapshot mapper and focused transport
+tests. Remove the invalid `completedAt <= serverTime` assumption while preserving the
+`completedAt >= startsAt` and every other fail-closed rule, and add a regression that
+models transaction-time/lock-order inversion. After acceptance/checkpoint, repair
+IOS-09 in a separate fresh task, then refresh authorities/evidence before another fresh
+R-01. The controller retains orchestration, adjudication, integration and plan
+ownership. Apply the same fresh-task boundary to each implementation package.
 Every worker must attempt its structured callback exactly once even when blocked or
 when no commit was created; callback delivery never depends on completing a commit.
 
@@ -566,6 +568,8 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-05 | Medium | Recovery storage load/clear failures can replay stale commands or strand live play. | `changeAccount` and invalid-match cleanup suppress `clear()` failure; failed load drops the new store, leaving no reset path; storage-unavailable copy can falsely claim no command was sent. | Accepted | Retain controllable store access on load failure; add explicit safe discard/reset; surface failed deletion; use uncertainty-accurate copy; inject load/clear failures and prove relaunch/re-auth behavior. | Closed in `21cbd01`: durable discard/reset, failure-latched account transitions, uncertainty copy, focused 20/20, full 154 with two expected skips, clean Debug and controller focused 20/20 passed |
 | IOS-06 | Medium | A throwing recovery-store factory bypasses IOS-05's controllable-store repair. | Construction failure leaves `store == nil`; the UI exposes no discard, and later switch/sign-out treats nil clear as success so a recovered factory can reload and replay stale intent. | Accepted | Keep the transition fail-closed; expose retry/discard once construction recovers; prove durable discard and no stale replay across relaunch/re-auth plus non-advancing switch/sign-out. | Closed in `b476a53`: retry/discard with nil store, failure-latched pending account transition, focused 25/25, full 159 with two expected skips, clean Debug and controller focused 25/25 passed |
 | IOS-07 | Medium | Auth reversion to account A does not cancel a failed A-to-B or A-to-sign-out target. | `changeAccount(to:)` returns early on `accountID == userID` before clearing `requestedAccountID`; later retry/discard can still transition to B or nil and may execute B recovery using A's authenticated client. | Accepted | Reconcile same-account Auth updates by canceling the stale target while keeping storage unavailable; prove both switch and sign-out reversion plus safe retry/discard. | Closed in `eef5789`: stale target cancellation, current-account-only retry/discard, focused 27/27, full 161 executed/159 passed/two expected skips, clean Debug and controller focused 27/27 passed |
+| IOS-08 | Medium | Mapper rejects a valid reveal when `completed_at > server_time`. | Both values use transaction timestamps captured before row locks; a snapshot can start first, wait behind a later-starting finalizer, then return its committed reveal with the earlier snapshot transaction time. | Accepted | Remove the upper bound, retain `completedAt >= startsAt`, and add a focused lock-order/timestamp-inversion fixture. | Open |
+| IOS-09 | Medium | Sign-out and confirmed deletion cannot observe failed durable live-recovery cleanup. | `changeAccount(to:)` returns no outcome; coordinator/model continue and may report success after live storage factory/clear failure, while signed-out UI cannot reach Retry/Discard. | Accepted | Propagate/surface cleanup failure through production account composition, preserve reachable remediation, and add sign-out/deletion integration proof without weakening server-deletion semantics. | Open: serialize after IOS-08 |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
@@ -1055,6 +1059,25 @@ change was required; all pre-existing changes remain unrelated.
 - DOC-03 is closed. This plan intentionally remains Active until a new fresh R-01
   returns terminal `PASS`; Historical closeout remains a separate controller commit.
 
+## R-01 seventh review checkpoint, 2026-09-26
+
+- Fresh read-only task `01a0e058-3a39-7820-a31d-f36a6646dc8d` reviewed the complete
+  `656c6ba..8654333` implementation and authority range. It made no repository or
+  external mutation and returned `REQUIRES FIXES` with IOS-08 and IOS-09 medium.
+- IOS-08 is accepted. Both snapshot `server_time` and finalizer `completed_at` are
+  PostgreSQL transaction timestamps captured before row locks. A snapshot transaction
+  may begin first, wait behind a later-starting finalizer, then observe its committed
+  reveal with `completed_at` later than the snapshot transaction's `server_time`; the
+  client currently rejects that canonical state and stops automatic recovery.
+- IOS-09 is accepted. Live-account changes keep durable storage failure internal, while
+  production sign-out and confirmed deletion continue clearing account state/local
+  caches and can report success. Pending guess, match code or request identity can remain
+  on disk without a reachable signed-out recovery action. Existing session tests do not
+  cover this production coordinator/model seam.
+- The review reconfirmed IOS-02..07, API-01, CI-01, DB-01..07 and DOC-01..03 closed;
+  IOS-01 and IOS-05 reopen only in these newly identified branches. Timeout cancellation
+  remains a hypothesis rather than a finding.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1120,6 +1143,7 @@ Phase 2/3 commits to date:
 | `b4080ae docs(plan): record account reversion finding` | Record IOS-07 and DOC-03 with serialized remediation | Complete |
 | `eef5789 fix(live): cancel reverted account transition` | Cancel stale account targets without escaping fail-closed current-account storage | Complete; IOS-07 closed |
 | `bc53605 docs(plan): record IOS-07 completion` | Record accepted Auth-reversion proof and release final evidence reconciliation | Complete |
+| `8654333 docs: update final live evidence` | Record current IOS-07 focused/full iOS evidence while keeping the plan Active | Complete; DOC-03 closed pending final review |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
