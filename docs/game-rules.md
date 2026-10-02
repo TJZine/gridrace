@@ -27,7 +27,14 @@ the answer or guessed letters.
 This is the authority for Blind Race rules and cross-runtime behavior. Production
 state is server-owned. Phase 1 executes the same pure rules against local tutorial
 fixtures; Phase 2 establishes the backend authority; Phase 3 locally proves it with
-exactly two players and one round.
+exactly two players and one round. Phase 4 keeps exactly two players and implements
+1/3/5 server rounds with nonrepeating random private answers and revealed-only
+canonical match standings. The backend is locally verified; the Phase 4 client is
+pending. After either account deletes, finish the already-started round under the
+existing forfeit/deadline rules, anonymize retained reveals, and freeze remaining
+unstarted rounds. An incomplete match has partial standings, never final results.
+A creator who is merely unavailable leaves a nonfinal reveal waiting indefinitely.
+The 2–8-player rules below describe later expansion, not Phase 4 capacity.
 
 ## Match and round contract
 

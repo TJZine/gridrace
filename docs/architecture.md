@@ -1,8 +1,8 @@
 # GridRace Architecture
 
 This document is the current architecture authority. It separates the permanent
-local Daily Classic mode, the Phase 1 tutorial, and the active Phase 2/3 backend
-and implemented fixed live-race client.
+local Daily Classic mode, the Phase 1 tutorial, the implemented Phase 2/3 client,
+and the locally verified Phase 4 multi-round backend. Phase 4 client work is pending.
 
 ## Daily Classic architecture
 
@@ -96,8 +96,9 @@ Type behavior; domain rules do not depend on those presentation choices.
 
 The implemented local slice is a native SwiftUI client backed by authoritative
 Supabase. Phase 2 owns the backend/authentication trust boundary. Phase 3 connects
-the fixed two-player, one-round client slice to it. The complete 2–8 player,
-multi-round MVP remains later work.
+the fixed two-player, one-round client slice to it. Phase 4 extends the backend
+to exactly two players and 1/3/5 rounds; client transport/recovery/UI remain pending.
+The complete 2–8-player MVP and its other excluded features remain later work.
 
 The client displays server-owned state and submits authenticated intents.
 The backend selects answers, validates accepted words, computes feedback and scores,
@@ -200,6 +201,31 @@ with no timestamps or players. A started round includes the requester's full boa
 and only coarse opponent state/count until reveal; reveal adds the answer, both
 boards, server timing, efficiency, and competition placement. Mapping rejects
 impossible combinations before they become feature state.
+
+## Phase 4 backend ownership
+
+The existing PostgreSQL/Edge owners now accept immutable round configuration and
+explicit Start targets. Persisted target start is the retry truth; a delayed or
+duplicate Start never advances another round. Guess receipts retain their original
+round, word, UUID and response across subsequent rounds and final results. Pending
+rounds have no selected private answer or player rows; selection under the match
+lock excludes all prior answers. No generalized engine or totals table is added.
+
+Snapshot v2 includes the current round, contiguous revealed history, match revision
+and timestamps, and SQL standings over revealed rounds only. SQL ranks exact total
+solve microseconds and floors the sum once for displayed milliseconds. Build-1
+legacy rooms/RPCs/snapshot remain bounded to one round; new rooms have floor 2.
+The existing timing-free Realtime projection remains a refresh signal. The new
+account-deletion terminal reason is service-only and disclosed only in a rostered
+v2 snapshot, without new authenticated column grants or Realtime fields.
+
+Ordinary nonfinal reveal awaits an explicit creator Start. After either account
+deletes, a started round finishes under existing forfeit/deadline rules and
+retained roster identities are anonymized. If configured rounds remain, status is
+incomplete with null match completion and partial standings; final-round deletion
+still yields completed/final results. Cron finalizes deadlines but never advances.
+Swift v2 transport, durable intent migration and cross-round recovery/UI are still
+pending; the active plan owns their separate leases and integration proof.
 
 ## Phase 2/3 account deletion
 

@@ -169,6 +169,9 @@ deno test --config supabase/functions/deno.json supabase/functions/
 npx --no-install supabase --version
 npx --no-install supabase start
 npx --no-install supabase db reset
+# Only confirmed disposable local fixtures: legacy forward-path setup, then upgrade.
+npx --no-install supabase db reset --version 202609260004
+npx --no-install supabase migration up --local
 npx --no-install supabase test db
 npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error
 # In a separate terminal while the integration command below runs:
@@ -191,6 +194,12 @@ xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug
   -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
   -derivedDataPath /tmp/GridRaceDerivedData-build clean build
 ```
+
+Phase 4 P4-B proved the local version-targeted reset and forward migration above
+with disposable legacy lobby/active/revealed fixtures. Reset is destructive and
+always requires current fixture-ownership/disposability proof; never use these
+commands against remote/hosted data. The active plan records identities, receipts,
+grants/RLS and Realtime projection comparisons across the upgrade.
 
 Use `rg --files` and `rg` for discovery when available, but do not treat search
 output as product verification. Scope every diff review by appending `--` and

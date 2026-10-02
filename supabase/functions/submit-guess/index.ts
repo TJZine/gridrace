@@ -31,7 +31,13 @@ export function makeHandler(dependencies?: Dependencies) {
       if (!isUuid(body.match_id) || !isUuid(body.request_id)) {
         return errorResponse("internal_error", 400);
       }
-      if (body.round_number !== 1) return errorResponse("round_not_active");
+      if (
+        typeof body.round_number !== "number" ||
+        !Number.isInteger(body.round_number) ||
+        body.round_number < 1 || body.round_number > (build === 1 ? 1 : 5)
+      ) {
+        return errorResponse("round_not_active");
+      }
       const normalizedGuess = guess(body.guess);
       if (normalizedGuess === null) {
         return errorResponse("invalid_guess_format");
@@ -43,7 +49,7 @@ export function makeHandler(dependencies?: Dependencies) {
           p_user_id: authorized.value.userId,
           p_client_build: build,
           p_match_id: body.match_id,
-          p_round_number: 1,
+          p_round_number: body.round_number,
           p_request_id: body.request_id,
           p_guess: normalizedGuess,
           p_ip_hash: null,

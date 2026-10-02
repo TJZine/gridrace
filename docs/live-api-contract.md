@@ -448,14 +448,17 @@ logged. The local slice has no verified trusted-address provenance, so per-user
 limits and the keyed-IP database path are tested while live IP extraction remains
 documented-only.
 
-## Phase 4 accepted contract — implementation pending
+## Phase 4 accepted contract — backend implemented locally
 
-The preceding v1 contract remains the implemented/proved local baseline. This
-section specifies the accepted Phase 4 extension after independent plan review and
-controller adjudication of its two findings; no v2 implementation or verification
-is claimed. The human approved the UI and freeze-on-
-either-account-deletion policy on 2026-10-02. Product writes wait only for the accepted-plan checkpoint commit; plan review and
-its targeted corrections are complete. The sole
+The preceding v1 contract remains the supported legacy local contract. The backend
+implements this accepted Phase 4 extension in migration
+`202610020001_blind_race_multiround.sql` and the existing Edge commands. Local
+forward/reset, grants/RLS, scoring, concurrency and real gateway proof are recorded
+in the active plan. Swift transport, recovery, UI and independent-client product
+integration remain pending; this is not a complete Phase 4 or hosted rollout.
+The human approved the UI and freeze-on-either-account-deletion policy on
+2026-10-02. Independent plan review and targeted corrections were checkpointed
+at `3a01d9a` before product writes. The sole
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md) owns packages and proof;
 this section owns the frozen wire/recovery extension. Existing game rules own
 unchanged scoring and deadlines. No hosted rollout or compatibility framework is
@@ -564,7 +567,7 @@ one-round and 3/5-round cases; no historical count substitutes for this proof.
 
 ### SQL migration, deletion, locking and revision
 
-One forward migration (planned supabase/migrations/202610020001_blind_race_multiround.sql); never edit applied history. Widen match round_count to 1/3/5, current_round to 1...round_count, rounds/guess_requests round numbers to 1...5; preserve two-seat, uniqueness, result and timing constraints. Create configured pending round rows atomically; private secrets/player rows are created only when that target starts. Select random active answer excluding all previously selected match secrets under the match lock. Fail internal_error without partial transition if eligible pool exhausted. Existing one-round fixtures require no ID/answer/result changes.
+One forward migration (supabase/migrations/202610020001_blind_race_multiround.sql); never edit applied history. Widen match round_count to 1/3/5, current_round to 1...round_count, rounds/guess_requests round numbers to 1...5; preserve two-seat, uniqueness, result and timing constraints. Create configured pending round rows atomically; private secrets/player rows are created only when that target starts. Select random active answer excluding all previously selected match secrets under the match lock. Fail internal_error without partial transition if eligible pool exhausted. Existing one-round fixtures require no ID/answer/result changes.
 
 finalize_round retains exact round comparator and reveals atomically. Nonfinal reveal leaves match in_progress; final reveal completes; accepted D4 blocked nonfinal reveal becomes incomplete. Standings are transactionally consistent SQL aggregation of immutable revealed results under the same match lock, requiring no persisted aggregate cache. Repeated finalization performs no update. All canonical mutations update match/revision in the same transaction; idempotent Start/create/guess/join/snapshot repeats do not. Snapshot includes revision after finalization, never pre-finalizer revision.
 

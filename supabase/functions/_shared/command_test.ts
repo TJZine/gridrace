@@ -1,4 +1,4 @@
-import { readRequest } from "./command.ts";
+import { errorResponse, readRequest } from "./command.ts";
 
 const headers = {
   authorization: "Bearer test-token",
@@ -95,4 +95,21 @@ Deno.test("cancels an oversized stream before consuming its remaining chunks", a
 Deno.test("preserves malformed and empty JSON rejection", async () => {
   assertEquals(await status("{invalid"), 400);
   assertEquals(await status(""), 400);
+});
+
+Deno.test("maps multi-round configuration and deletion errors safely", async () => {
+  for (
+    const [code, status, message] of [
+      ["invalid_match_configuration", 400, "Choose 1, 3, or 5 rounds."],
+      [
+        "match_incomplete",
+        409,
+        "This match cannot continue because a player account was deleted.",
+      ],
+    ] as const
+  ) {
+    const response = errorResponse(code);
+    assertEquals(response.status, status);
+    assertEquals(await response.json(), { error: { code, message } });
+  }
 });

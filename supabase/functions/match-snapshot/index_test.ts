@@ -274,3 +274,26 @@ function assertEquals(actual: unknown, expected: unknown): void {
   const right = JSON.stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
+
+Deno.test("returns SQL snapshot v2 history and standings unchanged", async () => {
+  const snapshot = {
+    version: 2,
+    match: {
+      id: MATCH_ID,
+      current_round: 2,
+      round_count: 3,
+      status: "in_progress",
+      revision: 9,
+      terminal_reason: null,
+    },
+    round: { number: 2, state: "countdown", answer: null },
+    revealed_rounds: [{ number: 1, state: "revealed", answer: "apple" }],
+    standings: { through_round: 1, is_final: false, players: [] },
+  };
+  const invoked = await invoke({
+    request: post(validBody()),
+    rpcResults: [ok(snapshot)],
+  });
+  assertEquals(invoked.response.status, 200);
+  assertEquals(invoked.body, { data: snapshot });
+});

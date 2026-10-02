@@ -105,6 +105,14 @@ recovery status,
 and creator-only Start. It does not add readiness, public discovery, chat, or late
 joining.
 
+The accepted Phase 4 direction adds a native 1/3/5 Create selector (3 selected),
+Round N of M, the existing reveal followed by canonical standings, creator-only
+Start next, and final standings/Home/prior reveals. If either account deletes,
+finish the started round then show incomplete/Home with preserved anonymized
+reveals and partial standings. Ordinary creator absence keeps the reveal waiting.
+The backend implements these boundaries; this material UI direction is approved
+but its Swift presentation remains pending. No presence, transfer or auto advance.
+
 ### Countdown and round
 
 The countdown is a dedicated three-second state driven from an absolute start

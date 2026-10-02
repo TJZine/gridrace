@@ -94,7 +94,7 @@ function get(): Request {
 }
 
 function validBody(): JsonObject {
-  return { client_build: 7, match_id: MATCH_ID };
+  return { client_build: 7, match_id: MATCH_ID, round_number: 3 };
 }
 
 function ok(data: JsonObject): DatabaseResult {
@@ -132,6 +132,7 @@ Deno.test("starts a match through the start_match RPC", async () => {
     p_user_id: USER_ID,
     p_client_build: 7,
     p_match_id: MATCH_ID,
+    p_round_number: 3,
   });
   assertEquals(invoked.authenticateCalls, 1);
 });
@@ -274,3 +275,46 @@ function assertEquals(actual: unknown, expected: unknown): void {
   const right = JSON.stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
+
+Deno.test("forwards immutable supported round targets and legacy round one entry", async () => {
+  for (const target of [1, 2, 3, 4, 5]) {
+    const invoked = await invoke({
+      request: post({ ...validBody(), round_number: target }),
+      rpcResults: [ok({ match_id: MATCH_ID })],
+    });
+    assertEquals(invoked.response.status, 200);
+    assertEquals(invoked.rpcCalls[0].parameters.p_round_number, target);
+  }
+  const legacy = await invoke({
+    request: post({ client_build: 1, match_id: MATCH_ID }),
+    rpcResults: [ok({ match_id: MATCH_ID })],
+  });
+  assertEquals(legacy.response.status, 200);
+  assertEquals(legacy.rpcCalls[0].parameters.p_round_number, undefined);
+});
+
+Deno.test("rejects absent, extra and invalid captured targets", async () => {
+  for (const target of [0, 6, 1.5, "2", null, true]) {
+    const invoked = await invoke({
+      request: post({ ...validBody(), round_number: target }),
+    });
+    assertEquals(invoked.response.status, 409);
+    assertEquals(codeOf(invoked.body), "round_not_active");
+    assertEquals(invoked.rpcCalls.length, 0);
+  }
+  for (
+    const body of [
+      { client_build: 2, match_id: MATCH_ID },
+      { client_build: 1, match_id: MATCH_ID, round_number: 1 },
+    ]
+  ) {
+    const invoked = await invoke({ request: post(body) });
+    assertEquals(invoked.response.status, 400);
+  }
+  const blocked = await invoke({
+    request: post(validBody()),
+    rpcResults: [domainError("match_incomplete")],
+  });
+  assertEquals(blocked.response.status, 409);
+  assertEquals(codeOf(blocked.body), "match_incomplete");
+});

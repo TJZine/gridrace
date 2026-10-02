@@ -17,12 +17,13 @@ Current checkpoint: the Phase 2/3 local slice is complete, all accepted repairs 
 passed verification, and terminal closure review passed on 2026-10-02. The execution
 plan is Historical; no implementation package remains open in that local scope.
 
-Accepted next scope: Phase 4 anytime private two-player Blind Race with 1/3/5
-rounds (default 3), creator-controlled countdowns, nonrepeating private server
-answers, canonical round/match standings and cross-round recovery. UI and
-freeze-on-either-account-deletion decisions are accepted. Implementation has not
-started; independent plan review returned two findings, both traced and repaired
-by the controller. The accepted-plan checkpoint precedes backend implementation.
+Phase 4 is active: anytime private two-player Blind Race with 1/3/5 rounds
+(default 3), creator-controlled countdowns, nonrepeating private server answers,
+canonical round/match standings and cross-round recovery. UI and freeze-after-either-
+account-deletion decisions are accepted. Independent plan review was adjudicated
+and checkpointed at `3a01d9a` before product writes. P4-B backend/Edge is implemented
+and locally verified; Swift contract/session/storage, build-2 composition, UI,
+real independent-client product proof and fresh final review remain pending.
 Current execution belongs to the
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
 
@@ -36,7 +37,16 @@ physical-device accessibility, production word provenance, trusted hosted client
 provenance, and the broader MVP remain explicit external or later gates.
 No paid commitment is authorized.
 
-Last meaningful verification: clean database reset; 290 pgTAP assertions; three-schema
+Latest backend Phase 4 proof: forward migration preserves legacy lobby/active/
+revealed identities, snapshots, successful receipts and grants; clean reset;
+739 pgTAP assertions (290 existing plus 449 new); three-schema lint with no new
+errors; Edge format/lint/check and 107 tests. Real gateway proof covers 1/3/5
+rounds, exact standings/ties, private nonrepeating answers, duplicate/stale command
+barriers, deletion boundaries and scheduled finalization without auto advance.
+Controller independently repeated database/Edge/gateway gates; details and remaining
+client gates live in the Active plan. No Phase 4 iOS proof is claimed yet.
+
+Historical Phase 2/3 verification: clean database reset; 290 pgTAP assertions; three-schema
 database lint; Edge format/lint/check and 100 tests; full iOS suite with 183 executed,
 181 passed, two expected opt-in integration skips and zero failures; clean Debug build;
 focused live-session/presentation proof 50/50 (44 session, six presentation) independently

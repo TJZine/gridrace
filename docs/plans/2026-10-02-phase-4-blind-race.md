@@ -18,9 +18,12 @@ unstarted remaining rounds with an explicit incomplete-match presentation.
 Independent read-only P4-PR completed with two concrete planning findings. The
 controller traced both, accepted them and corrected the contract matrix and account
 test lease below. Targeted planning closure is complete; there is no unresolved
-material product or contract choice. This accepted-plan checkpoint must be committed
-before product writes. No Phase 4 product tests or database/simulator operations
-occurred; implementation/proof/final review remain required.
+material product or contract choice. The accepted-plan checkpoint is
+`3a01d9ab7772dbfa158d7ffcba2df13b7958694c`, committed before product writes.
+P4-B returned its completed backend/Edge unit and released all writes/processes.
+Controller source/preservation audit and independent backend verification passed.
+Swift C/I, UI, independent-client product proof and final review remain
+required. This plan stays Active.
 
 ## Repository snapshot and authority
 
@@ -187,7 +190,7 @@ one-round and 3/5-round cases; no historical count substitutes for this proof.
 
 ## SQL migration, deletion, locking and revision
 
-One forward migration (planned supabase/migrations/202610020001_blind_race_multiround.sql); never edit applied history. Widen match round_count to 1/3/5, current_round to 1...round_count, rounds/guess_requests round numbers to 1...5; preserve two-seat, uniqueness, result and timing constraints. Create configured pending round rows atomically; private secrets/player rows are created only when that target starts. Select random active answer excluding all previously selected match secrets under the match lock. Fail internal_error without partial transition if eligible pool exhausted. Existing one-round fixtures require no ID/answer/result changes.
+One forward migration (supabase/migrations/202610020001_blind_race_multiround.sql); never edit applied history. Widen match round_count to 1/3/5, current_round to 1...round_count, rounds/guess_requests round numbers to 1...5; preserve two-seat, uniqueness, result and timing constraints. Create configured pending round rows atomically; private secrets/player rows are created only when that target starts. Select random active answer excluding all previously selected match secrets under the match lock. Fail internal_error without partial transition if eligible pool exhausted. Existing one-round fixtures require no ID/answer/result changes.
 
 finalize_round retains exact round comparator and reveals atomically. Nonfinal reveal leaves match in_progress; final reveal completes; accepted D4 blocked nonfinal reveal becomes incomplete. Standings are transactionally consistent SQL aggregation of immutable revealed results under the same match lock, requiring no persisted aggregate cache. Repeated finalization performs no update. All canonical mutations update match/revision in the same transaction; idempotent Start/create/guess/join/snapshot repeats do not. Snapshot includes revision after finalization, never pre-finalizer revision.
 
@@ -198,7 +201,7 @@ Accepted D4 policy: lobby host/guest deletion stays unchanged. After start, deta
 The new block reason is snapshot-only/service-readable, while existing status
 reads/publication remain clue-free; keep aggregate fields out of authenticated base-table column grants/Realtime. Keep matches.updated_at/member auth/selected_at/private schemas hidden. Direct revealed round/guess access remains roster-authorized; future pending rows carry no answer/players. No new public result table is needed.
 
-Forward proof must precede any destructive reset: inventory actual local data/linked refs and prove fixture disposability. If current rooms are user data, stop reset and preserve them; obtain a controller-selected disposable local target. On a confirmed disposable baseline fixture, retain legacy lobby/active/revealed rooms, create receipts and accepted-guess receipts, apply the migration forward and assert exact old identities/results/grants plus new contracts. Candidate invocation npx --no-install supabase migration up --local is NOT runbook canon yet; prove it against the installed pinned CLI, record output before promotion. Do not substitute a clean reset for forward proof. Then clean reset/test/lint on confirmed disposable local state. A migration failure rolls back its transaction; after applied product changes use a reviewed forward repair, not destructive reset of retained rooms or down-migration guesswork.
+Forward proof must precede any destructive reset: inventory actual local data/linked refs and prove fixture disposability. If current rooms are user data, stop reset and preserve them; obtain a controller-selected disposable local target. On a confirmed disposable baseline fixture, retain legacy lobby/active/revealed rooms, create receipts and accepted-guess receipts, apply the migration forward and assert exact old identities/results/grants plus new contracts. P4-B proved npx --no-install supabase migration up --local against pinned CLI 2.116.0 with legacy fixtures; controller promoted it to runbook canon with the disposable-only precondition. Do not substitute a clean reset for forward proof. Then clean reset/test/lint on confirmed disposable local state. A migration failure rolls back its transaction; after applied product changes use a reviewed forward repair, not destructive reset of retained rooms or down-migration guesswork.
 
 ## Recovery-file and session boundaries
 
@@ -232,7 +235,7 @@ All paths are exact leases, not directory-wide permission. Shared DTOs/API/error
 
 ## Verification matrix and exact command families
 
-Planning inspection only; every row below remains implementation work. Record named scenario/output/fixture/toolchain, not counts alone.
+P4-B backend evidence is recorded below; Swift/UI/product integration rows remain pending. Record named scenario/output/fixture/toolchain, not counts alone.
 
 | Acceptance | Existing harness and required scenarios |
 | --- | --- |
@@ -244,7 +247,7 @@ Planning inspection only; every row below remains implementation work. Record na
 | A8 | Existing deletion SQL/Edge/account harnesses extended: host/guest lobby, countdown/play/solved/at nonfinal reveal/at later start/final/completed; accepted D4 matrix and v1/v2 AccountTests cleanup; all reveal identities anonymized; both removed, no recoverable auth mapping; stale JWT denial; deletion versus Start/submit/join/Cron across two matches in opposite deadline order, bounded barrier completion; lost preparation/Auth/completion responses; Daily/account/live cleanup failure remains recoverable. |
 | A9 | LiveMatchViewTests plus simulator inspection of every new state: largest Dynamic Type, VoiceOver semantic focus/order, nonanimated reveal, contrast/Bold Text/non-color feedback, 44pt targets, hardware keyboard/haptic preference; all existing Daily, tutorial, account and shared-vector tests. Physical-device proof remains an external gate. |
 
-Runbook commands, unchanged unless a proved candidate is explicitly promoted:
+Runbook command families (forward migration now promoted after P4-B proof):
 
 ```bash
 python3 scripts/check_word_pack.py --checked-in-only
@@ -331,7 +334,11 @@ Controller owns this integrated draft and all tracking/authority updates.
 ## Callback coordination and lease state
 
 Current controller: `01a0fc7c-88b3-7f80-9631-504b4baffc45`, host `local`.
-Planner and P4-PR read-only leases released; neither started owned processes. P4-B receives the next exact backend/Edge write and exclusive local-database verification lease only after this accepted-plan checkpoint is committed. Worker and
+Planner and P4-PR read-only leases released; neither started owned processes. P4-B
+worker `01a0fdd9-3876-7cf3-8c85-bef9083a6745` returned its single callback and released
+all file/database/gateway leases, with no later writes. Controller independent local backend proof is complete and its database/gateway
+processes are stopped. P4-C next receives the exact client/simulator lease after
+the backend checkpoint and controller P4-I preparation. Worker and
 reviewer packets explicitly authorize exactly one callback to this controller after
 finishing all owned processes and releasing leases; no later writes. Callback must
 include RESULT, FILES, PROOF, ASSUMPTIONS, BLOCKERS and HEAD/status even when blocked
@@ -346,24 +353,99 @@ reviewer reported untouched input bytes, clean index and all six unrelated hashe
 Controller independently read the existing match CHECK and AccountTests caller,
 then inspected corrected matrix/lease/proof in plan and API. Scoped documentation
 whitespace, exact path/reference inspection, full owned diff audit and unrelated hash
-checks are the applicable gate. No product test/reset/build or remote action occurred;
+checks were the applicable planning gate. At that checkpoint no product test/reset/build or remote action had occurred;
 prior Phase 2/3 counts are historical only.
 
-Accepted-plan checkpoint: **this commit**, limited to this plan, live-api-contract,
+Accepted-plan checkpoint: **3a01d9ab7772dbfa158d7ffcba2df13b7958694c**, limited to this plan, live-api-contract,
 DECISIONS, NOW and TODO. Reviewer did not independently re-review the repairs;
 controller targeted closure satisfies the bounded review policy. Implementation
-packages and final full-scope proof/review remain pending. Record the resulting SHA
-at the next controller checkpoint without a tracking-only commit.
+packages and final full-scope proof/review remain pending. Record subsequent
+implementation SHAs at meaningful checkpoints without tracking-only commits.
+
+## P4-B backend integration and proof
+
+Worker `01a0fdd9-3876-7cf3-8c85-bef9083a6745` delivered all 12 leased paths,
+2,377 added/30 removed lines, no Git/tracking/composition change and no blockers.
+All worker product SHA256 values match the handoff; the controller read the entire
+migration, Edge diff, new SQL tests and expanded real integration harness, tracing
+receipt order, actor/profile recheck, match/round/player locks, timestamp/reason
+matrix, exact SQL aggregation, secrecy, grants and unchanged effective repairs.
+No new dependency, base-table client grant or Realtime field was added. This is
+controller integration inspection; the fresh final independent review remains due.
+
+Worker proof, exact commands and logs are in
+`/tmp/gridrace-phase4-backend-result.json`. Local startup was unlinked with zero
+Auth/profile/match/Daily rows and no GridRace containers/volumes; all later data was
+synthetic. Before its forward reset, the worker confirmed disposability, then used
+`npx --no-install supabase db reset --version 202609260004`, actual legacy
+lobby/active/revealed fixtures and successful create/guess receipts, and
+`npx --no-install supabase migration up --local`. Before/after snapshots (excluding
+server_time), IDs, results, receipt replay, RLS roster/outsider visibility and
+existing grant/publication hashes matched. New RPCs and terminal reason remain
+client-denied. These successful local candidate commands are now runbook canon
+under the same disposable-only precondition; no applied history was edited.
+
+Clean reset and `npx --no-install supabase test db`: seven SQL files, **739 pgTAP**
+assertions (290 retained plus 449 new), all pass. Three-schema lint passes with only
+unchanged join/random-code/normalizer/evaluator warnings. Edge fmt/lint, explicit
+shared/six-handler check and **107 tests** pass. Seed, shared TypeScript vectors
+(three tests) and portable checked-in word-pack chain pass. Dictionary artifacts
+are unchanged; source regeneration is unaffected. Worker real Auth/Edge/RLS/
+Realtime harness: **429 requests, 142 snapshots, 6,881 bytes maximum snapshot,
+5,016ms maximum request** (deliberate barrier). All legacy scenarios remain;
+1/3/5 target/guess duplicates and stale/final receipts, exact sums and ties,
+post-lock deletion/profile checks, queued deletion/Start for both actors and
+multi-match lock order pass. Actual scheduled pg_cron reveals ordinary nonfinal,
+deleted nonfinal and final rounds without client finalization; never starts next.
+Ordinary reveal accepts the creator's later Start after initial lobby expiry.
+
+Controller independently restarted the stopped local backup and checked counts:
+Auth=0, profiles=0, Daily=0, live identity links=0, 20 retained synthetic matches
+(15 completed/5 incomplete), 40 anonymized Deleted Player members. This matched
+the released worker ownership record before any controller reset. Controller then
+reran clean reset, all **739 pgTAP**, three-schema lint, Edge **107 tests**, and
+Edge/integration formatting plus Edge lint. Logs use
+`/tmp/gridrace-phase4-controller-{reset,db,db-lint,edge,format,lint}.log`.
+Controller also reran the full real gateway harness: **429 requests, 142 snapshots,
+6,882 bytes maximum snapshot, 5,011ms maximum request** (deliberate barrier), all
+legacy and v2 scenarios pass. Its 51 actual gateway snapshots separately pass the
+same structural/disclosure/matrix/exact-timestamp validation; artifacts are
+`/tmp/gridrace-phase4-controller-snapshots-v2.json` and
+`/tmp/gridrace-phase4-controller-snapshot-inventory.json`. Real integration log is
+`/tmp/gridrace-phase4-controller-integration.log`, with raw fixture lines extracted
+into the artifact; validation log is
+`/tmp/gridrace-phase4-controller-snapshot-validation.log`.
+Final inventory Auth/profile/live auth links/Daily=0, 20 fully anonymized synthetic
+matches, no barrier SQL sessions, `gridrace-finalize-rounds` active. Owned gateway
+PID93094 was verified in this checkout, SIGINT/exited0; local stack stopped with
+`npx --no-install supabase stop --project-id gridrace`, retaining only its backup
+volumes. No owned process or container remains. Startup credential summaries were
+omitted; no service key/client credential enters repository evidence or Swift inputs.
+
+Actual worker gateway JSON is preserved in
+`/tmp/gridrace-phase4-backend-snapshots-v2.json` (root.snapshots, 51 labels), inventory
+`/tmp/gridrace-phase4-backend-snapshot-inventory.json`. Validation covers required
+fields, current/history equality, disclosure, revealed-only totals, every match
+matrix, first countdown, board eligibility and solved timing. Exact-time/tie rows
+are coherent privileged synthetic SQL fixtures, copied unchanged from gateway.
+These are P4-C mapper inputs, not a substitute for later two-simulator proof.
+
+Toolchain: pinned repository Supabase CLI 2.116.0; Deno 2.9.7 versus runbook 2.9.5;
+Node 24.14/npm 11.9 versus CI Node20.20.2; psql18.6/PostgreSQL17.6/pg_cron1.6.4;
+Docker29.8. No pins/dependencies changed. Swift/Xcode proof is still pending.
+Controller verified all six unrelated byte baselines and empty index at transfer;
+worker leases/processes were released before callback. No remote or release action.
 
 ## Blockers, stop conditions and next action
 
 D3/D4 resolved; P4-PR-01/02 accepted and repaired; no outstanding planning blocker.
-Next commit the five-document accepted handoff, then release fresh Sol/medium P4-B
-with exact backend/Edge leases. Worker first inventories local target/disposability,
-proves forward migration and reset only on confirmed disposable fixtures, implements
-all backend contracts and meaningful proof, then releases processes/lease before
-its one callback. Controller owns integration and commits; no overlapping database
-or simulator owner, unrelated writes or scope reapproval.
+P4-B worker and controller backend gates passed; complete diff/preservation audit
+and authority reconciliation are complete. This backend content checkpoint is
+committed before P4-C. Controller then prepares build-2 composition and dispatches
+fresh Sol/medium P4-C with real v2 snapshots and corrected exact leases. Swift
+contracts/storage/session and composition share one integrated next checkpoint;
+UI P4-U and real independent-client P4-V follow before one final review. No material
+decision is pending and no overlapping database/simulator owner is permitted.
 
 Stop for multiple Active plans, unexpected overlap, material authority/contract gaps,
 unknown fixture ownership/disposability, unavailable required proof or any remote,

@@ -69,7 +69,7 @@ function post(body: JsonObject, token: string | null = TOKEN): Request {
   return new Request("http://localhost/create-match", {
     method: "POST",
     headers,
-    body: JSON.stringify({ request_id: REQUEST_ID, ...body }),
+    body: JSON.stringify({ request_id: REQUEST_ID, round_count: 3, ...body }),
   });
 }
 
@@ -130,6 +130,7 @@ Deno.test("creates a match through the create_match RPC", async () => {
     p_client_build: 7,
     p_ip_hash: null,
     p_request_id: REQUEST_ID,
+    p_round_count: 3,
   });
   assertEquals(invoked.authenticateCalls, 1);
 });
@@ -172,7 +173,7 @@ const failures: FailureCase[] = [
   },
   {
     name: "rejects a body missing client_build",
-    request: () => post({}),
+    request: () => postRaw(JSON.stringify({ request_id: REQUEST_ID })),
     status: 400,
     code: "internal_error",
     rpcCalls: 0,
@@ -289,3 +290,43 @@ function assertEquals(actual: unknown, expected: unknown): void {
   const right = JSON.stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
+
+Deno.test("forwards every supported count and preserves legacy exact keys", async () => {
+  for (const count of [1, 3, 5]) {
+    const invoked = await invoke({
+      request: post({ client_build: 2, round_count: count }),
+      rpcResults: [ok({ match_id: MATCH_ID })],
+    });
+    assertEquals(invoked.response.status, 200);
+    assertEquals(invoked.rpcCalls[0].parameters.p_round_count, count);
+  }
+  const legacy = await invoke({
+    request: postRaw(
+      JSON.stringify({ client_build: 1, request_id: REQUEST_ID }),
+    ),
+    rpcResults: [ok({ match_id: MATCH_ID })],
+  });
+  assertEquals(legacy.response.status, 200);
+  assertEquals(legacy.rpcCalls[0].parameters.p_round_count, undefined);
+});
+
+Deno.test("requires a supported integer count for new builds", async () => {
+  for (const count of [0, 2, 4, 6, 1.5, "3", true, null]) {
+    const invoked = await invoke({
+      request: post({ client_build: 2, round_count: count }),
+    });
+    assertEquals(invoked.response.status, 400);
+    assertEquals(codeOf(invoked.body), "invalid_match_configuration");
+    assertEquals(invoked.rpcCalls.length, 0);
+  }
+  for (
+    const body of [
+      { client_build: 2, request_id: REQUEST_ID },
+      { client_build: 1, request_id: REQUEST_ID, round_count: 1 },
+    ]
+  ) {
+    const invoked = await invoke({ request: postRaw(JSON.stringify(body)) });
+    assertEquals(invoked.response.status, 400);
+    assertEquals(codeOf(invoked.body), "internal_error");
+  }
+});

@@ -67,6 +67,7 @@ try {
     const conflict = await edge(host.session, "create-match", {
       client_build: 2,
       request_id: requestId,
+      round_count: 1,
     });
     assertError(conflict, 409, "request_conflict");
 
@@ -1147,6 +1148,899 @@ try {
     assert(replay.status === 200, "completed deletion replay");
   });
 
+  await scenario(
+    "v2 configured rounds, target concurrency, receipts and exact standings",
+    async () => {
+      for (const count of [1, 3, 5]) {
+        const host = await createUser(`v2-${count}-host`);
+        const guest = await createUser(`v2-${count}-guest`);
+        const requestId = crypto.randomUUID();
+        const created = await edge(host.session, "create-match", {
+          client_build: 2,
+          request_id: requestId,
+          round_count: count,
+        });
+        const match = matchId(created);
+        const snap = async (viewer = host) =>
+          data(
+            await edge(viewer.session, "match-snapshot", {
+              client_build: 2,
+              match_id: match,
+            }),
+          );
+        const start = (target: number, viewer = host) =>
+          edge(viewer.session, "start-match", {
+            client_build: 2,
+            match_id: match,
+            round_number: target,
+          });
+        const submit = (
+          viewer: TestUser,
+          target: number,
+          id: string,
+          word: string,
+        ) =>
+          edge(viewer.session, "submit-guess", {
+            ...guessBody(match, id, word),
+            client_build: 2,
+            round_number: target,
+          });
+        const capture = (label: string, snapshot: Json) => {
+          console.log(`FIXTURE ${count}-${label} ${JSON.stringify(snapshot)}`);
+        };
+        let snapshot = await snap();
+        capture("lobby", snapshot);
+        assert(snapshot.version === 2, "snapshot2 version");
+        assert(
+          snapshot.standings === null &&
+            array(snapshot.revealed_rounds).length === 0,
+          "no premature standings",
+        );
+        assertError(
+          await edge(host.session, "match-snapshot", {
+            client_build: 1,
+            match_id: match,
+          }),
+          426,
+          "client_update_required",
+        );
+        assertError(
+          await edge(host.session, "create-match", {
+            client_build: 2,
+            request_id: requestId,
+            round_count: count === 1 ? 3 : 1,
+          }),
+          409,
+          "request_conflict",
+        );
+        assertError(
+          await edge(host.session, "create-match", {
+            client_build: 2,
+            request_id: crypto.randomUUID(),
+            round_count: 2,
+          }),
+          400,
+          "invalid_match_configuration",
+        );
+        const deniedCreate = await host.client.rpc("create_match", {
+          p_user_id: host.id,
+          p_client_build: 2,
+          p_ip_hash: null,
+          p_request_id: crypto.randomUUID(),
+          p_round_count: count,
+        });
+        const deniedStart = await host.client.rpc("start_match", {
+          p_user_id: host.id,
+          p_client_build: 2,
+          p_match_id: match,
+          p_round_number: 1,
+        });
+        assert(
+          deniedCreate.error !== null && deniedStart.error !== null,
+          "v2 direct RPC denial",
+        );
+        const reason = await host.client.from("matches").select(
+          "terminal_reason",
+        ).eq("id", match);
+        assert(reason.error !== null, "terminal reason direct denial");
+        assert(
+          (await edge(guest.session, "join-match", {
+            client_build: 2,
+            join_code: nestedString(snapshot, "match", "join_code"),
+          })).status === 200,
+          "v2 guest join",
+        );
+        assertError(await start(1, guest), 403, "not_host");
+        let originalReceipt: EdgeResult | undefined;
+        let originalWord = "";
+        const receiptId = crypto.randomUUID();
+        for (let target = 1; target <= count; target++) {
+          const beforeRevision = nested(await snap(), "match", "revision");
+          const signal = count === 3 && target === 2
+            ? await subscribeToMatchSignal(guest, match)
+            : undefined;
+          const barrier = await holdMatchLockBarrier(
+            match,
+            `gridrace-v2-start-${crypto.randomUUID()}`,
+          );
+          let starts: Promise<EdgeResult[]>;
+          const startsRequests: Promise<EdgeResult>[] = [];
+          try {
+            const first = start(target);
+            startsRequests.push(first);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%start_match%'`,
+              "1",
+              "first Start waits behind barrier",
+            );
+            const second = start(target);
+            startsRequests.push(second);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%start_match%'`,
+              "2",
+              "second Start waits behind actor lock",
+            );
+            starts = Promise.all([first, second]);
+          } finally {
+            await barrier.release();
+            await Promise.allSettled(startsRequests);
+            if (signal) {
+              try {
+                const payload = await signal.next;
+                assert(
+                  Object.keys(payload).every((key) =>
+                    safeMatchColumns.split(",").includes(key)
+                  ),
+                  "v2 Realtime safe column projection",
+                );
+                assert(
+                  payload.current_round === target,
+                  "v2 Realtime next-round signal",
+                );
+                assert(
+                  !("terminal_reason" in payload) && !("standings" in payload),
+                  "v2 Realtime no reason or totals",
+                );
+              } finally {
+                await signal.close();
+              }
+            }
+          }
+          assert(
+            (await starts!).every((result) => result.status === 200),
+            "concurrent targeted starts succeed",
+          );
+          snapshot = await snap();
+          capture(`round-${target}-countdown`, snapshot);
+          assert(
+            Number(nested(snapshot, "match", "revision")) ===
+              Number(beforeRevision) + 1,
+            "Start mutates once",
+          );
+          assert(
+            nested(snapshot, "round", "number") === target,
+            "immutable target is current",
+          );
+          assert(
+            nested(snapshot, "round", "state") === "countdown",
+            "countdown starts",
+          );
+          assert(
+            nested(snapshot, "round", "answer") === null,
+            "active answer hidden",
+          );
+          assert(
+            array(snapshot.revealed_rounds).length === target - 1,
+            "history stops before current",
+          );
+          assertOpponentBoardHidden(snapshot);
+          assert(
+            await sqlScalar(
+              `select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+                uuid(match)
+              }'`,
+            ) === String(target),
+            "future secrets absent",
+          );
+          assert(
+            await sqlScalar(
+              `select count(distinct s.answer) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+                uuid(match)
+              }'`,
+            ) === String(target),
+            "answers nonrepeating",
+          );
+          assert(
+            await sqlScalar(
+              `select count(*) from public.player_rounds p join public.rounds r on r.id=p.round_id where r.match_id='${
+                uuid(match)
+              }'`,
+            ) === String(2 * target),
+            "future player rows absent",
+          );
+          const direct = await host.client.from("rounds").select(
+            "round_number,revealed_answer",
+          ).eq("match_id", match);
+          assert(
+            !direct.error &&
+              direct.data.every((row) =>
+                row.round_number < target || row.revealed_answer === null
+              ),
+            "RLS no future or active answer",
+          );
+          if (target < count) {
+            assertError(await start(target + 1), 409, "round_not_active");
+            assertError(
+              await submit(host, target + 1, crypto.randomUUID(), "apple"),
+              409,
+              "round_not_active",
+            );
+          }
+          if (target > 1) {
+            const stale = await start(target - 1);
+            assert(stale.status === 200, "stale started target succeeds");
+            assert(
+              nested(await snap(), "match", "revision") ===
+                nested(snapshot, "match", "revision"),
+              "stale target no mutation",
+            );
+            assert(
+              JSON.stringify(
+                (await submit(host, 1, receiptId, originalWord)).body,
+              ) === JSON.stringify(originalReceipt!.body),
+              "cross-round receipt exact response/time",
+            );
+            assertError(
+              await submit(host, target, receiptId, originalWord),
+              409,
+              "request_conflict",
+            );
+          }
+          await delay(3100);
+          snapshot = await snap();
+          capture(`round-${target}-playing`, snapshot);
+          const answer = await sqlScalar(
+            `select s.answer from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+              uuid(match)
+            }' and r.round_number=${target}`,
+          );
+          const wrong = await anotherWord(answer);
+          const id = target === 1 ? receiptId : crypto.randomUUID();
+          const guessBarrier = await holdMatchLockBarrier(
+            match,
+            `gridrace-v2-guess-${crypto.randomUUID()}`,
+          );
+          let guesses: Promise<EdgeResult[]>;
+          const guessesRequests: Promise<EdgeResult>[] = [];
+          try {
+            const first = submit(host, target, id, wrong);
+            guessesRequests.push(first);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%submit_guess%'`,
+              "1",
+              "guess waits on match barrier",
+            );
+            const second = submit(host, target, id, wrong);
+            guessesRequests.push(second);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%submit_guess%'`,
+              "2",
+              "duplicate waits on actor",
+            );
+            guesses = Promise.all([first, second]);
+          } finally {
+            await guessBarrier.release();
+            await Promise.allSettled(guessesRequests);
+          }
+          const accepted = await guesses!;
+          assert(
+            accepted.every((result) => result.status === 200),
+            "duplicate guesses succeed",
+          );
+          assert(
+            JSON.stringify(accepted[0].body) ===
+              JSON.stringify(accepted[1].body),
+            "duplicate receipts identical",
+          );
+          assert(
+            await sqlScalar(
+              `select count(*) from public.guesses where request_id='${
+                uuid(id)
+              }'`,
+            ) === "1",
+            "one canonical guess",
+          );
+          if (target === 1) {
+            originalReceipt = accepted[0];
+            originalWord = wrong;
+          }
+          assert(
+            (await submit(host, target, crypto.randomUUID(), answer)).status ===
+              200,
+            "host solves",
+          );
+          snapshot = await snap(guest);
+          capture(`round-${target}-unrevealed-solved-opponent`, snapshot);
+          assertOpponentBoardHidden(snapshot);
+          assert(
+            array(snapshot.revealed_rounds).length === target - 1,
+            "unrevealed solve excluded",
+          );
+          assert(
+            (await submit(guest, target, crypto.randomUUID(), wrong)).status ===
+              200,
+            "guest accepts wrong row",
+          );
+          assert(
+            (await submit(guest, target, crypto.randomUUID(), answer))
+              .status === 200,
+            "guest solves and finalizes",
+          );
+          // Exact synthetic timing fixtures retain actual gateway boards. Both display 1ms.
+          await sql(
+            `update public.player_rounds p set solve_duration_us=case when m.seat=1 then 1600 else 1900 end, finished_at=p.started_at+case when m.seat=1 then interval '1600 microseconds' else interval '1900 microseconds' end from public.match_members m, public.rounds r where p.member_id=m.id and p.round_id=r.id and r.match_id='${
+              uuid(match)
+            }' and r.round_number=${target}`,
+          );
+          await sql(
+            `update public.guesses g set submitted_at=case when g.sequence=2 then p.finished_at else p.started_at+interval '500 microseconds' end from public.player_rounds p,public.rounds r where g.round_id=p.round_id and g.member_id=p.member_id and p.round_id=r.id and r.match_id='${
+              uuid(match)
+            }' and r.round_number=${target}`,
+          );
+          snapshot = await snap();
+          capture(`round-${target}-reveal`, snapshot);
+          assert(
+            nested(snapshot, "match", "status") ===
+              (target === count ? "completed" : "in_progress"),
+            "configured final status",
+          );
+          assert(
+            array(snapshot.revealed_rounds).length === target,
+            "revealed history contiguous",
+          );
+          assert(
+            JSON.stringify(snapshot.round) ===
+              JSON.stringify(array(snapshot.revealed_rounds)[target - 1]),
+            "current/history exact agreement",
+          );
+          assertAllBoardsVisible(snapshot);
+          const standings = snapshot.standings as Json;
+          const totals = array(standings.players) as Json[];
+          assert(
+            standings.through_round === target &&
+              standings.is_final === (target === count),
+            "canonical through/final",
+          );
+          assert(
+            totals[0].rounds_solved === target &&
+              totals[0].efficiency_points === target * 5,
+            "solved/efficiency totals",
+          );
+          assert(
+            totals[0].total_solve_duration_ms ===
+              Math.floor(1600 * target / 1000),
+            "floor SUM once",
+          );
+          assert(
+            totals[0].placement === 1 && totals[1].placement === 2,
+            "exact rank at equal displayed times",
+          );
+          const replay = await submit(host, 1, receiptId, originalWord);
+          assert(
+            JSON.stringify(replay.body) ===
+              JSON.stringify(originalReceipt!.body),
+            "receipt replay after reveal/final",
+          );
+          assertError(
+            await submit(host, target, crypto.randomUUID(), wrong),
+            409,
+            "round_already_finished",
+          );
+          const before = await snap();
+          const staleBarrier = await holdMatchLockBarrier(
+            match,
+            `gridrace-v2-stale-${crypto.randomUUID()}`,
+          );
+          let stale: Promise<EdgeResult[]>;
+          const staleRequests: Promise<EdgeResult>[] = [];
+          try {
+            const first = start(1);
+            staleRequests.push(first);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%start_match%'`,
+              "1",
+              "stale Start barrier",
+            );
+            const second = start(1);
+            staleRequests.push(second);
+            await waitForSqlValue(
+              `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type='Lock' and query ilike '%start_match%'`,
+              "2",
+              "duplicate stale Start barrier",
+            );
+            stale = Promise.all([first, second]);
+          } finally {
+            await staleBarrier.release();
+            await Promise.allSettled(staleRequests);
+          }
+          assert(
+            (await stale!).every((result) => result.status === 200),
+            "stale starts succeed after reveal/final",
+          );
+          assert(
+            nested(await snap(), "match", "revision") ===
+              nested(before, "match", "revision"),
+            "stale starts never advance",
+          );
+          await sql(
+            `select private.finalize_round(id) from public.rounds where match_id='${
+              uuid(match)
+            }' and round_number=${target}`,
+          );
+          assert(
+            nested(await snap(), "match", "revision") ===
+              nested(before, "match", "revision"),
+            "repeat finalization leaves revision",
+          );
+        }
+        // Exact ties share placement without seat tie-breaking.
+        await sql(
+          `update public.player_rounds p set solve_duration_us=1600, placement=1, finished_at=p.started_at+interval '1600 microseconds' from public.rounds r where p.round_id=r.id and r.match_id='${
+            uuid(match)
+          }'`,
+        );
+        await sql(
+          `update public.guesses g set submitted_at=case when g.sequence=2 then p.finished_at else p.started_at+interval '500 microseconds' end from public.player_rounds p,public.rounds r where g.round_id=p.round_id and g.member_id=p.member_id and p.round_id=r.id and r.match_id='${
+            uuid(match)
+          }'`,
+        );
+        snapshot = await snap();
+        capture("final-tie", snapshot);
+        assert(
+          array((snapshot.standings as Json).players).every((player) =>
+            (player as Json).placement === 1
+          ),
+          "exact tie shares first",
+        );
+        assert(
+          nested(snapshot, "match", "completed_at") ===
+            nested(snapshot, "round", "completed_at"),
+          "final timestamp exact",
+        );
+        assert(
+          matchId(
+            await edge(host.session, "create-match", {
+              client_build: 2,
+              request_id: requestId,
+              round_count: count,
+            }),
+          ) === match,
+          "create replay after final",
+        );
+      }
+    },
+  );
+
+  await scenario(
+    "v2 deletion matrix, future-start race and current-final preservation",
+    async () => {
+      for (
+        const boundary of [
+          "active",
+          "between",
+          "final-active",
+          "completed",
+        ] as const
+      ) {
+        const host = await createUser(`v2-delete-${boundary}-host`);
+        const guest = await createUser(`v2-delete-${boundary}-guest`);
+        const match = matchId(
+          await edge(host.session, "create-match", {
+            client_build: 2,
+            request_id: crypto.randomUUID(),
+            round_count: 3,
+          }),
+        );
+        const snap = async () =>
+          data(
+            await edge(host.session, "match-snapshot", {
+              client_build: 2,
+              match_id: match,
+            }),
+          );
+        assert(
+          (await edge(guest.session, "join-match", {
+            client_build: 2,
+            join_code: nestedString(await snap(), "match", "join_code"),
+          })).status === 200,
+          "deletion fixture joins",
+        );
+        const target = boundary.startsWith("final") || boundary === "completed"
+          ? 3
+          : 1;
+        for (let round = 1; round <= target; round++) {
+          assert(
+            (await edge(host.session, "start-match", {
+              client_build: 2,
+              match_id: match,
+              round_number: round,
+            })).status === 200,
+            "deletion fixture starts",
+          );
+          if (
+            round < target || boundary === "between" || boundary === "completed"
+          ) {
+            await sql(
+              `update public.player_rounds p set state='forfeited',finished_at=transaction_timestamp(),efficiency_points=0 from public.rounds r where p.round_id=r.id and r.match_id='${
+                uuid(match)
+              }' and r.round_number=${round}; select private.finalize_round(id) from public.rounds where match_id='${
+                uuid(match)
+              }' and round_number=${round}`,
+            );
+          }
+        }
+        const before = await snap();
+        // A held match ensures deletion and same-actor command are separate waiting transactions.
+        const barrier = await holdMatchLockBarrier(
+          match,
+          `gridrace-v2-delete-${crypto.randomUUID()}`,
+        );
+        let pending: Promise<EdgeResult[]>;
+        const pendingRequests: Promise<EdgeResult>[] = [];
+        try {
+          const deleting = edge(guest.session, "delete-account", {
+            client_build: 2,
+          });
+          pendingRequests.push(deleting);
+          await waitForSqlValue(
+            `select count(*) from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query ilike '%begin_account_deletion%'`,
+            "1",
+            "deletion waits on match barrier",
+          );
+          const guessing = edge(guest.session, "submit-guess", {
+            ...guessBody(match, crypto.randomUUID(), "apple"),
+            client_build: 2,
+            round_number: target,
+          });
+          pendingRequests.push(guessing);
+          await waitForSqlValue(
+            `select count(*) from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query ilike '%submit_guess%'`,
+            "1",
+            "submit waits on deletion actor lock",
+          );
+          pending = Promise.all([deleting, guessing]);
+        } finally {
+          await barrier.release();
+          await Promise.allSettled(pendingRequests);
+        }
+        const [deleted, guess] = await pending!;
+        assert(deleted.status === 200, "deletion completes");
+        createdUsers.delete(guest.id);
+        assertError(guess, 401, "not_authenticated");
+        let snapshot = await snap();
+        console.log(`FIXTURE deletion-${boundary} ${JSON.stringify(snapshot)}`);
+        assertDeletedMemberIdentity(snapshot);
+        const nonfinal = target < 3;
+        assert(
+          nested(snapshot, "match", "terminal_reason") ===
+            (nonfinal ? "account_deleted" : null),
+          "deletion reason only nonfinal",
+        );
+        assert(
+          nested(snapshot, "match", "status") ===
+            (boundary === "between"
+              ? "incomplete"
+              : boundary === "completed"
+              ? "completed"
+              : "in_progress"),
+          "deletion status matrix",
+        );
+        assert(
+          nested(snapshot, "match", "completed_at") ===
+            (boundary === "completed"
+              ? nested(before, "match", "completed_at")
+              : null),
+          "deletion does not invent completion",
+        );
+        if (nonfinal) {
+          assertError(
+            await edge(host.session, "start-match", {
+              client_build: 2,
+              match_id: match,
+              round_number: 2,
+            }),
+            409,
+            "match_incomplete",
+          );
+        }
+        if (boundary === "active" || boundary === "final-active") {
+          // Move the synthetic fixture's entire timeline together. The scheduled
+          // job, rather than a snapshot/finalizer request, must finish the round.
+          await sql(
+            `update public.matches set started_at=started_at-interval '185 seconds' where id='${
+              uuid(match)
+            }'; update public.rounds set starts_at=starts_at-interval '185 seconds',ends_at=ends_at-interval '185 seconds',completed_at=completed_at-interval '185 seconds' where match_id='${
+              uuid(match)
+            }'; update public.player_rounds p set started_at=p.started_at-interval '185 seconds',finished_at=p.finished_at-interval '185 seconds' from public.rounds r where p.round_id=r.id and r.match_id='${
+              uuid(match)
+            }'`,
+          );
+          await waitForSqlValue(
+            `select state from public.rounds where match_id='${
+              uuid(match)
+            }' and round_number=${target}`,
+            "revealed",
+            "scheduled Cron completes without client requests",
+            70_000,
+          );
+          snapshot = await snap();
+          console.log(
+            `FIXTURE deletion-${boundary}-revealed ${JSON.stringify(snapshot)}`,
+          );
+          assert(
+            nested(snapshot, "match", "status") ===
+              (nonfinal ? "incomplete" : "completed"),
+            "Cron deletion completion boundary",
+          );
+          assert(
+            nested(snapshot, "match", "terminal_reason") ===
+              (nonfinal ? "account_deleted" : null),
+            "Cron completion reason",
+          );
+        }
+        assert(
+          (snapshot.standings as Json).is_final === !nonfinal,
+          "partial/final standings boundary",
+        );
+        const stableRevision = nested(snapshot, "match", "revision");
+        assert(
+          (await edge(guest.session, "delete-account", { client_build: 2 }))
+            .status === 200,
+          "deletion receipt replay",
+        );
+        assert(
+          nested(await snap(), "match", "revision") === stableRevision,
+          "repeat prep has no revision",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+              uuid(match)
+            }'`,
+          ) === String(target),
+          "no future secret after deletion",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from public.rounds where match_id='${
+              uuid(match)
+            }' and round_number>${target} and state<>'pending'`,
+          ) === "0",
+          "Cron never advances",
+        );
+        assert(
+          (await edge(host.session, "delete-account", { client_build: 2 }))
+            .status === 200,
+          "later deletion completes",
+        );
+        createdUsers.delete(host.id);
+        assert(
+          await sqlScalar(
+            `select status from public.matches where id='${uuid(match)}'`,
+          ) === (nonfinal ? "incomplete" : "completed"),
+          "later deletion preserves terminal status",
+        );
+      }
+    },
+  );
+
+  await scenario(
+    "v2 deletion blocks queued next Start for either actor",
+    async () => {
+      for (const deleteCreator of [false, true]) {
+        const host = await createUser("v2-start-delete-host");
+        const guest = await createUser("v2-start-delete-guest");
+        const deleting = deleteCreator ? host : guest;
+        const survivor = deleteCreator ? guest : host;
+        const match = matchId(
+          await edge(host.session, "create-match", {
+            client_build: 2,
+            request_id: crypto.randomUUID(),
+            round_count: 3,
+          }),
+        );
+        const lobby = data(
+          await edge(host.session, "match-snapshot", {
+            client_build: 2,
+            match_id: match,
+          }),
+        );
+        assert(
+          (await edge(guest.session, "join-match", {
+            client_build: 2,
+            join_code: nestedString(lobby, "match", "join_code"),
+          })).status === 200,
+          "Start/delete fixture join",
+        );
+        assert(
+          (await edge(host.session, "start-match", {
+            client_build: 2,
+            match_id: match,
+            round_number: 1,
+          })).status === 200,
+          "Start/delete first round",
+        );
+        await sql(
+          `update public.player_rounds p set state='forfeited',finished_at=transaction_timestamp(),efficiency_points=0 from public.rounds r where p.round_id=r.id and r.match_id='${
+            uuid(match)
+          }' and r.round_number=1; select private.finalize_round(id) from public.rounds where match_id='${
+            uuid(match)
+          }' and round_number=1`,
+        );
+        const barrier = await holdMatchLockBarrier(
+          match,
+          `gridrace-v2-next-delete-${crypto.randomUUID()}`,
+        );
+        const requests: Promise<EdgeResult>[] = [];
+        try {
+          requests.push(
+            edge(deleting.session, "delete-account", { client_build: 2 }),
+          );
+          await waitForSqlValue(
+            `select count(*) from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query ilike '%begin_account_deletion%'`,
+            "1",
+            "deletion queued first",
+          );
+          requests.push(
+            edge(host.session, "start-match", {
+              client_build: 2,
+              match_id: match,
+              round_number: 2,
+            }),
+          );
+          await waitForSqlValue(
+            `select count(*) from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query ilike '%start_match%'`,
+            "1",
+            "captured next Start queued",
+          );
+        } finally {
+          await barrier.release();
+          await Promise.allSettled(requests);
+        }
+        const [deleted, started] = await Promise.all(requests);
+        assert(deleted.status === 200, "deletion wins barrier order");
+        createdUsers.delete(deleting.id);
+        assertError(
+          started,
+          deleteCreator ? 401 : 409,
+          deleteCreator ? "not_authenticated" : "match_incomplete",
+        );
+        const snapshot = data(
+          await edge(survivor.session, "match-snapshot", {
+            client_build: 2,
+            match_id: match,
+          }),
+        );
+        assert(
+          nested(snapshot, "match", "status") === "incomplete",
+          "queued Start leaves incomplete",
+        );
+        assert(
+          nested(snapshot, "match", "current_round") === 1,
+          "queued Start cannot advance",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+              uuid(match)
+            }'`,
+          ) === "1",
+          "queued Start has no future secret",
+        );
+        console.log(
+          `FIXTURE deletion-${
+            deleteCreator ? "creator" : "guest"
+          }-queued-start ${JSON.stringify(snapshot)}`,
+        );
+      }
+    },
+  );
+
+  await scenario(
+    "v2 ordinary reveal waits for creator after scheduled Cron",
+    async () => {
+      const host = await createUser("v2-cron-host");
+      const guest = await createUser("v2-cron-guest");
+      const match = matchId(
+        await edge(host.session, "create-match", {
+          client_build: 2,
+          request_id: crypto.randomUUID(),
+          round_count: 3,
+        }),
+      );
+      const snap = async () =>
+        data(
+          await edge(host.session, "match-snapshot", {
+            client_build: 2,
+            match_id: match,
+          }),
+        );
+      const lobby = await snap();
+      assert(
+        (await edge(guest.session, "join-match", {
+          client_build: 2,
+          join_code: nestedString(lobby, "match", "join_code"),
+        })).status === 200,
+        "Cron fixture join",
+      );
+      assert(
+        (await edge(host.session, "start-match", {
+          client_build: 2,
+          match_id: match,
+          round_number: 1,
+        })).status === 200,
+        "Cron first Start",
+      );
+      await sql(
+        `update public.matches set started_at=started_at-interval '185 seconds' where id='${
+          uuid(match)
+        }'; update public.rounds set starts_at=starts_at-interval '185 seconds',ends_at=ends_at-interval '185 seconds' where match_id='${
+          uuid(match)
+        }'; update public.player_rounds p set started_at=p.started_at-interval '185 seconds' from public.rounds r where p.round_id=r.id and r.match_id='${
+          uuid(match)
+        }'`,
+      );
+      await waitForSqlValue(
+        `select state from public.rounds where match_id='${
+          uuid(match)
+        }' and round_number=1`,
+        "revealed",
+        "scheduled Cron without connected clients",
+        70_000,
+      );
+      const snapshot = await snap();
+      assert(
+        nested(snapshot, "match", "status") === "in_progress" &&
+          nested(snapshot, "match", "terminal_reason") === null,
+        "ordinary nonfinal reveal waits",
+      );
+      assert(
+        nested(snapshot, "match", "current_round") === 1 &&
+          array(snapshot.revealed_rounds).length === 1,
+        "Cron never advances ordinary room",
+      );
+      assert(
+        (snapshot.standings as Json).is_final === false,
+        "ordinary partial standings",
+      );
+      console.log(`FIXTURE ordinary-cron-nonfinal ${JSON.stringify(snapshot)}`);
+      await sql(
+        `update public.matches set expires_at=created_at+interval '1 millisecond' where id='${
+          uuid(match)
+        }'`,
+      );
+      assert(
+        (await edge(host.session, "start-match", {
+          client_build: 2,
+          match_id: match,
+          round_number: 2,
+        })).status === 200,
+        "lobby expiry does not gate next round",
+      );
+      const next = await snap();
+      assert(
+        nested(next, "round", "number") === 2 &&
+          nested(next, "round", "state") === "countdown",
+        "creator starts next round explicitly",
+      );
+      assert(
+        JSON.stringify(next.revealed_rounds) ===
+          JSON.stringify(snapshot.revealed_rounds),
+        "prior reveals retained",
+      );
+    },
+  );
+
   const snapshotMetrics = edgeMetrics.filter((metric) =>
     metric.name === "match-snapshot"
   );
@@ -1158,11 +2052,15 @@ try {
     `PASS live-slice integration ${edgeMetrics.length} requests ${snapshotMetrics.length} snapshots ${largestSnapshot} bytes max ${slowestMs}ms max`,
   );
 } finally {
-  await Promise.all(
-    [...createdUsers].map((userId) =>
-      admin.auth.admin.deleteUser(userId, false)
-    ),
-  );
+  for (const userId of createdUsers) {
+    const prepared = await admin.rpc("delete_account", {
+      p_user_id: userId,
+      p_client_build: 2,
+    });
+    assert(prepared.error === null, "fixture deletion preparation");
+    const deleted = await admin.auth.admin.deleteUser(userId, false);
+    assert(deleted.error === null, "fixture Auth deletion");
+  }
 }
 
 async function createUser(label: string): Promise<TestUser> {
@@ -1308,22 +2206,32 @@ async function holdMatchLockBarrier(
     stdout: "piped",
     stderr: "piped",
   }).spawn();
-  await waitForSqlValue(
-    `select count(*) from pg_stat_activity where application_name = '${applicationName}' and state = 'active' and wait_event = 'PgSleep'`,
-    "1",
-    "match lock barrier acquired",
-    10_000,
-  );
+  const completion = child.output();
+  try {
+    await waitForSqlValue(
+      `select count(*) from pg_stat_activity where application_name = '${applicationName}' and state = 'active' and wait_event = 'PgSleep'`,
+      "1",
+      "match lock barrier acquired",
+      10_000,
+    );
+  } catch (error) {
+    child.kill("SIGTERM");
+    await completion;
+    throw error;
+  }
   return {
     release: async () => {
-      assert(
-        await sqlScalar(
-          `select pg_cancel_backend(pid) from pg_stat_activity where application_name = '${applicationName}'`,
-        ) === "t",
-        "match lock barrier cancellation",
-      );
-      const result = await child.output();
-      assert(!result.success, "match lock barrier released");
+      try {
+        assert(
+          await sqlScalar(
+            `select pg_cancel_backend(pid) from pg_stat_activity where application_name = '${applicationName}'`,
+          ) === "t",
+          "match lock barrier cancellation",
+        );
+      } finally {
+        const result = await completion;
+        assert(!result.success, "match lock barrier released");
+      }
     },
   };
 }

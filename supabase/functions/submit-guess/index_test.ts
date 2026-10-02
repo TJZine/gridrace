@@ -269,7 +269,7 @@ const failures: FailureCase[] = [
   },
   {
     name: "rejects a non-current round",
-    request: () => post({ ...validBody(), round_number: 2 }),
+    request: () => post({ ...validBody(), round_number: 6 }),
     status: 409,
     code: "round_not_active",
     rpcCalls: 0,
@@ -345,3 +345,26 @@ function assertEquals(actual: unknown, expected: unknown): void {
   const right = JSON.stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
+
+Deno.test("forwards all supported receipt targets without replacing the round", async () => {
+  for (const target of [1, 2, 3, 4, 5]) {
+    const invoked = await invoke({
+      request: post({ ...validBody(), round_number: target }),
+      rpcResults: [ok({ accepted: true })],
+    });
+    assertEquals(invoked.response.status, 200);
+    assertEquals(invoked.rpcCalls[0].parameters.p_round_number, target);
+  }
+  for (const target of [0, 6, 2.5, "2", null, true]) {
+    const invoked = await invoke({
+      request: post({ ...validBody(), round_number: target }),
+    });
+    assertEquals(invoked.response.status, 409);
+    assertEquals(invoked.rpcCalls.length, 0);
+  }
+  const legacy = await invoke({
+    request: post({ ...validBody(), client_build: 1, round_number: 2 }),
+  });
+  assertEquals(legacy.response.status, 409);
+  assertEquals(legacy.rpcCalls.length, 0);
+});

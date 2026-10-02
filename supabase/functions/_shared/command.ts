@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const ERROR_MESSAGES = {
+  invalid_match_configuration: "Choose 1, 3, or 5 rounds.",
+  match_incomplete:
+    "This match cannot continue because a player account was deleted.",
   not_authenticated: "Sign in and try again.",
   not_a_match_member: "You are not part of this match.",
   match_not_joinable: "This match cannot be joined.",
@@ -22,6 +25,8 @@ export type ErrorCode = keyof typeof ERROR_MESSAGES;
 export type JsonObject = Record<string, unknown>;
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
+  invalid_match_configuration: 400,
+  match_incomplete: 409,
   not_authenticated: 401,
   not_a_match_member: 403,
   match_not_joinable: 409,
