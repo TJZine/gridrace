@@ -13,17 +13,18 @@ request recovery, Realtime-triggered canonical refresh, complete fixed-slice UI,
 real two-client local integration. Imported Daily results remain personal history only
 and cannot enter a verified competitive surface.
 
-Current work: the Phase 2/3 local slice is implemented. Delayed create/join success
-after Home is repaired; closure review found failed Join can recover an older saved
-room and erase its error. That saved-match/Join transition is the remaining repair
-before final acceptance and closeout. The plan stays Active until review passes.
+Current work: the Phase 2/3 local slice is implemented. The saved-match/Join repair
+passed worker and independent session verification and is awaiting integration.
+Controller audit found Create's successful-response handler can overwrite a durable
+storage-failure latch; that shared error boundary is being completed before final
+acceptance and closeout. The plan stays Active until review passes.
 
 Next large chunk after local closeout: production-hosting proof and the separately
 approved expansion toward 2–8 players, multiple rounds, invite links, moderation,
 notifications, broader results, and retention policy. Those later surfaces must build
 on the proved fixed slice rather than generalize it speculatively.
 
-The remaining confirmed local defect is the failed-Join transition above.
+The remaining confirmed local defect is Create's post-response storage-failure latch.
 Hosted deployment/Cron/backup and retention
 proof, hosted CI, Apple provider/distribution credentials, physical-device accessibility,
 production word provenance, trusted hosted client-IP provenance, and the broader MVP
