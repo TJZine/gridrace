@@ -17,10 +17,18 @@ Current checkpoint: the Phase 2/3 local slice is complete, all accepted repairs 
 passed verification, and terminal closure review passed on 2026-10-02. The execution
 plan is Historical; no implementation package remains open in that local scope.
 
-Next large chunk, requiring a new agreed scope: production-hosting proof and expansion
-toward 2–8 players, multiple rounds, invite links, moderation,
-notifications, broader results, and retention policy. Those later surfaces must build
-on the proved fixed slice rather than generalize it speculatively.
+Accepted next scope: Phase 4 anytime private two-player Blind Race with 1/3/5
+rounds (default 3), creator-controlled countdowns, nonrepeating private server
+answers, canonical round/match standings and cross-round recovery. UI and
+freeze-on-either-account-deletion decisions are accepted. Implementation has not
+started; independent plan review returned two findings, both traced and repaired
+by the controller. The accepted-plan checkpoint precedes backend implementation.
+Current execution belongs to the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
+
+Broader 2–8 players, rematch, history, links, moderation, presence, notifications,
+hosting and retention remain later work. Preserve the proved components and all
+Daily/tutorial/account behavior.
 
 No confirmed local implementation defect remains. Hosted deployment,
 Cron, backup/retention proof, hosted CI, Apple provider/distribution credentials,

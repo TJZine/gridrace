@@ -3,8 +3,35 @@
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
-[Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
-is active and tracks final review and closeout of the implemented local slice.
+[Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
+tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
+
+## 2026-10-02 — Expand Private Blind Race to Two-Player Multi-Round Matches
+
+**Decision:** Keep exactly two authenticated players and manual room codes. Offer
+1, 3, or 5 rounds, default 3, with private randomly server-selected nonrepeating
+answers. The creator starts every countdown after the preceding reveal. Preserve
+canonical reveals and show server-owned round, cumulative and final standings using
+the existing exact scoring and tie rules. This anytime live mode stays separate
+from Daily Classic and is not solo practice.
+
+**Rationale:** The two-player authoritative slice is proved locally. Multi-round
+racing expands the existing loop without wider rosters, a generalized engine or
+new social/distribution surfaces.
+
+**Consequences/revisit:** Reuse current UI: native rounds selection at Create,
+Round N of M, existing reveal followed by standings and creator-only Start next,
+final standings with Home and access to prior reveals. Ordinary creator absence
+leaves a reveal waiting. After either account deletes, finish any started round
+under existing forfeit/deadline rules, anonymize survivor-required reveals and
+freeze unstarted rounds with an explicit incomplete-match presentation. Do not
+transfer host, cancel, automatically advance or finish the match against a deleted
+guest. The human accepted both presentation and deletion recommendations with
+“use both recs.” Independent plan review and the accepted-plan checkpoint precede
+implementation; this decision does not claim shipped behavior. Broader rosters,
+rematch, competitive history, links, notifications, presence, moderation, hosting,
+retention and distribution remain later requirements. Revisit the deletion policy
+only under a new explicit product decision.
 
 ## 2026-09-22 — Keep the Focused Native/Supabase Slice With Bounded Recovery
 
