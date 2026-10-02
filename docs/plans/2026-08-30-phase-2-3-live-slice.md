@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: GridRace Phase 2 backend foundation and Phase 3 two-player live slice
 Owner: Primary orchestrator
 Started: 2026-08-30
@@ -13,11 +13,13 @@ round, creator start, server-owned guesses and time, clue-free progress, recover
 and shared reveal. Daily Classic stays immediately playable offline and signed out;
 its imported personal history never becomes verified competitive evidence.
 
-This plan remains the sole active plan. The accepted 2026-09-22 planning checkpoint
-is complete, and the current controller is executing the implementation packages
-below. Local product changes and confirmed-disposable GridRace test resets are now
-authorized only inside each package's recorded boundary; deployment, remote mutation,
-spending, publication, release, and unrelated dictionary work remain excluded.
+The local Phase 2/3 implementation and all accepted repairs are complete. Terminal
+closure review passed on 2026-10-02; this plan is Historical and authorizes no further
+implementation package. Latest completed content/evidence checkpoint:
+`93accdb20f6a7f1a21eeba14e5a926caf9cad7b8`. Tracker closeout: **this commit**.
+Recorded package-local product changes and disposable resets did not authorize
+deployment, remote mutation, spending, publication, release or unrelated dictionary
+work. Hosted/device/distribution and broader-MVP follow-ups remain separately scoped.
 
 ### Repository evidence
 
@@ -245,14 +247,14 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-15 accepted in `96f1c1f`; bounded terminal closure acceptance remains |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Accepted repairs verified and authorities refreshed; terminal acceptance remains before Historical |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Complete: terminal IOS-15 closure PASS at `93accdb`; prior whole-range closures retained |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Complete: accepted repairs verified, authorities current, Historical closeout in this commit |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
 unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..15 repairs are integrated;
-bounded terminal closure acceptance is next.
+terminal closure acceptance passed. No package or write lease remains active.
 
 ## Risk and evidence gates
 
@@ -378,13 +380,11 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: bounded terminal closure acceptance.** Verify the IOS-15 Retry
-capability, its actual UI callers, failed Join → Retry → Home → Resume evidence and
-valid selected/pending/storage siblings. Retain prior whole-range review evidence,
-not another unrelated repository audit. Main controller has inspected the complete
-repair and independently rerun affected proof; obtain explicit terminal PASS on this
-bounded closure packet before Historical closeout. The main
-thread now owns orchestration, adjudication, integration and this plan; the stopped
+**Closeout: local scope complete.** The bounded IOS-15 terminal check passed after
+controller inspection and independent affected proof; prior whole-range evidence and
+accepted closures remain retained. No next implementation unit is authorized by this
+Historical plan. The maintainer owns later hosted/device/distribution gates and must
+agree the next product package before broader live MVP expansion. The stopped
 controller and interrupted worker remain stopped. Per maintainer direction on
 2026-10-02, future implementation packages use a fresh local `gpt-6.1-sol` / medium
 task; the repository's configured read-only reviewer remains a separate role.
@@ -1353,6 +1353,33 @@ change was required; all pre-existing changes remain unrelated.
   No remote/service/reset/distribution action occurred. IOS-15 repair is accepted;
   bounded terminal acceptance remains before Historical closeout.
 
+## Terminal PASS and local-slice closeout, 2026-10-02
+
+- Read-only reviewer `01a0fb93-4132-7380-a2c8-66badd405816` returned explicit
+  **TERMINAL PASS** for IOS-15 at `93accdb20f6a7f1a21eeba14e5a926caf9cad7b8`.
+  It inspected the six-file finding-to-repair/evidence packet and affected callers,
+  confirmed the reproduced defect, focused/full/build and independent controller
+  evidence, and retained prior IOS-01..14 and whole-range closures. No unrelated
+  backend/account/integration audit or material new finding was introduced.
+- Reviewer confirmed selected/pending/storage Retry capability, no old-room work
+  after failed Join, explicit Resume subscribe-before-catch-up, complete ordinary UI
+  caller gating and retained error protection. Its callback was read-only, with
+  unchanged HEAD, clean tracked tree/empty index, one Active plan and unchanged source
+  and Package.resolved hashes. Stale cache was not refreshed; bounded inline evidence
+  was sufficient.
+- Controller verified the same checkpoint, empty index, clean tracked tree and all
+  six scratch/cache hashes before closeout. Latest content/evidence checkpoint is
+  `93accdb`; implementation `96f1c1f` remains independently verified 50/50, with full
+  183 executed/181 passed/two expected skips/zero failures and clean Debug build.
+  This commit updates only NOW and this plan, marks the plan Historical, and closes
+  all local package leases. No further reviewer or tracker-only commit is needed.
+- Remaining follow-ups belong to the maintainer under a new agreed scope: hosted
+  deployment/scheduling/backups/retention/CI, Apple provider/distribution, physical
+  devices/accessibility, production word and trusted client-IP provenance, and the
+  broader 2–8 player/multi-round/invite/moderation/notification/results MVP. Prior actual
+  two-client integration remains recorded evidence, not a rerun or hosted proof.
+  No beta/production readiness, remote mutation, push, spend or distribution is claimed.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1439,23 +1466,27 @@ Phase 2/3 commits to date:
 | `bfbec74 docs: record selection and storage recovery proof` | Reconcile current authorities and exact combined verification evidence | Complete; closure returned IOS-15 |
 | `b9dd2a6 docs(plan): record failed join retry finding` | Record IOS-15, its actual UI caller boundary and bounded worker lease | Complete |
 | `96f1c1f fix(live): keep failed join retry from selecting saved room` | Integrate shared Retry capability and complete affected-caller proof | Complete; accepted by main controller |
+| `93accdb docs: record failed join retry repair evidence` | Record current authorities and exact IOS-15 proof | Complete; bounded terminal PASS |
+| This commit | Record terminal acceptance, update NOW and close the local-slice plan as Historical | Complete |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
-content matched the reviewed diff. Product implementation and P3-04 local integration
-are complete; R-01 and closeout remain, and this plan stays Active.
+content matched the reviewed diff. Product implementation, P3-04 local integration,
+R-01 terminal acceptance and local-slice closeout are complete; this plan is Historical.
 
-Implementation-controller bootstrap checkpoint: **this commit** records the current
-repository/baseline evidence, the maintainer-authorized single-writer Git exception,
-the callback lease protocol, corrected model pairing, and P2-04A as the next unit.
+Implementation-controller bootstrap checkpoint `dd8230a` recorded its
+repository/baseline evidence, the then-authorized single-writer Git exception,
+callback lease protocol, corrected model pairing, and P2-04A as its next unit.
+Later packages returned Git ownership to the controller as recorded above.
 
 ## Milestone exit and checkpoint policy
 
 Phase 2 baseline evidence remains recorded above. **Phase 2 exits only after P2-04A
 and P2-04B pass the backend portions of E1–E3 and E8/E10 with no unresolved
 material security finding.**
-That backend exit gate passed on 2026-09-26. BLK-01 is resolved; Phase 3 remains
-subject to its own client/simulator evidence, which Phase 2 completion does not satisfy.
+That backend exit gate passed on 2026-09-26. BLK-01 is resolved. Phase 3's separate
+local client/simulator gates and terminal acceptance also passed; Phase 2 completion
+was not used as a substitute for that evidence.
 
 Phase 3 exits only when E4–E11 and client portions of E2/E5/E8 pass, including real
 independent clients, no-client scheduled finalization, negative secrecy proof,
@@ -1471,11 +1502,11 @@ leaves this plan Active; implementation closeout alone marks it Historical.
 
 - [x] P2-04A/B contract/security gates complete with exact evidence.
 - [x] P3 client, real transport, concurrency and two-client gates complete.
-- [ ] Implementation review findings adjudicated; accepted fixes verified.
-- [ ] Authorities and newly proved commands current; beta limitations explicit.
-- [ ] Task-owned changes committed; unrelated work unchanged and unstaged by this task.
-- [ ] No remote mutation, push, paid service or unapproved data operation occurred.
-- [ ] At live-slice completion only: mark Historical, identify last content checkpoint,
+- [x] Implementation review findings adjudicated; accepted fixes verified.
+- [x] Authorities and newly proved commands current; beta limitations explicit.
+- [x] Task-owned changes committed; unrelated work unchanged and unstaged by this task.
+- [x] No remote mutation, push, paid service or unapproved data operation occurred.
+- [x] At live-slice completion only: mark Historical, identify last content checkpoint,
       label tracker closeout “this commit,” and report its SHA.
 
 Stop for more than one active plan, unexpected overlap, a rule/privacy/security/API
