@@ -51,6 +51,8 @@ final class LiveMatchSession {
     private var commandEpoch = 0
     private var isForeground = true
     private var isOpen = false
+    // A durable pointer is resumable, but is not necessarily the current Join target.
+    private var isRecoverySelected = false
     private var trailingRefresh = false
     private var failureCount = 0
     private var snapshotUptime: TimeInterval?
@@ -181,6 +183,8 @@ final class LiveMatchSession {
             return
         }
         isOpen = true
+        isRecoverySelected = false
+        cancelMatchTasks()
         startCommand { [weak self] in await self?.recoverPendingIntent() }
     }
 
@@ -188,6 +192,10 @@ final class LiveMatchSession {
         guard canBeginCommand, recovery.pendingIntent == nil, let service else { return }
         let accountGeneration = generation
         isOpen = true
+        isRecoverySelected = false
+        snapshot = nil
+        snapshotUptime = nil
+        cancelMatchTasks()
         beginCommand()
         commandTask = Task { [weak self] in
             guard let self else { return }
@@ -253,6 +261,7 @@ final class LiveMatchSession {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
         } else if let matchID = recovery.matchID {
             isOpen = true
+            if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
             phase = .recovering
             startRealtime(matchID: matchID)
         }
@@ -291,6 +300,7 @@ final class LiveMatchSession {
 
     func leaveToHome() {
         isOpen = false
+        isRecoverySelected = false
         snapshot = nil
         snapshotUptime = nil
         if phase != .storageUnavailable { phase = .inactive }
@@ -300,6 +310,8 @@ final class LiveMatchSession {
     func resumeSavedMatch() {
         guard phase != .storageUnavailable, hasSavedMatch else { return }
         isOpen = true
+        // While Join is unresolved, Resume opens its eventual result, not the old pointer.
+        if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
         phase = .recovering
         beginRecovery()
     }
@@ -333,7 +345,8 @@ final class LiveMatchSession {
     }
 
     private func beginRecovery() {
-        guard isForeground else { return }
+        guard phase != .storageUnavailable, isForeground,
+              isRecoverySelected || recovery.pendingIntent != nil else { return }
         if recovery.pendingIntent != nil {
             if let matchID = recovery.matchID {
                 startRealtime(matchID: matchID)
@@ -347,6 +360,8 @@ final class LiveMatchSession {
 
     private func open(matchID: UUID) {
         guard isOpen else { return }
+        cancelMatchTasks()
+        isRecoverySelected = true
         snapshot = nil
         snapshotUptime = nil
         phase = .recovering
@@ -355,7 +370,8 @@ final class LiveMatchSession {
     }
 
     private func startRealtime(matchID: UUID) {
-        guard isForeground, isOpen, recovery.matchID == matchID, shouldRecover else { return }
+        guard isRecoverySelected, isForeground, isOpen,
+              recovery.matchID == matchID, shouldRecover else { return }
         realtimeRetryTask?.cancel()
         realtimeRetryTask = nil
         realtimeTask?.cancel()
@@ -371,6 +387,7 @@ final class LiveMatchSession {
             do {
                 for try await event in events {
                     guard isCurrent(accountGeneration), recovery.matchID == matchID else { return }
+                    guard phase != .storageUnavailable else { continue }
                     switch event {
                     case .ready:
                         realtimeFailureCount = 0
@@ -475,7 +492,8 @@ final class LiveMatchSession {
     }
 
     private func requestRefresh() {
-        guard isForeground, isOpen, recovery.matchID != nil else { return }
+        guard isRecoverySelected, isForeground, isOpen,
+              phase != .storageUnavailable, recovery.matchID != nil else { return }
         if isCommandInFlight || fetchTask != nil {
             trailingRefresh = true
             return
@@ -487,9 +505,11 @@ final class LiveMatchSession {
                 trailingRefresh = false
                 await fetchSnapshot(accountGeneration: accountGeneration)
             } while isCurrent(accountGeneration)
+                && phase != .storageUnavailable
                 && trailingRefresh
                 && !isCommandInFlight
                 && isForeground
+            guard !Task.isCancelled else { return }
             fetchTask = nil
         }
     }
@@ -500,6 +520,7 @@ final class LiveMatchSession {
         do {
             let received = try await request { try await service.snapshot(matchID: matchID) }
             guard isCurrent(accountGeneration),
+                  phase != .storageUnavailable,
                   responseEpoch == commandEpoch,
                   recovery.matchID == matchID
             else { return }
@@ -552,6 +573,7 @@ final class LiveMatchSession {
     }
 
     private func handlePendingError(_ error: Error, intent: LivePendingIntent) {
+        guard phase != .storageUnavailable else { return }
         let mapped = map(error)
         lastError = mapped
         switch mapped {
@@ -576,6 +598,7 @@ final class LiveMatchSession {
     }
 
     private func handleCommandError(_ error: Error, uncertainIntent: Bool) {
+        guard phase != .storageUnavailable else { return }
         let mapped = map(error)
         lastError = mapped
         if mapped == .server(.notAuthenticated) {
@@ -589,6 +612,7 @@ final class LiveMatchSession {
     }
 
     private func handleSnapshotError(_ error: Error) {
+        guard phase != .storageUnavailable else { return }
         let mapped = map(error)
         let preservesPendingDecision = recovery.pendingIntent != nil
             && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
@@ -656,7 +680,8 @@ final class LiveMatchSession {
     }
 
     private var shouldRecover: Bool {
-        guard isForeground, isOpen, accountID != nil else { return false }
+        guard isForeground, isOpen, accountID != nil, phase != .storageUnavailable,
+              isRecoverySelected || recovery.pendingIntent != nil else { return false }
         guard let snapshot else { return true }
         if snapshot.match.status == .completed || snapshot.round.state == .revealed { return false }
         return true
@@ -736,6 +761,7 @@ final class LiveMatchSession {
             phase = .inactive
             guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
             isOpen = true
+            isRecoverySelected = recovery.matchID != nil
             phase = .recovering
             beginRecovery()
         } catch {
@@ -759,6 +785,7 @@ final class LiveMatchSession {
         failureCount = 0
         realtimeFailureCount = 0
         isOpen = false
+        isRecoverySelected = false
     }
 
     private func cancelMatchTasks() {
