@@ -13,26 +13,25 @@ request recovery, Realtime-triggered canonical refresh, complete fixed-slice UI,
 real two-client local integration. Imported Daily results remain personal history only
 and cannot enter a verified competitive surface.
 
-Current work: the Phase 2/3 local slice is implemented. Final review accepted the
-pending-create repairs but found a delayed create/join completion can restart hidden
-recovery after returning Home. That lifecycle repair, verification and final
-acceptance remain. The plan stays Active until review passes.
+Current work: the Phase 2/3 local slice is implemented and all accepted review
+findings are repaired, including delayed create/join success after returning Home.
+Final independent acceptance and closeout remain. The plan stays Active until
+review passes.
 
 Next large chunk after local closeout: production-hosting proof and the separately
 approved expansion toward 2–8 players, multiple rounds, invite links, moderation,
 notifications, broader results, and retention policy. Those later surfaces must build
 on the proved fixed slice rather than generalize it speculatively.
 
-The remaining local defect is the post-Home create/join lifecycle ordering above.
-Hosted deployment/Cron/backup and retention
+No confirmed local implementation defect remains. Hosted deployment/Cron/backup and retention
 proof, hosted CI, Apple provider/distribution credentials, physical-device accessibility,
 production word provenance, trusted hosted client-IP provenance, and the broader MVP
 remain explicit external or later gates. No paid commitment is authorized.
 
 Last meaningful verification: clean database reset; 290 pgTAP assertions; three-schema
-database lint; Edge format/lint/check and 100 tests; full iOS suite with 169 executed,
-167 passed, two expected opt-in integration skips and zero failures; clean Debug build;
-focused live-session proof 30/30 independently repeated after the pending-create repair;
+database lint; Edge format/lint/check and 100 tests; full iOS suite with 172 executed,
+170 passed, two expected opt-in integration skips and zero failures; clean Debug build;
+focused live-session proof 33/33 independently repeated after the Home lifecycle repair;
 prior account/recovery proof 48/48; and the recorded real two-client
 Auth/Edge/RLS/Realtime/Cron/relaunch run with 122 requests and 30 canonical snapshots.
 Local Xcode 27.0/iOS 26.5 is a forward-toolchain deviation and does not satisfy hosted,

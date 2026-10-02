@@ -136,7 +136,9 @@ state; network failure never manufactures a result. Provide explicit retry and H
 
 Leaving for Home or signing out does not forfeit/cancel the match. Foreground Resume
 first resolves any persisted create or guess using its original request identity,
-then restores the accepted board through a snapshot. An expired lobby disables Start;
+then restores the accepted board through a snapshot. A create/join response arriving
+after Home saves the resolved match pointer without restarting hidden recovery;
+explicit Resume restarts subscriptions and canonical refresh. An expired lobby disables Start;
 host deletion makes a guest's room unavailable, and guest deletion returns the host
 to a one-seat lobby. Show those outcomes without an endless loading state.
 

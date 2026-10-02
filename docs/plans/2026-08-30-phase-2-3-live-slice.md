@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Task `01a0fb66-0821-78a3-9c3f-61b7d0711779` returned IOS-12; IOS-10/11 remain closed |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | IOS-12 repair/verification and terminal acceptance remain; no Historical status before PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-12 repaired and independently verified in `fc0e918`; terminal closure acceptance remains |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | All accepted fixes verified and evidence refreshed; no Historical status before terminal PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..11 are complete; IOS-12 is next.
+unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..12 are complete; terminal acceptance is next.
 
 ## Risk and evidence gates
 
@@ -377,12 +377,10 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: IOS-12.** Dispatch one fresh local `gpt-6.1-sol` / medium worker
-with exclusive session/test writes. Persist delayed successful create/join results
-after Home without reopening hidden recovery; explicit Resume restarts it. Verify
-both delayed-success orderings and visible join behavior, then integrate and refresh
-evidence before terminal acceptance. IOS-10/11 remain accepted; mark Historical only
-after explicit terminal PASS. The main
+**Exact next unit: terminal acceptance.** A fresh read-only reviewer verifies IOS-12
+closure and relevant sibling lifecycle transitions in the integrated final state,
+retaining the prior full-range review evidence. All accepted repairs are verified;
+mark Historical only after explicit terminal PASS. The main
 thread now owns orchestration, adjudication, integration and this plan; the stopped
 controller and interrupted worker remain stopped. Per maintainer direction on
 2026-10-02, future implementation packages use a fresh local `gpt-6.1-sol` / medium
@@ -574,7 +572,7 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-09 | Medium | Sign-out and confirmed deletion cannot observe failed durable live-recovery cleanup. | `changeAccount(to:)` returns no outcome; coordinator/model continue and may report success after live storage factory/clear failure, while signed-out UI cannot reach Retry/Discard. | Accepted | Propagate/surface cleanup failure through production account composition, preserve reachable remediation, and add sign-out/deletion integration proof without weakening server-deletion semantics. | Closed in `482fa40`: outcome propagation, former-account Daily isolation, reachable retry/discard, sign-out/deletion seam proof, focused 48/48, full 165 executed/163 passed/two expected skips, clean Debug and controller focused 48/48 passed |
 | IOS-10 | Medium | Creating a new match while an old saved match pointer exists falsely enters storage failure. | `createMatch()` adds a create intent without clearing `matchID`, producing the recovery-store-invalid match/create combination before any request is sent. | Accepted | Persist `{ matchID: nil, pendingIntent: create }` atomically and restore the prior in-memory recovery state if persistence fails; prove both replacement and rollback. | Closed in `bec7804`: replacement/rollback proof, focused session 30/30, full 169 executed/167 passed/two expected skips, clean Debug and independent controller session 30/30 |
 | IOS-11 | Medium | A pending create becomes unreachable after returning Home. | `leaveToHome()` makes the session inactive, `hasSavedMatch` ignores create-only intents, Create/Join no-op while the intent exists, and inactive Live UI has no retry. | Accepted | Treat a create-only pending intent as resumable saved live state; the existing Home Resume route must reopen recovery and retry its original UUID. | Closed in `bec7804`: original-ID Home resume plus saved-match/pending-guess regression proof; focused/full/build and independent controller proof passed |
-| IOS-12 | Medium | A delayed successful create/join restarts recovery after returning Home. | `leaveToHome()` sets `isOpen=false` but retains the uncertain command; both success paths call `open()`, which unconditionally sets `isOpen=true` and starts Realtime/snapshot recovery for a hidden room. | Accepted | Preserve the resolved pointer without reopening when the session is closed; mark join open at dispatch and prove delayed create/join success starts no subscription/snapshot/watchdog until explicit Resume. | Open: bounded session/test lifecycle package |
+| IOS-12 | Medium | A delayed successful create/join restarts recovery after returning Home. | `leaveToHome()` sets `isOpen=false` but retains the uncertain command; both success paths call `open()`, which unconditionally sets `isOpen=true` and starts Realtime/snapshot recovery for a hidden room. | Accepted | Preserve the resolved pointer without reopening when the session is closed; mark join open at dispatch and prove delayed create/join success starts no subscription/snapshot/watchdog until explicit Resume. | Closed in `fc0e918`: delayed create/join, Resume-in-flight/Home-again and visible join proof; session 33/33, full 172 executed/170 passed/two expected skips, clean Debug and independent controller 33/33 |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
@@ -1191,6 +1189,36 @@ change was required; all pre-existing changes remain unrelated.
   Git/tracking ownership and requires a single callback here even if blocked; stopped
   old tasks remain stopped. Historical closeout remains forbidden on this verdict.
 
+## IOS-12 repair and acceptance, 2026-10-02
+
+- Fresh worker `01a0fb6c-7bca-7701-9054-16fdc9c6b8ed` used `gpt-6.1-sol` / medium
+  with only the session/test write lease. It reported one callback, released its
+  lease and made no Git/tracking changes. Main controller committed `fc0e918` from
+  parent `aaf7f81` after a full owned-diff audit and independent focused proof.
+- Join now marks the session open at dispatch. The shared successful-response
+  `open()` path checks the current open state instead of reopening unconditionally.
+  Both create and join still persist successful match resolution before that check;
+  Home stops hidden subscription/snapshot/watchdog work without treating cancellation
+  or navigation as server rollback.
+- Gate-driven regressions hold create/join success across Home, prove the pointer is
+  persisted with no hidden recovery, and then explicitly Resume to subscribe before
+  canonical refresh/watchdog. They also cover create Resume while its original
+  request runs, another Home before completion, no duplicate dispatch, and normal
+  visible join. Existing IOS-01..11 session/account/storage tests remain green.
+- Worker proof passed session 33/33, full iOS 172 executed/170 passed/two expected
+  opt-in skips/zero failures, and a clean Debug build. Logs are
+  `/tmp/gridrace-ios12-focused.log`, `/tmp/gridrace-ios12-full.log` and
+  `/tmp/gridrace-ios12-build.log`. Main controller independently passed session
+  33/33 at `/tmp/GridRaceDerivedData-test/Logs/Test/Test-GridRace-2026.10.02_03-05-59--0400.xcresult`.
+- Package.resolved and all six scratch hashes remained unchanged, with no package
+  cleanup necessary. The implementation contains exactly the two owned files;
+  whitespace checks passed and the index was empty after commit. No remote mutation,
+  service/reset operations or distribution activity occurred.
+- NOW and screen-flow now reflect the accepted repair and exact latest totals.
+  Earlier real integration remains separately recorded; its two opt-in tests were
+  skipped in this package, and external/device/toolchain limitations remain explicit.
+  Terminal closure acceptance remains before Historical closeout.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1268,6 +1296,8 @@ Phase 2/3 commits to date:
 | `91e1d96 docs(plan): record pending-create findings` | Record accepted IOS-10/11 and the bounded repair | Complete |
 | `bec7804 fix(live): resume pending create from home` | Replace saved pointer atomically and resume uncertain create with its original UUID | Complete; IOS-10/11 accepted |
 | `1e1f287 docs: record pending-create repair evidence` | Record IOS-10/11 acceptance, current verification and worker model switch | Complete; reviewed, returned IOS-12 |
+| `aaf7f81 docs(plan): record hidden recovery finding` | Record IOS-12 and the bounded lifecycle repair | Complete |
+| `fc0e918 fix(live): keep recovery closed after home` | Persist late create/join success without reopening hidden recovery | Complete; IOS-12 accepted |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
