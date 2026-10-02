@@ -96,9 +96,10 @@ remain later. Starting a new create durably replaces the previous selected match
 pointer before dispatch; a failed save retains that pointer and blocks the request.
 An uncertain create remains resumable from Home using its original request identity.
 Join keeps the previously saved pointer until its result is saved. A failed Join preserves
-its error and does not automatically reopen the old room; explicit Resume can recover
-that saved room. If resolution cannot be saved, storage Retry/Discard remains required
-before ordinary commands or automatic recovery resume.
+its error and does not automatically reopen the old room; generic Retry does not select
+that old pointer or erase the denial, and the UI does not offer that wrong action.
+Explicit Resume can recover that saved room. If resolution cannot be saved, storage
+Retry/Discard remains required before ordinary commands or automatic recovery resume.
 Lobby shows the private roster, room code, this client's connection/
 recovery status,
 and creator-only Start. It does not add readiness, public discovery, chat, or late
