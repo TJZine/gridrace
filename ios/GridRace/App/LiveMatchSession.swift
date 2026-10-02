@@ -67,7 +67,7 @@ final class LiveMatchSession {
     private(set) var guessDraft = ""
     private(set) var isCommandInFlight = false
 
-    var hasSavedMatch: Bool { recovery.matchID != nil }
+    var hasSavedMatch: Bool { recovery.matchID != nil || recovery.pendingIntent != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
     var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
@@ -174,7 +174,12 @@ final class LiveMatchSession {
     func createMatch() {
         guard canBeginCommand, recovery.pendingIntent == nil else { return }
         let intent = LivePendingIntent.create(requestID: makeUUID())
-        guard persistPending(intent) else { return }
+        let previous = recovery
+        recovery = LiveRecoveryState(pendingIntent: intent)
+        guard saveRecovery() else {
+            recovery = previous
+            return
+        }
         isOpen = true
         startCommand { [weak self] in await self?.recoverPendingIntent() }
     }
@@ -292,10 +297,10 @@ final class LiveMatchSession {
     }
 
     func resumeSavedMatch() {
-        guard phase != .storageUnavailable, let matchID = recovery.matchID else { return }
+        guard phase != .storageUnavailable, hasSavedMatch else { return }
         isOpen = true
         phase = .recovering
-        startRealtime(matchID: matchID)
+        beginRecovery()
     }
 
     func foregrounded() {

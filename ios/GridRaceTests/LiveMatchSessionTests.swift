@@ -49,6 +49,144 @@ final class LiveMatchRecoveryStoreTests: XCTestCase {
 
 @MainActor
 final class LiveMatchSessionTests: XCTestCase {
+    func testCreateReplacesSavedMatchWithCreateIntentBeforeDispatch() async throws {
+        let oldMatchID = UUID()
+        let newMatchID = UUID()
+        let requestID = UUID()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: oldMatchID))
+        let persistedAtDispatch = LockedValues<LiveRecoveryState>()
+        let service = LiveServiceMock(create: { _ in
+            persistedAtDispatch.append(try store.load())
+            return newMatchID
+        })
+        let session = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { _ in store },
+            makeUUID: { requestID }
+        )
+        session.changeAccount(to: UUID())
+        session.leaveToHome()
+
+        session.createMatch()
+
+        await eventually { session.savedMatchID == newMatchID }
+        XCTAssertEqual(
+            persistedAtDispatch.values,
+            [LiveRecoveryState(pendingIntent: .create(requestID: requestID))]
+        )
+    }
+
+    func testCreateRestoresSavedMatchWhenReplacementPersistenceFails() async throws {
+        let oldState = LiveRecoveryState(matchID: UUID())
+        let store = MemoryLiveRecoveryStore(oldState)
+        let creates = LockedCounter()
+        let session = makeSession(
+            service: LiveServiceMock(create: { _ in
+                creates.increment()
+                return UUID()
+            }),
+            realtime: nil,
+            store: store
+        )
+        session.changeAccount(to: UUID())
+        session.leaveToHome()
+        store.rejectsWrites = true
+
+        session.createMatch()
+        await Task.yield()
+
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertEqual(session.savedMatchID, oldState.matchID)
+        XCTAssertNil(session.pendingIntent)
+        XCTAssertEqual(store.storedState, oldState)
+        XCTAssertEqual(creates.value, 0)
+    }
+
+    func testHomeResumeRetriesPendingCreateWithOriginalRequestID() async throws {
+        let requestID = UUID()
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore()
+        let creates = LockedValues<UUID>()
+        let service = LiveServiceMock(
+            create: { receivedRequestID in
+                creates.append(receivedRequestID)
+                if creates.values.count == 1 { throw LiveMatchServiceError.unavailable }
+                return matchID
+            },
+            snapshot: { requestedID in
+                Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
+            }
+        )
+        let session = LiveMatchSession(
+            service: service,
+            realtime: nil,
+            storeFactory: { _ in store },
+            timing: .init(
+                requestTimeout: .seconds(10),
+                staleAfter: .seconds(5),
+                retryBackoff: [.seconds(100)]
+            ),
+            makeUUID: { requestID }
+        )
+        session.changeAccount(to: UUID())
+
+        session.createMatch()
+        await eventually { session.phase == .unavailable && !session.isCommandInFlight }
+        session.leaveToHome()
+
+        XCTAssertTrue(session.hasSavedMatch)
+        XCTAssertEqual(session.pendingIntent, .create(requestID: requestID))
+        session.resumeSavedMatch()
+
+        await eventually { session.phase == .ready }
+        XCTAssertEqual(creates.values, [requestID, requestID])
+        XCTAssertEqual(session.savedMatchID, matchID)
+        XCTAssertNil(session.pendingIntent)
+    }
+
+    func testHomeResumeRecoversSavedMatchAndPendingGuess() async throws {
+        for hasPendingGuess in [false, true] {
+            let matchID = UUID()
+            let requestID = UUID()
+            let intent: LivePendingIntent? = hasPendingGuess
+                ? .guess(matchID: matchID, requestID: requestID, word: "STONE") : nil
+            let store = MemoryLiveRecoveryStore(
+                LiveRecoveryState(matchID: matchID, pendingIntent: intent)
+            )
+            let realtime = RealtimeHub()
+            let submittedIDs = LockedValues<UUID>()
+            let service = LiveServiceMock(
+                submit: { receivedMatchID, receivedRequestID, word in
+                    XCTAssertEqual(receivedMatchID, matchID)
+                    XCTAssertEqual(word, "STONE")
+                    submittedIDs.append(receivedRequestID)
+                    return Self.receipt()
+                },
+                snapshot: { requestedID in
+                    Self.snapshot(matchID: requestedID, status: .inProgress, round: .playing)
+                }
+            )
+            let resumed = makeSession(service: service, realtime: realtime, store: store)
+            resumed.backgrounded()
+            resumed.changeAccount(to: UUID())
+            resumed.leaveToHome()
+            resumed.foregrounded()
+
+            XCTAssertTrue(resumed.hasSavedMatch)
+            resumed.resumeSavedMatch()
+            await eventually { realtime.subscriptionCount == 1 }
+            XCTAssertTrue(submittedIDs.values.isEmpty)
+            realtime.send(.ready)
+
+            await eventually { resumed.phase == .ready }
+            XCTAssertEqual(resumed.snapshot?.match.id, matchID)
+            XCTAssertEqual(submittedIDs.values, hasPendingGuess ? [requestID] : [])
+            XCTAssertNil(resumed.pendingIntent)
+            resumed.leaveToHome()
+        }
+    }
+
     func testCreatePersistsIntentBeforeDispatchAndMatchBeforeSnapshotExposure() async throws {
         let userID = UUID()
         let matchID = UUID()
@@ -74,7 +212,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         session.createMatch()
 
-        await eventually { session.hasSavedMatch }
+        await eventually { session.savedMatchID == matchID }
         XCTAssertNil(session.snapshot)
         XCTAssertEqual(try store.load().matchID, matchID)
         XCTAssertNil(try store.load().pendingIntent)
