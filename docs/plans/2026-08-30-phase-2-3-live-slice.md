@@ -245,14 +245,14 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-13/14 accepted in `057d18f`; final closure acceptance remains |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | All accepted findings repaired/verified and authorities refreshed; no Historical status before terminal PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | IOS-14 closed; closure returned IOS-15 in the Retry caller of selected recovery; bounded repair before final acceptance |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | IOS-15 repair and terminal acceptance remain; no Historical status before terminal PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..14 are complete; terminal closure
-acceptance is next.
+unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..14 repairs are integrated;
+IOS-15 completes the selected-recovery Retry caller boundary before terminal acceptance.
 
 ## Risk and evidence gates
 
@@ -378,11 +378,17 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: terminal closure acceptance.** A fresh read-only reviewer verifies
-the combined IOS-13/14 repair, its affected selection/storage/lifecycle callers,
-meaningful tests and current authority/evidence delta. Retain prior whole-range review
-evidence rather than repeating an unrelated repository audit. Main controller performs
-Historical closeout only after explicit terminal PASS. The main
+**Exact next unit: IOS-15 Retry capability and caller repair.** A fresh 6.1 Sol medium
+worker owns only `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchViews.swift`,
+`ios/GridRaceTests/LiveMatchSessionTests.swift` and, if meaningful existing coverage
+needs extension, `LiveMatchViewTests.swift`. Generic Retry must preserve a failed Join
+error and cannot select an old unselected pointer; unavailable/top-banner UI must not
+offer that wrong action. Retain pending-command, selected-match and storage remediation
+Retry behavior. Prove failed Join → Retry → Home → explicit Resume with no old-room
+work before Resume and subscribe-before-catch-up afterward. Then obtain a bounded
+read-only closure check retaining prior whole-range evidence, not another unrelated
+repository audit. Main controller performs Historical closeout only after explicit
+terminal PASS. The main
 thread now owns orchestration, adjudication, integration and this plan; the stopped
 controller and interrupted worker remain stopped. Per maintainer direction on
 2026-10-02, future implementation packages use a fresh local `gpt-6.1-sol` / medium
@@ -577,6 +583,7 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-12 | Medium | A delayed successful create/join restarts recovery after returning Home. | `leaveToHome()` sets `isOpen=false` but retains the uncertain command; both success paths call `open()`, which unconditionally sets `isOpen=true` and starts Realtime/snapshot recovery for a hidden room. | Accepted | Preserve the resolved pointer without reopening when the session is closed; mark join open at dispatch and prove delayed create/join success starts no subscription/snapshot/watchdog until explicit Resume. | Closed in `fc0e918`: delayed create/join, Resume-in-flight/Home-again and visible join proof; session 33/33, full 172 executed/170 passed/two expected skips, clean Debug and independent controller 33/33 |
 | IOS-13 | Medium | Failed Join with a saved pointer silently recovers the old room and erases the Join error without subscription catch-up. | IOS-12 sets `isOpen=true`; Join retains the old pointer; `beginCommand()` sets trailing refresh; failure finishes by directly fetching that pointer, clearing the error and starting its watchdog without Realtime. | Accepted | Keep old durable pointer until successful Join; failure must not automatically select/recover it. Prove visible denial/no old subscription, snapshot or timer, then explicit Resume subscribe-before-catch-up, plus saved-pointer Join success/navigation siblings. | Closed in `057d18f`: selected-vs-durable recovery, Join failure/success/persistence/navigation/account/background proof; combined session 43/43, full 182 executed/180 passed/two expected skips, clean Debug and independent controller 43/43 |
 | IOS-14 | Medium | Create's successful-response storage failure loses the storageUnavailable latch. | `saveResolvedMatch()` restores the durable create intent and sets storageUnavailable when its save fails, but `recoverPendingIntent()` catches that error and `handlePendingError()` maps it to unavailable and can schedule network replay; the new Join error guard has no pending-command counterpart. | Accepted | Preserve the storage failure before generic pending error translation; prove resolved-create save failure, no automatic dispatch while latched, original-ID explicit retry and safe discard, with Join/guess siblings retained. | Closed in `057d18f`: reproduced pre-fix failure; Create/guess/snapshot/Realtime latch proof, original-ID Retry and durable Discard; combined focused/full/build and independent controller proof passed |
+| IOS-15 | Medium | Retry after failed Join selects the old saved room and clears the Join error without explicit Resume. | `retry()` clears lastError and promotes isRecoverySelected; unavailable UI uses hasSavedMatch and top banner offers Retry regardless of selection. The failure regression currently omits this real caller. | Accepted | Guard generic Retry before error mutation; expose narrow retry capability to affected UI callers; prove failed saved-pointer Join → Retry preserves denial/no subscription, snapshot or timer, then Home → Resume subscribes before catch-up. Preserve valid pending, selected and storage retries. | Open; fresh 6.1 Sol medium bounded session/UI/test package |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
@@ -1295,6 +1302,24 @@ change was required; all pre-existing changes remain unrelated.
   hosted/device/toolchain limitations remain separately scoped. Terminal acceptance
   remains before Historical closeout.
 
+## Terminal closure review and IOS-15 adjudication, 2026-10-02
+
+- Read-only reviewer `01a0fb85-c78e-7852-89b6-08a96b769fc7` returned
+  REQUIRES FIXES, medium/high-confidence IOS-15. IOS-14 is closed; prior accepted
+  closures and whole-range review evidence remain retained.
+- Controller traced `retry()` and all live UI callers: the no-snapshot unavailable
+  view and top banner can offer recovery of an old pointer after Join denial. Generic
+  Retry clears the denial and selects that pointer, contrary to explicit Resume
+  ownership. IOS-15 is accepted; the screen-flow invariant remains unchanged.
+- The bounded lease expands from session/tests to the actual UI Retry caller and its
+  existing tests, with no persisted Join code/schema, dependency, new test framework or
+  unrelated UI direction. Controller owns tracking, staging and commits; this worker
+  must not mutate Git. Release the lease and attempt exactly one callback even blocked.
+- Baseline `bfbec74011f55a9cba55d1fb468ad3575995bdcd` has an empty index and no
+  tracked modifications; all six unrelated scratch hashes and Package.resolved match
+  the prior acceptance. Exactly this plan remains Active. No writer is active before
+  the new serial dispatch; old stopped tasks remain stopped.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1378,6 +1403,7 @@ Phase 2/3 commits to date:
 | `4800552 docs(plan): record saved-match join finding` | Record IOS-13 and complete Join-transition repair scope | Complete |
 | `0175c5a docs(plan): record create storage latch finding` | Record IOS-13 proof and the IOS-14 shared error boundary | Complete |
 | `057d18f fix(live): preserve selected recovery and storage failures` | Integrate IOS-13/14 with complete affected lifecycle/storage proof | Complete; accepted by main controller |
+| `bfbec74 docs: record selection and storage recovery proof` | Reconcile current authorities and exact combined verification evidence | Complete; closure returned IOS-15 |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged

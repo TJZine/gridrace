@@ -13,19 +13,19 @@ request recovery, Realtime-triggered canonical refresh, complete fixed-slice UI,
 real two-client local integration. Imported Daily results remain personal history only
 and cannot enter a verified competitive surface.
 
-Current work: the Phase 2/3 local slice is implemented and all accepted findings are
-repaired, including saved-match/Join selection and durable storage-failure handling.
-Final independent closure acceptance and closeout remain. The plan stays Active
-until review passes.
+Current work: the Phase 2/3 local slice is implemented. Selection and storage-failure
+repairs passed verification, but closure review found one remaining Retry caller gap
+after failed Join (IOS-15). That bounded session/UI repair, independent closure
+acceptance and closeout remain. The plan stays Active until review passes.
 
 Next large chunk after local closeout: production-hosting proof and the separately
 approved expansion toward 2–8 players, multiple rounds, invite links, moderation,
 notifications, broader results, and retention policy. Those later surfaces must build
 on the proved fixed slice rather than generalize it speculatively.
 
-No confirmed local implementation defect remains. Hosted deployment/Cron/backup and
-retention
-proof, hosted CI, Apple provider/distribution credentials, physical-device accessibility,
+IOS-15 is the confirmed local implementation defect still open. Hosted deployment,
+Cron, backup/retention proof, hosted CI, Apple provider/distribution credentials,
+physical-device accessibility,
 production word provenance, trusted hosted client-IP provenance, and the broader MVP
 remain explicit external or later gates. No paid commitment is authorized.
 
