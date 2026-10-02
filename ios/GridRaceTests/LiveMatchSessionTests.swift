@@ -49,6 +49,140 @@ final class LiveMatchRecoveryStoreTests: XCTestCase {
 
 @MainActor
 final class LiveMatchSessionTests: XCTestCase {
+    func testDelayedCreateSuccessPreservesHomeUntilExplicitResume() async throws {
+        try await assertDelayedSuccessRespectsHome(isCreate: true)
+    }
+
+    func testDelayedJoinSuccessPreservesHomeUntilExplicitResume() async throws {
+        try await assertDelayedSuccessRespectsHome(isCreate: false)
+    }
+
+    func testVisibleJoinSubscribesBeforeCanonicalRecovery() async throws {
+        let matchID = UUID()
+        let store = MemoryLiveRecoveryStore()
+        let realtime = RealtimeHub()
+        let snapshots = LockedCounter()
+        let session = makeSession(
+            service: LiveServiceMock(
+                join: { code in
+                    XCTAssertEqual(code, "ABC234")
+                    return matchID
+                },
+                snapshot: { requestedID in
+                    XCTAssertEqual(try store.load(), LiveRecoveryState(matchID: requestedID))
+                    snapshots.increment()
+                    return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
+                }
+            ),
+            realtime: realtime,
+            store: store
+        )
+        session.changeAccount(to: UUID())
+
+        session.joinMatch(code: "ABC234")
+
+        await eventually { !session.isCommandInFlight && realtime.subscriptionCount == 1 }
+        XCTAssertEqual(session.savedMatchID, matchID)
+        XCTAssertEqual(snapshots.value, 0)
+        realtime.send(.ready)
+        await eventually { session.phase == .ready }
+        XCTAssertEqual(session.snapshot?.match.id, matchID)
+        XCTAssertEqual(snapshots.value, 1)
+        session.leaveToHome()
+    }
+
+    private func assertDelayedSuccessRespectsHome(isCreate: Bool) async throws {
+        // Cover Home, Resume during the command, and Home again after that Resume.
+        for navigation in 0...2 {
+            let matchID = UUID()
+            let requestID = UUID()
+            let store = MemoryLiveRecoveryStore()
+            let realtime = RealtimeHub()
+            let completion = AsyncGate()
+            let watchdog = AsyncGate()
+            let creates = LockedValues<UUID>()
+            let joins = LockedValues<String>()
+            let snapshots = LockedCounter()
+            let watchdogStarts = LockedCounter()
+            let session = LiveMatchSession(
+                service: LiveServiceMock(
+                    create: { receivedID in
+                        XCTAssertEqual(
+                            try store.load(),
+                            LiveRecoveryState(pendingIntent: .create(requestID: receivedID))
+                        )
+                        creates.append(receivedID)
+                        await completion.wait()
+                        return matchID
+                    },
+                    join: { code in
+                        joins.append(code)
+                        await completion.wait()
+                        return matchID
+                    },
+                    snapshot: { requestedID in
+                        XCTAssertEqual(try store.load(), LiveRecoveryState(matchID: requestedID))
+                        snapshots.increment()
+                        return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
+                    }
+                ),
+                realtime: realtime,
+                storeFactory: { _ in store },
+                timing: .init(
+                    requestTimeout: .seconds(99),
+                    staleAfter: .seconds(77),
+                    retryBackoff: [.seconds(5)]
+                ),
+                sleep: { duration in
+                    if duration == .seconds(99) {
+                        try await Task.sleep(for: duration)
+                    } else {
+                        watchdogStarts.increment()
+                        await watchdog.wait()
+                    }
+                },
+                makeUUID: { requestID }
+            )
+            session.changeAccount(to: UUID())
+            if isCreate {
+                session.createMatch()
+            } else {
+                session.joinMatch(code: "ABC234")
+            }
+            await eventually { creates.values.count + joins.values.count == 1 }
+            session.leaveToHome()
+            if navigation > 0 {
+                // Create-only recovery is resumable while its original command runs.
+                // Join has no pointer yet, so Resume correctly waits for success.
+                session.resumeSavedMatch()
+                if navigation == 2 { session.leaveToHome() }
+            }
+            await completion.open()
+            await eventually { !session.isCommandInFlight }
+
+            XCTAssertEqual(session.savedMatchID, matchID)
+            XCTAssertEqual(try store.load(), LiveRecoveryState(matchID: matchID))
+            XCTAssertNil(session.pendingIntent)
+            XCTAssertNil(session.snapshot)
+            XCTAssertEqual(snapshots.value, 0)
+            XCTAssertEqual(watchdogStarts.value, 0)
+            let resumedInFlight = isCreate && navigation == 1
+            XCTAssertEqual(session.phase, resumedInFlight ? .recovering : .inactive)
+            XCTAssertEqual(realtime.subscriptionCount, resumedInFlight ? 1 : 0)
+
+            if !resumedInFlight { session.resumeSavedMatch() }
+            await eventually { realtime.subscriptionCount == 1 }
+            realtime.send(.ready)
+            await eventually { session.phase == .ready && watchdogStarts.value == 1 }
+            XCTAssertEqual(session.snapshot?.match.id, matchID)
+            XCTAssertEqual(snapshots.value, 1)
+            XCTAssertEqual(creates.values, isCreate ? [requestID] : [])
+            XCTAssertEqual(joins.values, isCreate ? [] : ["ABC234"])
+            session.leaveToHome()
+            await watchdog.open()
+        }
+    }
+
     func testCreateReplacesSavedMatchWithCreateIntentBeforeDispatch() async throws {
         let oldMatchID = UUID()
         let newMatchID = UUID()

@@ -187,6 +187,7 @@ final class LiveMatchSession {
     func joinMatch(code: String) {
         guard canBeginCommand, recovery.pendingIntent == nil, let service else { return }
         let accountGeneration = generation
+        isOpen = true
         beginCommand()
         commandTask = Task { [weak self] in
             guard let self else { return }
@@ -345,9 +346,9 @@ final class LiveMatchSession {
     }
 
     private func open(matchID: UUID) {
+        guard isOpen else { return }
         snapshot = nil
         snapshotUptime = nil
-        isOpen = true
         phase = .recovering
         trailingRefresh = false
         startRealtime(matchID: matchID)
