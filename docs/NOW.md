@@ -28,9 +28,10 @@ production word provenance, trusted hosted client-IP provenance, and the broader
 remain explicit external or later gates. No paid commitment is authorized.
 
 Last meaningful verification: clean database reset; 290 pgTAP assertions; three-schema
-database lint; Edge format/lint/check and 100 tests; full iOS suite with 165 executed,
-163 passed, two expected opt-in integration skips and zero failures; clean Debug build;
-focused account/recovery proof 48/48; and a fresh real two-client
+database lint; Edge format/lint/check and 100 tests; full iOS suite with 169 executed,
+167 passed, two expected opt-in integration skips and zero failures; clean Debug build;
+focused live-session proof 30/30 independently repeated after the pending-create repair;
+prior account/recovery proof 48/48; and the recorded real two-client
 Auth/Edge/RLS/Realtime/Cron/relaunch run with 122 requests and 30 canonical snapshots.
 Local Xcode 27.0/iOS 26.5 is a forward-toolchain deviation and does not satisfy hosted,
 distribution, or physical-device gates.

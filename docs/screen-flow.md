@@ -35,7 +35,8 @@ Home (Daily remains primary)
   -> Live create/join -> existing account flow if signed out
      -> Create -> Lobby -> Countdown -> Round -> Reveal -> Home
      -> Join   -> Lobby -> Countdown -> Round -> Reveal -> Home
-  -> Resume saved live match -> canonical snapshot -> current live state
+  -> Resume saved live recovery -> resolve pending request -> canonical snapshot
+                               -> current live state
   -> Account -> identity, sign out, account deletion
 ```
 
@@ -91,7 +92,10 @@ authority demonstration.
 Phase 3 provides fixed Create, manual-code Join and Resume alongside the existing Daily,
 tutorial and Account routes; authentication never gates Daily.
 Create always makes exactly two seats and one round; configuration and invite links
-remain later. Lobby shows the private roster, room code, this client's connection/
+remain later. Starting a new create durably replaces the previous selected match
+pointer before dispatch; a failed save retains that pointer and blocks the request.
+An uncertain create remains resumable from Home using its original request identity.
+Lobby shows the private roster, room code, this client's connection/
 recovery status,
 and creator-only Start. It does not add readiness, public discovery, chat, or late
 joining.
@@ -131,7 +135,8 @@ explains recovery. Local deadline expiry locks input while fetching authoritativ
 state; network failure never manufactures a result. Provide explicit retry and Home.
 
 Leaving for Home or signing out does not forfeit/cancel the match. Foreground Resume
-restores the accepted board through a snapshot. An expired lobby disables Start;
+first resolves any persisted create or guess using its original request identity,
+then restores the accepted board through a snapshot. An expired lobby disables Start;
 host deletion makes a guest's room unavailable, and guest deletion returns the host
 to a one-seat lobby. Show those outcomes without an endless loading state.
 
