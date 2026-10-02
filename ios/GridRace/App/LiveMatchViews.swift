@@ -186,7 +186,7 @@ struct LiveMatchFlowView: View {
                     message: retainedError ?? LiveMatchPresentation.errorMessage(session.lastError)
                         ?? "Return Home or try recovering the saved match.",
                     symbol: "wifi.exclamationmark",
-                    retry: session.hasSavedMatch ? { session.retry() } : nil,
+                    retry: session.canRetry ? { session.retry() } : nil,
                     discardTitle: "Discard saved request",
                     discard: discardAction
                 )
@@ -219,12 +219,11 @@ struct LiveMatchFlowView: View {
     }
 
     private var retryAction: (() -> Void)? {
-        switch session.phase {
-        case .needsSignIn, .storageUnavailable, .inactive: nil
-        default: {
+        guard session.canRetry else { return nil }
+        return {
+            guard session.canRetry else { return }
             retainedError = nil
             session.retry()
-        }
         }
     }
 
@@ -248,6 +247,7 @@ struct LiveMatchFlowView: View {
             HStack {
                 Button("Retry saved request") { session.retry() }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!session.canRetry)
                 if let discardAction {
                     Button("Discard saved request", role: .destructive, action: discardAction)
                         .buttonStyle(.bordered)
@@ -580,6 +580,7 @@ private struct LiveRoundView: View {
                     if let retainedError { Text(retainedError).foregroundStyle(Color.raceDanger) }
                     Button("Retry") { session.retry() }
                         .buttonStyle(.borderedProminent)
+                        .disabled(!session.canRetry)
                 }
             }
             .padding()
@@ -599,7 +600,9 @@ private struct LiveRoundView: View {
                 if session.lastError == .server(.requestConflict)
                     || session.lastError == .server(.rateLimited) {
                     HStack {
-                        Button("Retry") { session.retry() }.buttonStyle(.borderedProminent)
+                        Button("Retry") { session.retry() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!session.canRetry)
                         Button("Discard", role: .destructive) { session.discardPendingGuess() }
                             .buttonStyle(.bordered)
                     }
@@ -617,6 +620,7 @@ private struct LiveRoundView: View {
                         .multilineTextAlignment(.center)
                     Button("Retry") { session.retry() }
                         .buttonStyle(.borderedProminent)
+                        .disabled(!session.canRetry)
                 }
                 Text("Your accepted board is preserved. New input stays locked until recovery finishes.")
                     .font(.caption)

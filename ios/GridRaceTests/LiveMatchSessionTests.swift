@@ -57,11 +57,13 @@ final class LiveMatchSessionTests: XCTestCase {
             let store = MemoryLiveRecoveryStore(oldState)
             let realtime = RealtimeHub()
             let snapshots = LockedValues<UUID>()
+            let joins = LockedValues<String>()
             let timers = LockedValues<Duration>()
             let timer = AsyncGate()
             let session = makeSession(
                 service: LiveServiceMock(
-                    join: { _ in
+                    join: { code in
+                        joins.append(code)
                         XCTAssertEqual(try store.load(), oldState)
                         throw error
                     },
@@ -93,18 +95,25 @@ final class LiveMatchSessionTests: XCTestCase {
             session.backgrounded()
             session.foregrounded()
             await Task.yield()
+            XCTAssertFalse(session.canRetry)
+            session.retry()
+            await Task.yield()
 
+            XCTAssertFalse(session.canRetry)
             XCTAssertEqual(session.lastError, error)
             XCTAssertEqual(session.phase, .unavailable)
             XCTAssertEqual(session.savedMatchID, oldMatchID)
             XCTAssertEqual(store.storedState, oldState)
             XCTAssertNil(session.snapshot)
             XCTAssertEqual(realtime.subscriptionCount, 0)
+            XCTAssertEqual(joins.values, ["ABC234"])
             XCTAssertTrue(snapshots.values.isEmpty)
             XCTAssertTrue(timers.values.isEmpty)
 
             session.leaveToHome()
+            XCTAssertFalse(session.canRetry)
             session.resumeSavedMatch()
+            XCTAssertTrue(session.canRetry)
             XCTAssertEqual(realtime.subscriptionCount, 1)
             XCTAssertTrue(snapshots.values.isEmpty)
             realtime.send(.ready)
@@ -157,6 +166,11 @@ final class LiveMatchSessionTests: XCTestCase {
             session.foregrounded()
             session.joinMatch(code: "ABC234")
             await eventually { joins.value == 1 }
+            XCTAssertFalse(session.canRetry)
+            session.retry()
+            XCTAssertTrue(session.isCommandInFlight)
+            XCTAssertEqual(session.phase, .recovering)
+            XCTAssertEqual(realtime.subscriptionCount, 0)
             session.leaveToHome()
             session.resumeSavedMatch()
             if returnsHomeAgain { session.leaveToHome() }
@@ -202,6 +216,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertEqual(session.savedMatchID, oldState.matchID)
         XCTAssertEqual(store.storedState, oldState)
         XCTAssertNil(session.snapshot)
@@ -539,6 +554,7 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertNil(session.lastError)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertTrue(session.canDiscardRecovery)
         XCTAssertEqual(store.storedState, original)
         XCTAssertEqual(session.pendingIntent, original.pendingIntent)
@@ -732,6 +748,7 @@ final class LiveMatchSessionTests: XCTestCase {
             XCTAssertEqual(store.storedState, original)
             XCTAssertEqual(session.pendingIntent, intent)
             XCTAssertTrue(session.canRetryRecoveryStorage)
+            XCTAssertFalse(session.canRetry)
             XCTAssertEqual(snapshots.value, 2)
             session.leaveToHome()
         }
@@ -745,7 +762,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let service = LiveServiceMock(
             create: { receivedRequestID in
                 creates.append(receivedRequestID)
-                if creates.values.count == 1 { throw LiveMatchServiceError.unavailable }
+                if creates.values.count <= 2 { throw LiveMatchServiceError.unavailable }
                 return matchID
             },
             snapshot: { requestedID in
@@ -767,14 +784,20 @@ final class LiveMatchSessionTests: XCTestCase {
 
         session.createMatch()
         await eventually { session.phase == .unavailable && !session.isCommandInFlight }
+        XCTAssertTrue(session.canRetry)
+        session.retry()
+        XCTAssertFalse(session.canRetry)
+        await eventually { session.phase == .unavailable && !session.isCommandInFlight }
+        XCTAssertEqual(creates.values, [requestID, requestID])
         session.leaveToHome()
+        XCTAssertFalse(session.canRetry)
 
         XCTAssertTrue(session.hasSavedMatch)
         XCTAssertEqual(session.pendingIntent, .create(requestID: requestID))
         session.resumeSavedMatch()
 
         await eventually { session.phase == .ready }
-        XCTAssertEqual(creates.values, [requestID, requestID])
+        XCTAssertEqual(creates.values, [requestID, requestID, requestID])
         XCTAssertEqual(session.savedMatchID, matchID)
         XCTAssertNil(session.pendingIntent)
     }
@@ -1022,6 +1045,61 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .inactive)
     }
 
+    func testSelectedRecoveryRetryRequiresAvailableAuthenticationAndForeground() async throws {
+        for error in [LiveMatchServiceError.unavailable, .server(.notAuthenticated)] {
+            let matchID = UUID()
+            let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
+            let realtime = RealtimeHub()
+            let calls = LockedCounter()
+            let session = makeSession(
+                service: LiveServiceMock(snapshot: { id in
+                    if calls.increment() == 1 { throw error }
+                    return Self.snapshot(matchID: id, status: .lobby, round: .pending)
+                }),
+                realtime: realtime,
+                store: store,
+                timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77),
+                              retryBackoff: [.seconds(100)])
+            )
+            XCTAssertFalse(session.canRetry)
+            session.changeAccount(to: UUID())
+            realtime.send(.ready)
+            await eventually { session.lastError == error }
+
+            if error == .server(.notAuthenticated) {
+                XCTAssertEqual(session.phase, .needsSignIn)
+                XCTAssertFalse(session.canRetry)
+                session.retry()
+                await Task.yield()
+                XCTAssertEqual(session.phase, .needsSignIn)
+                XCTAssertEqual(session.lastError, error)
+                XCTAssertEqual(realtime.subscriptionCount, 1)
+                XCTAssertEqual(calls.value, 1)
+            } else {
+                XCTAssertTrue(session.canRetry)
+                session.backgrounded()
+                XCTAssertFalse(session.canRetry)
+                session.retry()
+                XCTAssertEqual(session.lastError, error)
+                XCTAssertEqual(realtime.subscriptionCount, 1)
+                session.foregrounded()
+                XCTAssertTrue(session.canRetry)
+                session.retry()
+                XCTAssertNil(session.lastError)
+                XCTAssertEqual(session.phase, .recovering)
+                XCTAssertEqual(realtime.subscriptionCount, 3)
+                XCTAssertEqual(calls.value, 1)
+                realtime.send(.ready)
+                await eventually { session.phase == .ready }
+                XCTAssertEqual(session.snapshot?.match.id, matchID)
+                XCTAssertEqual(calls.value, 2)
+            }
+            XCTAssertEqual(store.storedState, LiveRecoveryState(matchID: matchID))
+            session.leaveToHome()
+            XCTAssertFalse(session.canRetry)
+        }
+    }
+
     func testAuthenticationRefreshesOnceThenRetriesTheSameSnapshot() async throws {
         let matchID = UUID()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
@@ -1121,6 +1199,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertTrue(session.canDiscardRecovery)
         XCTAssertNil(session.pendingIntent)
         XCTAssertTrue(creates.values.isEmpty)
@@ -1242,6 +1321,8 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(switchFactory.requestedAccountIDs, [firstUser, firstUser])
         XCTAssertNotNil(switchStore.storedState.pendingIntent)
 
+        XCTAssertTrue(switching.canRetryRecoveryStorage)
+        XCTAssertFalse(switching.canRetry)
         switchFactory.rejectsConstruction = false
         switching.retry()
 
@@ -1307,6 +1388,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertEqual(factory.requestedAccountIDs, [firstUser])
 
         factory.rejectsConstruction = true
@@ -1314,6 +1396,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertEqual(factory.requestedAccountIDs, [firstUser, firstUser])
 
         factory.rejectsConstruction = false
@@ -1420,6 +1503,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
+        XCTAssertFalse(session.canRetry)
         XCTAssertTrue(session.canDiscardRecovery)
         XCTAssertNotNil(store.storedState.pendingIntent)
     }
@@ -1633,9 +1717,16 @@ final class LiveMatchSessionTests: XCTestCase {
             )
         )
         let conflictRealtime = RealtimeHub()
-        let conflictService = LiveServiceMock(submit: { _, _, _ in
-            throw LiveMatchServiceError.server(.requestConflict)
-        })
+        let conflictAttempts = LockedValues<UUID>()
+        let conflictService = LiveServiceMock(
+            submit: { _, requestID, _ in
+                conflictAttempts.append(requestID)
+                throw LiveMatchServiceError.server(.requestConflict)
+            },
+            snapshot: { id in
+                Self.snapshot(matchID: id, status: .completed, round: .revealed)
+            }
+        )
         let conflict = makeSession(
             service: conflictService,
             realtime: conflictRealtime,
@@ -1644,12 +1735,21 @@ final class LiveMatchSessionTests: XCTestCase {
         conflict.changeAccount(to: UUID())
         await eventually { conflictRealtime.subscriptionCount == 1 }
         conflictRealtime.send(.ready)
-        await eventually { !conflict.isCommandInFlight && conflict.lastError != nil }
+        await eventually {
+            !conflict.isCommandInFlight && conflict.snapshot?.round.state == .revealed
+        }
         XCTAssertEqual(
             conflict.pendingIntent,
             .guess(matchID: matchID, requestID: conflictRequest, word: "STONE")
         )
         XCTAssertEqual(conflict.lastError, .server(.requestConflict))
+        XCTAssertTrue(conflict.canRetry)
+        conflict.retry()
+        XCTAssertFalse(conflict.canRetry)
+        await eventually { !conflict.isCommandInFlight && conflict.lastError != nil }
+        XCTAssertEqual(conflictAttempts.values, [conflictRequest, conflictRequest])
+        XCTAssertTrue(conflict.canRetry)
+        conflict.leaveToHome()
     }
 
     func testRecoveryUsesCappedBackoffSequenceAndOriginalCreateID() async throws {

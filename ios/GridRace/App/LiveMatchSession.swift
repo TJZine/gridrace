@@ -72,6 +72,10 @@ final class LiveMatchSession {
     var hasSavedMatch: Bool { recovery.matchID != nil || recovery.pendingIntent != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
+    var canRetry: Bool {
+        guard canBeginCommand, phase != .needsSignIn, isForeground, isOpen else { return false }
+        return recovery.pendingIntent != nil || (recovery.matchID != nil && shouldRecover)
+    }
     var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
     var canDiscardRecovery: Bool { canRetryRecoveryStorage }
 
@@ -256,12 +260,11 @@ final class LiveMatchSession {
             }
             return
         }
+        guard canRetry else { return }
         lastError = nil
-        if recovery.pendingIntent != nil, !isCommandInFlight {
+        if recovery.pendingIntent != nil {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
         } else if let matchID = recovery.matchID {
-            isOpen = true
-            if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
             phase = .recovering
             startRealtime(matchID: matchID)
         }
