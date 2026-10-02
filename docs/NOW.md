@@ -13,16 +13,18 @@ request recovery, Realtime-triggered canonical refresh, complete fixed-slice UI,
 real two-client local integration. Imported Daily results remain personal history only
 and cannot enter a verified competitive surface.
 
-Current work: the Phase 2/3 local slice is implemented and its accepted review
-findings are repaired. Durable authorities are reconciled; one fresh read-only final
-review and closeout remain. The plan stays Active until that review passes.
+Current work: the Phase 2/3 local slice is implemented. Final review accepted the
+pending-create repairs but found a delayed create/join completion can restart hidden
+recovery after returning Home. That lifecycle repair, verification and final
+acceptance remain. The plan stays Active until review passes.
 
 Next large chunk after local closeout: production-hosting proof and the separately
 approved expansion toward 2–8 players, multiple rounds, invite links, moderation,
 notifications, broader results, and retention policy. Those later surfaces must build
 on the proved fixed slice rather than generalize it speculatively.
 
-No local implementation blocker remains. Hosted deployment/Cron/backup and retention
+The remaining local defect is the post-Home create/join lifecycle ordering above.
+Hosted deployment/Cron/backup and retention
 proof, hosted CI, Apple provider/distribution credentials, physical-device accessibility,
 production word provenance, trusted hosted client-IP provenance, and the broader MVP
 remain explicit external or later gates. No paid commitment is authorized.

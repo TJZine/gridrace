@@ -245,13 +245,13 @@ Unimplemented future filenames below are proposed write boundaries, **not existi
 | P3-02 Session and recovery | Primary controller directly; `ios/GridRace/App/LiveMatchSession.swift`, `LiveMatchRecoveryStore.swift`, `SupabaseMatchRealtimeService.swift`, `ios/GridRaceTests/LiveMatchSessionTests.swift`; exact composition edits | P3-01 | Complete in `d578ec4`: durable create/guess IDs, persistence-before-dispatch, subscribe-before-catch-up, coalesced canonical recovery, lifecycle/auth/account isolation, monotonic clock and bounded timeout/backoff proof |
 | P3-03 Live UI | Fresh local `gpt-5.6-sol` / medium task; `ios/GridRace/App/LiveMatchViews.swift`, existing `DailyViews.swift`, focused tests and serialized project registration | P3-02 | Complete in `2117d71` with proof repair `06955d9`: create/join/lobby/countdown/round/reveal, recovery/errors, Home/Resume and code-inspected accessibility while retaining Daily ownership and settings |
 | P3-04 Real integration and race proof | Fresh local `gpt-5.6-sol` / medium tasks; `ios/GridRaceTests/LiveMatchIntegrationTests.swift`, host script and serialized project registration; existing backend harness and disposable local fixtures/simulator containers | P3-01..03 for app proof; backend HTTP/Realtime/concurrency harness completed during P2-04B | Complete in `0fcc113`: fresh two-process Auth/Edge/Realtime/watchdog/Cron/relaunch proof plus E3/E8/E10, Debug/Release and cleanup; IOS-01 repaired in `1d004c1` |
-| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Prior terminal task returned IOS-10/11; both repaired and independently verified in `bec7804`; fresh terminal review remains |
-| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | Authorities/evidence refreshed after IOS-10/11; no Historical status before terminal PASS |
+| R-01 Implementation final review | Fresh read-only reviewer; integrated implementation and evidence | P3-04 | Task `01a0fb66-0821-78a3-9c3f-61b7d0711779` returned IOS-12; IOS-10/11 remain closed |
+| C-02 Implementation closeout | Primary; authorities, plan and task-owned Git paths | R-01 fixes and all local exit gates | IOS-12 repair/verification and terminal acceptance remain; no Historical status before PASS |
 
 No parallel writers on migrations, API, project, account/composition roots, or
 tracking documents. Read-only reviewers may inspect broadly, cannot stage/commit,
 and return findings to the controller. A missing dependency pauses its dependent
-unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..11 are complete; terminal R-01 is next.
+unit only. P2-04B, BLK-01, P3-01..04 and IOS-01..11 are complete; IOS-12 is next.
 
 ## Risk and evidence gates
 
@@ -377,9 +377,12 @@ backup verification and compatible client/build gating before any rollout.
 Full Ponytail mode and the simplicity/test preferences in `AGENTS.md` apply to
 implementation; they do not reduce this agreed scope.
 
-**Exact next unit: terminal R-01.** Dispatch a fresh read-only reviewer over the
-complete integrated range, including `bec7804` and this authority/evidence checkpoint.
-IOS-10/11 are accepted; mark Historical only after explicit terminal PASS. The main
+**Exact next unit: IOS-12.** Dispatch one fresh local `gpt-6.1-sol` / medium worker
+with exclusive session/test writes. Persist delayed successful create/join results
+after Home without reopening hidden recovery; explicit Resume restarts it. Verify
+both delayed-success orderings and visible join behavior, then integrate and refresh
+evidence before terminal acceptance. IOS-10/11 remain accepted; mark Historical only
+after explicit terminal PASS. The main
 thread now owns orchestration, adjudication, integration and this plan; the stopped
 controller and interrupted worker remain stopped. Per maintainer direction on
 2026-10-02, future implementation packages use a fresh local `gpt-6.1-sol` / medium
@@ -571,6 +574,7 @@ change was required; all pre-existing changes remain unrelated.
 | IOS-09 | Medium | Sign-out and confirmed deletion cannot observe failed durable live-recovery cleanup. | `changeAccount(to:)` returns no outcome; coordinator/model continue and may report success after live storage factory/clear failure, while signed-out UI cannot reach Retry/Discard. | Accepted | Propagate/surface cleanup failure through production account composition, preserve reachable remediation, and add sign-out/deletion integration proof without weakening server-deletion semantics. | Closed in `482fa40`: outcome propagation, former-account Daily isolation, reachable retry/discard, sign-out/deletion seam proof, focused 48/48, full 165 executed/163 passed/two expected skips, clean Debug and controller focused 48/48 passed |
 | IOS-10 | Medium | Creating a new match while an old saved match pointer exists falsely enters storage failure. | `createMatch()` adds a create intent without clearing `matchID`, producing the recovery-store-invalid match/create combination before any request is sent. | Accepted | Persist `{ matchID: nil, pendingIntent: create }` atomically and restore the prior in-memory recovery state if persistence fails; prove both replacement and rollback. | Closed in `bec7804`: replacement/rollback proof, focused session 30/30, full 169 executed/167 passed/two expected skips, clean Debug and independent controller session 30/30 |
 | IOS-11 | Medium | A pending create becomes unreachable after returning Home. | `leaveToHome()` makes the session inactive, `hasSavedMatch` ignores create-only intents, Create/Join no-op while the intent exists, and inactive Live UI has no retry. | Accepted | Treat a create-only pending intent as resumable saved live state; the existing Home Resume route must reopen recovery and retry its original UUID. | Closed in `bec7804`: original-ID Home resume plus saved-match/pending-guess regression proof; focused/full/build and independent controller proof passed |
+| IOS-12 | Medium | A delayed successful create/join restarts recovery after returning Home. | `leaveToHome()` sets `isOpen=false` but retains the uncertain command; both success paths call `open()`, which unconditionally sets `isOpen=true` and starts Realtime/snapshot recovery for a hidden room. | Accepted | Preserve the resolved pointer without reopening when the session is closed; mark join open at dispatch and prove delayed create/join success starts no subscription/snapshot/watchdog until explicit Resume. | Open: bounded session/test lifecycle package |
 | CI-01 | Low | Hosted database lint omits `app_rls`. | Workflow uses `public,private`; runbook canonical command uses `public,private,app_rls`. | Accepted | Add `app_rls` to the workflow and validate syntax/local equivalent without claiming a hosted pass. | Closed in `7937a78`: one-line diff, YAML parse and local three-schema lint passed; hosted CI unclaimed |
 | API-01 | Low | Malformed or ambiguous six-character join codes return typed `match_not_joinable` with HTTP 400. | The frozen contract and Swift mapper require this typed error at 409; the reachable Home input otherwise becomes a generic transport failure. | Accepted | Return 409 for local join-code validation, update focused Edge proof, and confirm the existing typed Swift mapping remains aligned. | Closed in `3647d61`: shared 409 mapping restored, focused join 15/15, full Edge 100/100, Swift mapping 1/1 and controller focused 15/15 passed |
 | DOC-01 | Low | Durable authorities still describe the implemented live client and recovery storage as planned or later. | `NOW.md`, architecture, privacy map and product spec lag the completed slice. | Accepted | Reconcile the authorities during controller-owned C-02 after IOS-05, without marking the plan Historical before a fresh R-01 PASS. | Closed: current-state, recovery and remaining-gate language reconciled across all directly stale authorities; plan remains Active pending review |
@@ -1170,6 +1174,23 @@ change was required; all pre-existing changes remain unrelated.
 - This checkpoint refreshes NOW's totals and the screen-flow authority for pending
   create/guess Home resume. The plan stays Active pending a fresh terminal R-01.
 
+## R-01 ninth review and IOS-12 adjudication, 2026-10-02
+
+- Fresh configured read-only reviewer `01a0fb66-0821-78a3-9c3f-61b7d0711779`
+  (`gpt-daybreak-blue-latest` / high) reviewed `656c6ba..1e1f287` and returned
+  `REQUIRES FIXES` with IOS-12 medium/high confidence. It made no writes or execution
+  mutations and preserved HEAD, index, lockfile and scratch hashes.
+- Main controller traced both success callers of `open(matchID:)`, `leaveToHome()`,
+  request/Realtime guards and Home navigation. The finding is accepted: preserving
+  an in-flight command is correct for uncertainty, but its later success must not
+  override the user's closed session and restart hidden network recovery.
+- IOS-10/11 and all previous closures remain intact. No additional confirmed
+  security/privacy, database, account-cleanup or rule-parity defect was established.
+  Existing worker/controller proof was inspected, not rerun by the reviewer.
+- Next is a fresh 6.1 Sol medium session/test worker. The main controller retains
+  Git/tracking ownership and requires a single callback here even if blocked; stopped
+  old tasks remain stopped. Historical closeout remains forbidden on this verdict.
+
 ## Integrated commits
 
 Phase 2/3 commits to date:
@@ -1246,6 +1267,7 @@ Phase 2/3 commits to date:
 | `b6051ee chore: update worker roles` | Maintainer updates repository model/role configuration | Complete; preserved |
 | `91e1d96 docs(plan): record pending-create findings` | Record accepted IOS-10/11 and the bounded repair | Complete |
 | `bec7804 fix(live): resume pending create from home` | Replace saved pointer atomically and resume uncertain create with its original UUID | Complete; IOS-10/11 accepted |
+| `1e1f287 docs: record pending-create repair evidence` | Record IOS-10/11 acceptance, current verification and worker model switch | Complete; reviewed, returned IOS-12 |
 
 Planning tracker checkpoint `656c6ba` records content checkpoint `2a8ac34`. Staging was limited
 to the eight task-owned documents; the staged whitespace check passed and staged
