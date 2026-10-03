@@ -51,6 +51,8 @@ Where to look next:
   [docs/architecture.md](docs/architecture.md),
   [docs/privacy-data-map.md](docs/privacy-data-map.md), and
   [docs/screen-flow.md](docs/screen-flow.md)
+- Accepted target visual direction (not yet implemented):
+  [docs/design-direction.md](docs/design-direction.md)
 - Engineering workflow and verification: [docs/ENGINEERING_RUNBOOK.md](docs/ENGINEERING_RUNBOOK.md)
 - Durable architectural decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
 - Non-authoritative backlog candidates: [docs/TODO.md](docs/TODO.md)

@@ -6,6 +6,26 @@ tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
 [Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
 tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
 
+## 2026-10-03 — Adopt the Stamped Scorecard Visual Direction
+
+**Decision:** Replace the indigo/coral/teal lane-edge presentation with the
+stamped scorecard direction in [`design-direction.md`](design-direction.md):
+warm paper and ink, claret round-seal tiles (filled correct, double-ring present,
+unfilled dimmed absent), serif plus monospaced system type, a program-schedule
+Home, Live Create/Join off Home, and gameplay limited to header, board, and
+keyboard.
+
+**Rationale:** A simulator audit showed absent feedback dominating the board,
+indigo overloaded across action and feedback, a meaningless lane-edge bar, a
+form-like Home, and the sixth row clipped in the tutorial race.
+
+**Consequences/revisit:** Accessibility, secrecy, and original-identity invariants
+are unchanged. Passport-stamp tiles are the designated fallback only if testing
+shows round tiles hurt legibility. All surfaces were designed on 2026-10-03;
+[`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md)
+implements them after the human-approved rescope moves Phase 4's OS-assisted
+accessibility proof into that plan.
+
 ## 2026-10-02 — Expand Private Blind Race to Two-Player Multi-Round Matches
 
 **Decision:** Keep exactly two authenticated players and manual room codes. Offer
