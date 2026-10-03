@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import XCTest
 @testable import GridRace
 
@@ -2031,6 +2032,122 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(session.displayedReveal?.number, 1)
         session.leaveToHome()
         XCTAssertEqual(later.round.number, 2)
+    }
+
+    func testPendingStartRemainsObservableAcrossUnchangedSnapshotAndHomeResume() async throws {
+        for (label, target) in [("3-lobby", 1), ("3-round-1-reveal", 2)] {
+            let initial = try Phase4LiveFixtures.snapshot(label)
+            let original = LiveRecoveryState(matchID: initial.match.id)
+            let store = MemoryLiveRecoveryStore(original)
+            let realtime = RealtimeHub()
+            let starts = LockedValues<Int>()
+            let snapshots = LockedCounter()
+            let changes = LockedCounter()
+            let session = makeSession(service: LiveServiceMock(snapshot: { id in
+                XCTAssertEqual(id, initial.match.id)
+                snapshots.increment()
+                return initial
+            }, startTargeted: { id, round in
+                XCTAssertEqual(id, initial.match.id)
+                XCTAssertEqual(store.storedState, original, "Start must not persist an intent")
+                starts.append(round)
+                if starts.values.count == 1 { throw LiveMatchServiceError.unavailable }
+                return id
+            }), realtime: realtime, store: store,
+            timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
+            XCTAssertFalse(session.hasPendingStart)
+            session.changeAccount(to: UUID()); realtime.send(.ready)
+            await eventually { session.phase == .ready }
+            XCTAssertFalse(session.hasPendingStart)
+            XCTAssertTrue(session.canRetry, "ordinary recovery is not an unresolved Start")
+            withObservationTracking {
+                XCTAssertFalse(session.hasPendingStart)
+            } onChange: { changes.increment() }
+            session.startMatch()
+            XCTAssertTrue(session.hasPendingStart)
+            XCTAssertEqual(changes.value, 1)
+            session.startMatch()
+            await eventually { !session.isCommandInFlight && snapshots.value >= 2 && session.phase == .ready }
+            XCTAssertNil(session.lastError)
+            XCTAssertTrue(session.hasPendingStart, "an unchanged success snapshot cannot resolve Start")
+            session.startMatch()
+            await Task.yield()
+            XCTAssertEqual(starts.values, [target], "new Start remains blocked after error-free refresh")
+            XCTAssertEqual(store.storedState, original)
+
+            session.leaveToHome()
+            XCTAssertNil(session.snapshot)
+            XCTAssertTrue(session.hasPendingStart)
+            XCTAssertFalse(session.canRetry)
+            session.resumeSavedMatch(); realtime.send(.ready)
+            await eventually { session.phase == .ready }
+            XCTAssertNil(session.lastError)
+            XCTAssertTrue(session.hasPendingStart)
+            XCTAssertTrue(session.canRetry)
+            XCTAssertEqual(starts.values, [target], "Resume must fetch rather than dispatch Start")
+            withObservationTracking {
+                XCTAssertTrue(session.hasPendingStart)
+            } onChange: { changes.increment() }
+            session.retry()
+            await eventually { !session.isCommandInFlight && !session.hasPendingStart && session.phase == .ready }
+            XCTAssertEqual(starts.values, [target, target], "Retry must retain the original match and round")
+            XCTAssertEqual(changes.value, 2)
+            XCTAssertEqual(session.snapshot, initial, "command success clears the signal before canonical advance")
+            XCTAssertEqual(store.storedState, original)
+            session.leaveToHome()
+        }
+    }
+
+    func testPendingStartClearsOnCanonicalAdvanceDefinitiveDenialAndAccountReset() async throws {
+        for (label, target) in [("3-lobby", 1), ("3-round-1-reveal", 2)] {
+            for resolution in ["target", "later", "denial", "accountReset"] {
+                let initial = try Phase4LiveFixtures.snapshot(label)
+                let canonical = LockedValues<LiveMatchSnapshot>()
+                canonical.append(initial)
+                let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id))
+                let realtime = RealtimeHub()
+                let starts = LockedValues<Int>()
+                let snapshots = LockedCounter()
+                let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+                    snapshots.increment()
+                    return canonical.values.last!
+                }, startTargeted: { id, round in
+                    XCTAssertEqual(id, initial.match.id)
+                    starts.append(round)
+                    if starts.values.count > 1 { throw LiveMatchServiceError.server(.roundNotActive) }
+                    throw LiveMatchServiceError.unavailable
+                }), realtime: realtime, store: store,
+                timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
+                session.changeAccount(to: UUID()); realtime.send(.ready)
+                await eventually { session.phase == .ready }
+                session.startMatch()
+                await eventually { !session.isCommandInFlight && snapshots.value >= 2 && session.phase == .ready }
+                XCTAssertTrue(session.hasPendingStart)
+                XCTAssertNil(session.lastError)
+                switch resolution {
+                case "target", "later":
+                    let advanced = try Phase4LiveFixtures.snapshot(
+                        resolution == "target" ? "3-round-\(target)-countdown" : "3-round-3-reveal"
+                    )
+                    canonical.append(advanced)
+                    realtime.send(.signal)
+                    await eventually { session.snapshot == advanced }
+                    XCTAssertEqual(starts.values, [target])
+                case "denial":
+                    session.retry()
+                    await eventually { !session.isCommandInFlight && starts.values.count == 2 }
+                    XCTAssertEqual(starts.values, [target, target])
+                default:
+                    session.changeAccount(to: nil)
+                    XCTAssertEqual(session.phase, .inactive)
+                    XCTAssertFalse(session.hasSavedMatch)
+                    XCTAssertEqual(store.storedState, LiveRecoveryState())
+                }
+                XCTAssertFalse(session.hasPendingStart, resolution)
+                XCTAssertNil(session.pendingIntent)
+                session.leaveToHome()
+            }
+        }
     }
 
     func testOldGuessReceiptAfterNewRoundClearsExactIntentWithoutChangingBoardDraftOrClock() async throws {

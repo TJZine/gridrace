@@ -76,6 +76,7 @@ final class LiveMatchSession {
     var hasSavedMatch: Bool { recovery.matchID != nil || recovery.pendingIntent != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
+    var hasPendingStart: Bool { pendingStart != nil }
     var canRetry: Bool {
         guard canBeginCommand, phase != .needsSignIn, isForeground, isOpen else { return false }
         return recovery.pendingIntent != nil || pendingStart != nil

@@ -30,7 +30,7 @@ Controller adjudicated that concrete requirement and proved frozen native packag
 resolution. After the human resumed on 2026-10-03, fresh P4-C3 finished the
 preserved client seam, proved latest focused/full/build gates and released all
 leases. Controller source audit, exact fixture/preservation inspection and independent
-87/87 focused proof passed. P4-C/I is accepted for checkpoint; substantive UI,
+87/87 focused proof passed. P4-C/I is checkpointed at `335f210a5a287ada4994657e8f574ceeff4dcb7b`; substantive UI,
 real independent-client product proof and final review remain required. This plan
 stays Active.
 
@@ -236,6 +236,7 @@ Product writes require independent plan review/adjudication and controller accep
 | P4-C Swift contract/session/storage | ios/GridRace/App/LiveMatch.swift, SupabaseLiveMatchService.swift, LiveMatchRecoveryStore.swift, LiveMatchSession.swift; ios/GridRace/App/LiveMatchViews.swift (only new error-case exhaustiveness/compatibility needed to keep this package buildable); ios/GridRaceTests/LiveMatchTests.swift, LiveMatchSessionTests.swift, LiveMatchViewTests.swift, LiveMatchIntegrationTests.swift; ios/GridRaceTests/AccountTests.swift (only recovery fixture/buildability adaptation and v1/v2 sign-out/deletion/account-isolation cleanup proof) | Backend contract/security checkpoint, captured fixtures. LiveMatchViewTests/LiveMatchIntegrationTests and the view error mapping are only protocol/fixture/exhaustiveness adaptation for buildability in this package; substantive UI/integration behavior gets later leases. Session createMatch retains a default-3 entry until P4-U supplies the explicit selector value; transport protocol callers are adapted inside this lease. Prove v1 migration, v2 validation, every transition/pending/delayed/lifecycle/storage/account boundary and existing repairs. |
 | P4-I controller composition | ios/GridRace/App/SupabaseAccountService.swift; ios/GridRace/App/DailyAccountCoordinator.swift only if necessary; ios/GridRace.xcodeproj/project.pbxproj; ios/GridRace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved (only adjudicated missing swift-issue-reporting pin) | Serialized with P4-C integration: build2 composition and target settings; adjust project only if required. No new file registration/dependency expected. Controller owns shared assembly, workers return necessary changes as evidence. |
 | P4-U UI | ios/GridRace/App/DailyViews.swift (only live Create selector/action and related live entry presentation); ios/GridRace/App/LiveMatchViews.swift; ios/GridRaceTests/LiveMatchViewTests.swift | Agreed D3/D4 plus integrated client contracts. Reuse existing UI/reveal; add picker, labels, standings, Start next, prior reveals and incomplete/final routes. Focused tests and accessibility inspection; no Daily redesign. |
+| P4-C4 pending-Start presentation seam | ios/GridRace/App/LiveMatchSession.swift; ios/GridRaceTests/LiveMatchSessionTests.swift | Controller-traced UI-SESSION-UNRESOLVED-START. Expose read-only observable hasPendingStart from existing pendingStart; prove unchanged snapshots/Home/Resume and original-target Retry. No command/storage/contract behavior change. Release before fresh P4-U2. |
 | P4-V integration/proof | scripts/run_live_match_integration.sh; ios/GridRaceTests/LiveMatchIntegrationTests.swift; supabase/tests/integration/live_slice_test.ts | Integrated B/C/I/U, released earlier leases. Extend existing independent two-client product/Cron/relaunch harness for all counts, nonfinal boundaries, secrecy and pending retries. Controller sole database/simulator process coordinator runs full gates; mocks supplement. Controller adds proved host/candidate command to runbook only after success. |
 | P4-R final review | Repository READ ONLY | One fresh independent reviewer over integrated owned diff/contracts/proof/risk. Findings require reproduction or concrete invariant trace; controller records disposition. |
 | P4-F repair, conditional | Exact finding-owned file list set by controller | Bounded accepted repairs, affected proof rerun; controller targeted closure, no recursive whole reviews. |
@@ -568,14 +569,71 @@ P4-U owns local draft/error/animation/focus identity by match+round, only hydrat
 saved guesses belonging to the current round, and wires picker, canonical standings,
 creator advancement, final/incomplete presentation and prior reveal selection.
 Selection must never retarget commands. C/I build2 composition and the concretely
-required missing transitive pin are accepted with this client checkpoint.
+required missing transitive pin are accepted with client checkpoint
+`335f210a5a287ada4994657e8f574ceeff4dcb7b` (16 owned files).
+
+## UI presentation seam adjudication
+
+P4-U `01a10069-197b-7551-9eea-2d8ec847ad51` released all three file and
+Swift/simulator leases with BLOCKED_NO_WRITES. Its existing immutable-Start test
+passed 1/1; no substantive UI, accessibility or full/build proof is claimed.
+Result `/tmp/gridrace-phase4-ui-result.json`; empty owned diff. Controller verified
+three UI baselines, all 128 protected tracked bytes, six original unrelated hashes,
+HEAD/index/status against the transfer manifest: exact, no repository writes.
+
+Controller ACCEPTS UI-SESSION-UNRESOLVED-START after concrete source trace:
+LiveMatchSession pendingStart is private; an unchanged canonical snapshot retains
+the target but sets ready and clears lastError. canRetry also covers ordinary
+nonfinal recovery, so it cannot identify that unresolved action. Home preserves
+pendingStart while removing the view. A view-local latch would lose authority at
+Home/Resume. Existing server/session idempotency is intact, but enabled inert Start
+and missing original-target Retry would fail accepted UI behavior.
+
+Freeze the minimal internal presentation contract: read-only observable
+`hasPendingStart: Bool` reflects existing `pendingStart != nil`. Do not expose or
+mutate its target, add persisted state, or change command/retry/timestamp behavior.
+P4-C4 has exactly session/source-tests leases above. Prove first and subsequent
+uncertain Starts remain observable after unchanged refresh/Home/Resume, Retry uses
+the captured target, and success/canonical advancement/definitive denial/account
+reset removes the signal. Then checkpoint and send fresh P4-U2 the original UI
+package plus this signal. No human scope/UX decision is reopened.
+
+## P4-C4 targeted closure
+
+Fresh worker `01a1006f-ba82-7352-9213-f42de9b5d29d` completed the two-file
+seam, released all leases/processes and returned one callback. Product diff is
+exactly the read-only computed `hasPendingStart` getter over existing observed
+state. Two parameterized regressions prove native Observation invalidation,
+first/next target preservation through unchanged refresh and Home/Resume, new
+Start suppression, explicit Retry of the original match/round, no durable Start
+intent, and clearing on success, canonical target/later advancement, definitive
+denial and account reset. Existing behavior remains unchanged.
+
+Worker affected proof passed **62/62** (58 session, four recovery store), zero
+failures/skips. Initial new-test fixture typo referenced a nonexistent later
+countdown; corrected to the actual later final reveal before the complete rerun.
+Full suite/clean Debug are due after UI implementation; no new broad proof claim.
+Result `/tmp/gridrace-phase4-start-seam-result.json`; final worker log/result
+`/tmp/gridrace-phase4-start-seam-focused-rerun.log` and `.xcresult`.
+
+Controller inspected the entire narrow diff and independently verified two source
+hashes, all 129 protected tracked files, original six unrelated hashes, HEAD/index/
+status and latest gate evidence. Independently executed both new regressions:
+**2/2 passed**, zero failures; `/tmp/gridrace-phase4-controller-start-seam.log`
+and `.xcresult`. Frozen native flags/exact lock preserved. The accepted integration
+finding is closed; final independent implementation review is still required later.
+Fresh P4-U2 uses `hasPendingStart` to disable new Start and offer original-target
+Retry even after an error-free unchanged snapshot or Home/Resume. No view-local
+command latch and no widened UI source lease.
 
 ## Blockers, stop conditions and next action
 
 D3/D4 resolved; P4-PR-01/02 accepted and repaired; no outstanding planning blocker.
-P4-B is committed/proved at `ba65af9`. P4-C/I is accepted after latest-source
-focused/full/clean Debug and controller audit/independent focused proof. Checkpoint
-C/I, then dispatch fresh Sol/medium P4-U within the agreed three-file UI lease.
+P4-B is committed/proved at `ba65af9`. P4-C/I is committed at `335f210` after latest-source
+focused/full/clean Debug and controller audit/independent focused proof. P4-U
+returned a traced presentation seam before writes. P4-C4 is accepted after narrow
+closure proof; checkpoint it, then dispatch fresh Sol/medium P4-U2 within the
+agreed three-file UI lease.
 No product/UX decision is missing. Real independent-client V, one fresh final
 independent R, bounded accepted repairs and Historical closeout remain.
 

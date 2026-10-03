@@ -23,11 +23,16 @@ canonical round/match standings and cross-round recovery. UI and freeze-after-ei
 account-deletion decisions are accepted. Independent plan review was adjudicated
 and checkpointed at `3a01d9a` before product writes. P4-B backend/Edge is implemented
 and locally verified at `ba65af9`. Swift contract/session/storage and build-2
-composition are now accepted after latest-source worker proof and controller audit:
+composition are checkpointed at `335f210` after latest-source worker proof and
+controller audit:
 87 focused passes, full iOS 205 executed/203 passed/two expected integration skips,
 zero failures and clean Debug; controller independently repeated 87 focused passes.
 The accepted required transitive lock pin stayed exact under frozen native flags.
 Substantive UI, real independent-client product proof and fresh final review remain.
+The first UI worker returned without writes after identifying a missing pending-Start
+presentation signal. The two-file repair is accepted: 62 affected tests passed and
+the controller independently passed both new lifecycle/Observation regressions.
+Fresh UI implementation consumes the read-only signal; full/build gates follow UI.
 Current execution belongs to the
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
 
