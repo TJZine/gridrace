@@ -115,8 +115,9 @@ uses the original session-owned target even after Home/Resume; pending old-round
 guesses cannot populate a later-round draft. Prior reveal selection leaves current
 commands and SQL standings unchanged. Real independent-client verification and
 the independent implementation review are complete, recorded in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). OS-assisted
-accessibility verification remains pending. No presence, transfer or auto advance.
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). OS-assisted
+accessibility verification is now owned by S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md). No presence, transfer or auto advance.
 
 ### Countdown and round
 

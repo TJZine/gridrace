@@ -1,6 +1,6 @@
-Status: Proposed
+Status: Active
 Scope: GridRace iOS presentation refresh to the accepted stamped scorecard direction
-Owner: Unassigned until activation (primary controller)
+Owner: Codex stamped UI refresh primary controller (/root)
 Started: 2026-10-03
 Last updated: 2026-10-03
 
@@ -8,9 +8,10 @@ Last updated: 2026-10-03
 
 ## Activation gate
 
-This plan is not Active. The repository allows one Active plan, and
-[Phase 4](2026-10-02-phase-4-blind-race.md) is Active pending its A9 OS-assisted
-accessibility proof.
+Activation completed on 2026-10-03 under the human's rescope authorization.
+The repository allows one Active plan. [Phase 4](2026-10-02-phase-4-blind-race.md)
+is now Historical; its unproved A9 OS-assisted accessibility checks belong to S4.
+The following is the completed docs-only activation procedure.
 
 **Human decision 2026-10-03: rescope.** Phase 4's A9 proof moves to slice S4 of
 this plan. Activation steps, in order, as one docs-only checkpoint:
@@ -37,9 +38,16 @@ across Home, Daily, Live, and supporting screens, with shared leaf components
 replacing duplicated tutorial/live pieces, without changing game rules,
 session/state machines, storage, backend, or share text.
 
-## Snapshot at authoring (2026-10-03)
+## Snapshot at activation (2026-10-03)
 
-- Branch `dev/classic-mode`; product HEAD `253698a`. Phase 4 Active.
+- Branch `dev/classic-mode`; starting HEAD
+  `2d19d2c5b8263fe176dc77af167fe7c19f588081`. The human authorized starting from
+  the latest commit after the kickoff-file commit check differed. Phase 4 is
+  Historical with its software proof preserved and A9 transferred to S4.
+- Empty index and clean tracked tree at kickoff. Six unrelated untracked files
+  match the expected set; their path-to-SHA-256 baseline is
+  `.codex/runs/stamped-ui-refresh/unrelated-baseline.json`. Never stage, reset,
+  stash, overwrite, or refresh these files.
 - Presentation lives in `DailyViews.swift` (1,313 lines: routing, Home,
   `LiveCreateControls`, game, stats, settings, help, attribution),
   `LiveMatchViews.swift` (1,154), `Views.swift` (800: tutorial plus shared board,
@@ -312,6 +320,7 @@ review.
 | --- | --- | --- |
 | 2026-10-03 | D1–D6 | Recorded at authoring. Human chose rescope activation and delegated D3/D4 to the recommended design, authorizing app rework needed to fit it. |
 | 2026-10-03 | D7–D12 | Added from the adversarial plan review (below). |
+| 2026-10-03 | Activation baseline | Human authorized latest HEAD `2d19d2c` instead of the kickoff-file commit. Rescope activation transfers A9 intact to S4. |
 
 ### Review findings
 
@@ -343,11 +352,15 @@ N1–N3, all fixed.
 
 ### Verification record
 
-None yet.
+Activation: clean tracked tree/empty index and six expected unrelated paths
+verified; byte baseline captured. Docs-only diff and local path references inspected;
+`git diff --check` passed; exactly one Active plan remains. Phase 4 reference
+search resolved to Historical evidence, the completed activation procedure, or the
+original kickoff instructions. No product write or product test in this checkpoint.
 
 ### Commit record
 
-None yet.
+Activation docs checkpoint: this commit, from authorized starting HEAD `2d19d2c`.
 
 ## Blockers and stop conditions
 
@@ -359,7 +372,8 @@ None yet.
 
 ## Next action
 
-Controller performs the rescope activation checkpoint above, then starts S0a.
+Activation is complete. Controller dispatches S0a, then audits the full mechanical
+diff, proves full suite and clean Debug, and commits before S0b.
 
 ## Closeout checklist
 

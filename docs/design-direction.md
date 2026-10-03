@@ -243,5 +243,6 @@ strengthening all carry over unchanged from `screen-flow.md` and `game-rules.md`
 
 All surfaces are designed (2026-10-03). Code structure, slicing, and verification
 live in [`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md),
-which activates after Phase 4 closes or is rescoped so the OS-assisted VoiceOver,
-Reduce Motion, and hit-region proof runs once on the refreshed UI.
+now Active after the human-approved Phase 4 rescope. S4 owns the transferred
+OS-assisted VoiceOver, Reduce Motion, hardware keyboard, haptic preference,
+and hit-region proof, which runs once on the refreshed UI.

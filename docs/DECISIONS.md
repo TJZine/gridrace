@@ -3,8 +3,10 @@
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
-[Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
-tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md)
+owns the accepted presentation work and transferred Phase 4 A9 proof. The
+[Phase 4 Blind Race plan](plans/2026-10-02-phase-4-blind-race.md) and Phase 2/3
+plan are Historical evidence.
 
 ## 2026-10-03 — Converge Started Daily Attempts Over Empty Boards
 
@@ -40,8 +42,8 @@ form-like Home, and the sixth row clipped in the tutorial race.
 are unchanged. Passport-stamp tiles are the designated fallback only if testing
 shows round tiles hurt legibility. All surfaces were designed on 2026-10-03;
 [`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md)
-implements them after the human-approved rescope moves Phase 4's OS-assisted
-accessibility proof into that plan.
+implements them under the human-approved rescope, with Phase 4's OS-assisted
+accessibility proof transferred to S4.
 
 ## 2026-10-02 — Expand Private Blind Race to Two-Player Multi-Round Matches
 

@@ -7,11 +7,13 @@
 > runbook. Promote it into a dated plan only when durable tracking is warranted; then
 > remove or revise the candidate here.
 
-## After the Accepted Phase 4 Scope
+## After the Accepted Live and Presentation Scope
 
-The two-player/multi-round expansion is accepted and tracked in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); it is no longer an
-unselected backlog candidate. Phase 2/3 is Historical, locally complete evidence.
+The two-player/multi-round expansion is recorded in the
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). The accepted
+stamped presentation and transferred A9 checks belong to the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md); neither
+is an unselected backlog candidate. Phase 2/3 is Historical, locally complete evidence.
 This file owns no current package state or next action.
 
 Later candidates remain: wider 2–8-player rosters, rematch, competitive history,

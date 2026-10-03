@@ -7,8 +7,9 @@ the fixed two-player local live client is implemented and Phase 4 multi-round
 backend/client contracts and native UI are locally verified, including real
 multi-round independent-client proof and an independent implementation review.
 Evidence and review closure are recorded in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
-accessibility proof remains pending. Recovery stores only the
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof is now owned by S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md). Recovery stores only the
 account-private match pointer and original count/round/build/UUID/word intent, never
 authoritative boards, answers, opponent data, standings or credentials.
 

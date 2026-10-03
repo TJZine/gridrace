@@ -5,8 +5,9 @@ local Daily Classic mode, the Phase 1 tutorial, the implemented Phase 2/3 client
 and locally verified Phase 4 multi-round backend/client. Real independent-client
 multi-round verification and the independent implementation review are complete,
 with evidence and review closure in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
-accessibility proof remains pending; no hosted rollout is claimed.
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
+accessibility proof is now owned by S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md); no hosted rollout is claimed.
 
 ## Daily Classic architecture
 
