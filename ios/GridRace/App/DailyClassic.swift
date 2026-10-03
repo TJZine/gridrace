@@ -50,7 +50,8 @@ struct DailyWordPack: Decodable, Equatable, Sendable {
     static func validateBundledIdentity(_ pack: DailyWordPack) throws {
         guard pack.id == DailyPuzzleIdentity.wordPackID,
               pack.scheduleVersion == DailyPuzzleIdentity.scheduleVersion,
-              pack.epochDay == DailyPuzzleIdentity.epochDay
+              pack.epochDay == DailyPuzzleIdentity.epochDay,
+              pack.answers.count == DailyPuzzleIdentity.answerCount
         else { throw DailyClassicError.invalidWordPack }
     }
 

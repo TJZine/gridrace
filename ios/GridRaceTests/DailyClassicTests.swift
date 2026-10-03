@@ -33,25 +33,33 @@ final class DailyClassicTests: XCTestCase {
     }
 
     func testBundledWordPackIdentityIsPinned() throws {
-        let published = try DailyWordPack.load(from: packData(
-            id: "daily-classic-en-US-v1",
-            epochDay: 20_696
-        ))
+        let published = try DailyWordPack.load(bundle: .main)
+        XCTAssertEqual(published.answers.count, DailyPuzzleIdentity.answerCount)
         XCTAssertNoThrow(try DailyWordPack.validateBundledIdentity(published))
 
-        let wrongID = try DailyWordPack.load(from: packData(id: "replacement", epochDay: 20_696))
-        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongID))
-        let wrongSchedule = try DailyWordPack.load(from: packData(
-            id: "daily-classic-en-US-v1",
-            scheduleVersion: 2,
-            epochDay: 20_696
-        ))
-        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongSchedule))
-        let wrongEpoch = try DailyWordPack.load(from: packData(
-            id: "daily-classic-en-US-v1",
-            epochDay: 20_697
-        ))
-        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(wrongEpoch))
+        func variant(
+            id: String = published.id,
+            scheduleVersion: Int = published.scheduleVersion,
+            epochDay: Int = published.epochDay,
+            answers: [String] = published.answers
+        ) -> DailyWordPack {
+            DailyWordPack(
+                formatVersion: published.formatVersion, id: id,
+                scheduleVersion: scheduleVersion, locale: published.locale,
+                wordLength: published.wordLength, epochDay: epochDay,
+                acceptedGuesses: published.acceptedGuesses, answers: answers
+            )
+        }
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(variant(id: "replacement")))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(variant(scheduleVersion: 2)))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(variant(epochDay: 20_697)))
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(variant(
+            answers: Array(published.answers.dropLast())
+        )))
+        let extra = try XCTUnwrap(published.acceptedGuesses.first { !published.answers.contains($0) })
+        XCTAssertThrowsError(try DailyWordPack.validateBundledIdentity(variant(
+            answers: published.answers + [extra]
+        )))
     }
 
     func testSixthGuessCanWinOrFailAndCompletionIsImmutable() throws {
