@@ -19,6 +19,7 @@ fi
 }
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
+source "$repo_root/scripts/scan_client_credentials.sh"
 [[ $(git branch --show-current) == dev/classic-mode ]] || exit 2
 [[ $(sed -n 's/^project_id = "\([^"]*\)"/\1/p' supabase/config.toml) == gridrace ]] || exit 2
 [[ ! -e supabase/.temp/project-ref && ! -e .supabase/project-ref ]] || {
@@ -292,8 +293,7 @@ GRIDRACE_LOCAL_INTEGRATION=1 API_URL="$API_URL" ANON_KEY="$ANON_KEY" \
   supabase/tests/integration/live_slice_test.ts >"$work_dir/backend.log" 2>&1
 for simulator in "$host_simulator" "$guest_simulator"; do
   container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data)
-  ! rg -a -q --fixed-strings "$SERVICE_ROLE_KEY" "$container"
-  ! rg -a -q --fixed-strings "$DB_URL" "$container"
+  scan_client_credentials "$container" "$SERVICE_ROLE_KEY" "$DB_URL"
 done
 rg 'PASS live client|INJECTION|Executed [0-9]+ test' "$work_dir"/*.log || true
 echo "PASS real independent-client matrix and reused exact backend standings/races"

@@ -142,6 +142,7 @@ git diff --cached --stat
 git log -1 --oneline
 python3 scripts/check_word_pack.py --checked-in-only
 python3 scripts/check_word_pack.py
+bash scripts/test_client_credential_scan.sh
 npm ci
 npm run check:seed
 deno fmt --check rules/typescript
@@ -232,6 +233,11 @@ iPhone17Pro/iOS26.5 type/runtime and retained frozen SourcePackages cache at
 `/tmp/gridrace-phase4-client-derived-test/SourcePackages`; keep the accepted lock
 SHA256 `d6b069e121418166c3b844eb1c1b66fc2f0ccb715f0b9808405a14a9a68d0691` exact.
 All Xcode checks, including discovery, use the frozen flags shown above.
+The sourced credential scan searches hidden/ignored container files, supplies
+fixed-string patterns on stdin and suppresses raw diagnostics. Only scanner status
+1 establishes no match; matches, scanner errors and unavailable inputs fail.
+`bash scripts/test_client_credential_scan.sh` proves these paths with dummy values.
+A full integration PASS before this repair does not establish credential absence.
 
 The command prints and retains a private `/tmp/gridrace-live-integration.*` proof
 directory with logs, per-process xcresults, owned-fixture inventory and cleanup
@@ -274,8 +280,10 @@ command on another machine.
 
 The checked-in [CI workflow](../.github/workflows/ci.yml) runs the same
 generated-data, shared-rule, Edge Function, local-database, iOS test, and Debug-build
-gates on pushes and pull requests for `dev/classic-mode`, with an explicit manual
-trigger. It pins Node 20.20.2, Deno 2.9.5, the Supabase CLI lockfile, and every action
+gates on pushes to `dev/classic-mode` and pull requests targeting `main` or
+`dev/classic-mode`, with an explicit manual trigger. Both checkouts disable
+persisted credentials; subsequent checks require no authenticated Git operations.
+It pins Node 20.20.2, Deno 2.9.5, the Supabase CLI lockfile, and every action
 to a full commit SHA. The iOS job selects Xcode 26.6 and the iOS 26.5 iPhone 17 Pro
 simulator by name rather than copying a machine-local UUID. Checking in the workflow
 proves only its configuration: a passing hosted run remains unverified until GitHub
