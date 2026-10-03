@@ -190,14 +190,22 @@ xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
   -derivedDataPath /tmp/gridrace-phase4-client-derived-test \
   -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
   -skipPackageUpdates -resolvePackageDependencies
-xcodebuild -project ios/GridRace.xcodeproj -list
-xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
+xcodebuild -project ios/GridRace.xcodeproj \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -list
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
   -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
-  -derivedDataPath /tmp/GridRaceDerivedData-test test
+  -derivedDataPath /tmp/GridRaceDerivedData-test \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates test
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug \
   -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
-  -derivedDataPath /tmp/GridRaceDerivedData-build clean build
+  -derivedDataPath /tmp/GridRaceDerivedData-build \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates clean build
 ```
 
 Phase 4 P4-B proved the local version-targeted reset and forward migration above
@@ -205,6 +213,36 @@ with disposable legacy lobby/active/revealed fixtures. Reset is destructive and
 always requires current fixture-ownership/disposability proof; never use these
 commands against remote/hosted data. The active plan records identities, receipts,
 grants/RLS and Realtime projection comparisons across the upgrade.
+
+Phase 4 also proved the independent-client host command:
+
+```bash
+PATH=/opt/homebrew/opt/libpq/bin:$PATH GRIDRACE_LOCAL_INTEGRATION=1 \
+  bash scripts/run_live_match_integration.sh
+```
+
+First inventory the current unlinked loopback GridRace stack: ownership of existing
+accounts, Daily rows and live rooms cannot be inferred from its name or an earlier
+run. The controller starts the existing local stack and separate Edge gateway,
+checks applied migrations and active scheduled finalizer, and owns the sole runtime
+verification lease. This harness does not reset, start or stop the shared backend.
+It uses unique owned Auth/match/non-answer fixtures and creates/deletes only its own
+two simulators, preserving unrelated containers and data. It requires the installed
+iPhone17Pro/iOS26.5 type/runtime and retained frozen SourcePackages cache at
+`/tmp/gridrace-phase4-client-derived-test/SourcePackages`; keep the accepted lock
+SHA256 `d6b069e121418166c3b844eb1c1b66fc2f0ccb715f0b9808405a14a9a68d0691` exact.
+All Xcode checks, including discovery, use the frozen flags shown above.
+
+The command prints and retains a private `/tmp/gridrace-live-integration.*` proof
+directory with logs, per-process xcresults, owned-fixture inventory and cleanup
+status. Require exit0, no real-client skip/failure, all scenario markers and owned
+cleanup success; inspect baseline preservation afterward. Budget about 40 minutes
+for cold simulator/build setup, independent launches, original 180-second deadlines
+and backend barriers; do not translate timestamps in the client deadline cases.
+The current proof is 60 real client invocations plus 429 backend requests/142
+snapshots, all passing. This is local Xcode27/iOS26.5 proof, separate from hosted CI,
+OS-assisted/physical-device accessibility and distribution gates. Ordinary full
+suite opt-in skips cannot substitute for this command.
 
 Use `rg --files` and `rg` for discovery when available, but do not treat search
 output as product verification. Scope every diff review by appending `--` and

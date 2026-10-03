@@ -247,7 +247,7 @@ All paths are exact leases, not directory-wide permission. Shared DTOs/API/error
 
 ## Verification matrix and exact command families
 
-P4-B backend evidence is recorded below; Swift/UI/product integration rows remain pending. Record named scenario/output/fixture/toolchain, not counts alone.
+P4-B/C/I/U and real P4-V evidence are recorded below. A9 OS-assisted checks and final independent review remain pending. Record named scenario/output/fixture/toolchain, not counts alone.
 
 | Acceptance | Existing harness and required scenarios |
 | --- | --- |
@@ -307,7 +307,7 @@ xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
 
 Use the rediscovered UUID in the runbook's full xcodebuild test and Debug clean build commands, with /tmp/GridRaceDerivedData-test and /tmp/GridRaceDerivedData-build respectively; record the literal expanded command. Focused owner tests may add -only-testing:GridRaceTests/LiveMatchTests, LiveMatchSessionTests or LiveMatchViewTests to the same test invocation, but full suite and clean Debug remain required. Shared Swift vectors run in the full suite. Source word-pack regeneration is only affected if source artifacts change (none planned); do not download intermediates/dependencies in this scope.
 
-Existing historically proved host invocation: GRIDRACE_LOCAL_INTEGRATION=1 bash scripts/run_live_match_integration.sh. It is not in the runbook's current command list; after extension and success controller promotes its exact prerequisites/results. Its script performs a reset: loopback/unlinked checks alone do not prove actual current data disposable. Require disposability before invocation; avoid running it concurrently with a separately served gateway/database writer. Preserve deterministic accepted non-answer fixture and privileged-credential exclusion from client environments/containers. Optional Swift integration skips in normal full suite do not satisfy the opt-in run.
+Current proved host invocation is now in the runbook: PATH=/opt/homebrew/opt/libpq/bin:$PATH GRIDRACE_LOCAL_INTEGRATION=1 bash scripts/run_live_match_integration.sh. The Phase 4 harness removes the historical unconditional reset and shared backend lifecycle operations. Require fresh existing-fixture inventory; the controller separately owns local stack/gateway. Harness fixtures and two simulators are unique and cleanup is scoped, with retained private proof artifacts. Original deadlines are unmodified in real-client Cron cases. Privileged credentials stay outside client environments/containers. Optional ordinary-suite skips cannot satisfy the opt-in run.
 
 Rediscover Xcode/runtime/destinations during implementation. Historical local proof used Xcode 27.0/iOS26.5 versus runbook Xcode26.6; this proposal did not inspect or run the toolchain. Record actual deviation without claiming CI/distribution equivalence. Hosted CI/Cron/retention/Apple provider/physical device are outside this local task.
 
@@ -693,7 +693,7 @@ complete implementation, proof, review and required repairs.
 - [x] Human D3/D4 answers recorded; unselected alternative removed.
 - [x] Independent plan review adjudicated; corrected contract/leases frozen for this accepted-plan commit.
 - [ ] Bounded packages integrated, all counts/recovery/deletion/UI acceptance proved.
-- [ ] Real independent-client multi-round proof and full affected gates complete.
+- [x] Real independent-client multi-round proof and full affected software gates complete; A9 OS-assisted gap is explicit below.
 - [ ] Fresh independent final review complete; accepted fixes/targeted closure proved.
 - [ ] Authorities current; unrelated hashes preserved; owned changes committed.
 - [ ] Only then Historical closeout, commit report and explicit external release gates.
@@ -797,3 +797,63 @@ passed**, `/tmp/gridrace-phase4-controller-resume-fetch.log` and `.xcresult`.
 Exact accepted package lock remained unchanged with frozen native flags.
 P4-V-RESUME-FETCH-GENERATION is closed at this bounded checkpoint; actual whole
 matrix rerun, full iOS/clean Debug and final independent review remain required.
+
+## P4-V complete software proof and remaining A9/R gates
+
+After C5 checkpoint `ebdcc71bca82dd81292d6ade9e1bf9a47c7b16eb`, controller restored
+the existing local backup without reset and verified the original complete captured
+baseline again before any new fixtures. The whole corrected matrix exited0.
+**60/60 independent real XCTest client processes passed, zero failures/skips**.
+Each uses its own Auth identity, simulator container, SDK transport and production
+session. Canonical snapshots are never fabricated.
+
+Proof covers all 1/3/5 rounds and final relaunches; private nonrepeating answers;
+SQL ties/history; guest Start denial and creator first/next Start; concurrent/stale
+Start; real Create/Start/guess response loss and original receipt/conflict; Home/
+background/foreground/Resume; six old receipts released only after a real later
+Start with empty new board; and mixed three-round solved/failed cumulative points/
+placements, including the original C5 no-Realtime relaunch reproduction.
+Actual stream marker checks verify dropped signals in 12 client logs and duplicated/
+reordered signals in 17; guest runs with no Realtime and uses the canonical watchdog.
+
+Four original-deadline Cron cases (one round plus all three rounds) keep both
+processes/apps stopped until SQL observes the scheduled reveal and job success.
+Relaunch recovers partial/final standings; subsequent rounds require creator Start.
+Deletion cases stop/remove only the owned guest, finish the original started round
+via its deadline, then separately relaunch the survivor: final count1 completes,
+nonfinal count3 becomes incomplete with partial standings/anonymized opponent.
+
+Reused actual backend Auth/Edge/RLS/Realtime/barrier matrix also passed: **429
+requests, 142 snapshots, 6,879-byte maximum snapshot, 5,013ms maximum request**
+(deliberate barrier). All prior and v2 exact-microsecond sums/ties, stale/duplicate
+commands, deletion for both actors and queued next-Start cases remain.
+
+Artifacts: `/tmp/gridrace-live-integration.Vg6tlZ` retains all 60 per-role logs/
+xcresults, backend log, owned-fixture manifest and `cleanup_failed=0`. Outer log
+`/tmp/gridrace-phase4-controller-real-integration-c5.log`; machine evidence
+`/tmp/gridrace-phase4-controller-v-c5-result.json`. Controller inspected each real
+PASS and zero skip/failure, backend summary, cleanup and exact captured baseline
+equality. Auth/profile/Daily/live auth links/active rooms/rate rows returned to0;
+20 anonymous matches/40 rounds/100 words and all captured rows were unchanged.
+All 129 frozen runtime source files and original six unrelated hashes match.
+Privileged credentials are absent from both client containers. No reset/remote action.
+
+Final latest-source full iOS: **215 executed/213 passed/two expected opt-in skips**,
+zero failures. The 60 actual invocations supply the live proof separately. Clean
+Debug passed. Full log/result `/tmp/gridrace-phase4-controller-full-c5.log` and
+`.xcresult`; clean log `/tmp/gridrace-phase4-controller-debug-c5.log`. These used
+one new owned simulator D8FAF80C-7191-42C2-A705-ACED82688B47, then stopped/deleted it;
+all unrelated devices remain. Exact lock preserved after each frozen native call.
+Controller gateway PID58940 SIGINT/exited0, local stack stopped with backup retained,
+and all owned processes finished. Actual Xcode27.0/Swift6.4/iOS26.5 remains a
+forward-toolchain deviation from hosted CI configuration.
+
+P4-V software proof is complete and its owned harness/commands/evidence are
+checkpointed with this content commit. The required one fresh configured final
+implementation review is next; no clean-review or beta/production claim yet.
+A9 still lacks OS-assisted VoiceOver focus/announcements, Reduce Motion toggle,
+hardware input/haptic feel and measured hit regions through enabled local tooling.
+Native semantic/source tests and actual normal/AX5+Bold/contrast layout renders
+passed, including latest full-suite fixtures; they do not replace those OS checks.
+Keep this plan Active until required review/repairs and that agreed proof are
+resolved. Physical-device and hosted/distribution gates remain external.

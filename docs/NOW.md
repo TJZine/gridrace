@@ -1,78 +1,50 @@
 # GridRace Now
 
 Current outcome: Daily Classic remains immediately playable signed out and offline,
-optional accounts synchronize owner-private personal history, and the fixed local
-Blind Race slice now runs two authenticated players through create/join, lobby,
-countdown, one authoritative round, recovery, and shared reveal.
+with optional accounts synchronizing owner-private personal history. Anytime private
+Blind Race now implements exactly two authenticated players, manual room codes,
+1/3/5 rounds (default3), creator-controlled countdowns, private nonrepeating server
+answers, canonical round/match standings, reveal history and cross-round recovery.
+Imported Daily results remain personal history and cannot become verified competition.
 
-Completed large chunks: production Daily Classic; native Sign in with Apple client
-flow and profile experience; account-scoped local storage; explicit guest import;
-owner-only Daily sync and deletion; authoritative live database/Edge commands, RLS,
-answer secrecy, idempotency and concurrency proof; native live transport, durable
-request recovery, Realtime-triggered canonical refresh, complete fixed-slice UI, and
-real two-client local integration. Imported Daily results remain personal history only
-and cannot enter a verified competitive surface.
+Phase 4 remains Active. Accepted planning/independent plan review is checkpointed at
+`3a01d9a`; backend/Edge at `ba65af9`; Swift contract/session/storage and build2
+composition at `335f210`; pending-Start visibility at `3f8adc5`; native UI at
+`b2ad798`; and the real-client-discovered immediate-Resume fetch race repair at
+`ebdcc71`. That repair passed 64 focused tests plus both independent controller
+regressions. The known race also passed its actual no-Realtime relaunch reproduction.
 
-Current checkpoint: the Phase 2/3 local slice is complete, all accepted repairs have
-passed verification, and terminal closure review passed on 2026-10-02. The execution
-plan is Historical; no implementation package remains open in that local scope.
+The full real matrix now passed **60 independent client processes, zero failures or
+skips**, across all counts, mixed scoring, process relaunch/lifecycle, actual response
+and Realtime signal faults, old receipts across advancement, original deadlines with
+both apps stopped, explicit later Start and survivor deletion recovery. Reused backend
+proof passed **429 requests/142 snapshots**, including exact totals/microsecond ties,
+RLS/secrecy, stale/concurrent commands, both deletion actors and scheduled finalization.
+Cleanup preserved the complete captured local baseline and all six unrelated byte
+baselines; owned accounts/fixtures/simulators/processes were removed. Local backend
+is stopped with its backup retained. No reset or remote operation in P4-V.
 
-Phase 4 is active: anytime private two-player Blind Race with 1/3/5 rounds
-(default 3), creator-controlled countdowns, nonrepeating private server answers,
-canonical round/match standings and cross-round recovery. UI and freeze-after-either-
-account-deletion decisions are accepted. Independent plan review was adjudicated
-and checkpointed at `3a01d9a` before product writes. P4-B backend/Edge is implemented
-and locally verified at `ba65af9`. Swift contract/session/storage and build-2
-composition are checkpointed at `335f210` after latest-source worker proof and
-controller audit:
-87 focused passes, full iOS 205 executed/203 passed/two expected integration skips,
-zero failures and clean Debug; controller independently repeated 87 focused passes.
-The accepted required transitive lock pin stayed exact under frozen native flags.
-The agreed multi-round native UI is checkpointed at `b2ad798` and locally verified: 89 focused
-passes, full iOS 213 executed/211 passed/two expected skips/zero failures, clean
-Debug build and 43 native fixture renders. Controller independently passed five
-affected presentation checks and inspected representative normal/AX5 renders.
-Real 1/3/5-round proof passed 24 client invocations and six old-receipt
-advancement barriers. The mixed scoring case exposed a Resume fetch-generation
-race with Realtime absent. The one-call C5 lifecycle repair passed 64 affected
-tests and two independent controller regressions; full actual rerun is next. The whole matrix, Cron and
-deletion proof remain pending; all owned fixtures cleaned up and baseline preserved.
-OS-assisted accessibility checks and fresh final review remain.
-The first UI worker returned without writes after identifying a missing pending-Start
-presentation signal. The two-file repair is committed at `3f8adc5`: 62 affected
-tests passed and
-the controller independently passed both new lifecycle/Observation regressions.
-The native UI consumes the read-only signal; latest full/build gates include it.
-Current execution belongs to the
+Latest full iOS passed **215 executed/213 passed/two expected opt-in skips**, zero
+failures; clean Debug passed. Earlier backend proof on unchanged current source:
+legacy forward migration/clean reset, **739 pgTAP**, three-schema lint without new
+errors and **107 Edge tests** plus format/lint/check. The accepted transitive lock
+pin stayed exact under frozen native package flags. Evidence and exact commands:
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
 
-Broader 2–8 players, rematch, history, links, moderation, presence, notifications,
-hosting and retention remain later work. Preserve the proved components and all
-Daily/tutorial/account behavior.
+Next: one fresh configured independent final implementation review, concrete finding
+adjudication and bounded repairs/targeted closure as required. OS-assisted VoiceOver,
+Reduce Motion, hardware input/haptic feel and measured hit-region checks remain
+unverified because enabled local CUA could not access Simulator. Actual native
+normal/AX5+Bold/contrast layout and semantic tests passed; they do not supply those
+missing OS checks. The agreed plan remains Active until required review/proof is
+resolved. No beta or production readiness claim follows from local software proof.
 
-The known immediate-Resume fetch race has a targeted verified repair; the full
-real-client matrix must still verify it. Hosted deployment,
-Cron, backup/retention proof, hosted CI, Apple provider/distribution credentials,
-physical-device accessibility, production word provenance, trusted hosted client-IP
-provenance, and the broader MVP remain explicit external or later gates.
-No paid commitment is authorized.
+Phase 2/3 closed at `7e413ac`; its plan remains Historical. Broader 2–8 players,
+rematch, history, links, moderation, presence, notifications, hosting and retention
+remain later work. Daily/tutorial/account behavior is preserved.
 
-Latest backend Phase 4 proof: forward migration preserves legacy lobby/active/
-revealed identities, snapshots, successful receipts and grants; clean reset;
-739 pgTAP assertions (290 existing plus 449 new); three-schema lint with no new
-errors; Edge format/lint/check and 107 tests. Real gateway proof covers 1/3/5
-rounds, exact standings/ties, private nonrepeating answers, duplicate/stale command
-barriers, deletion boundaries and scheduled finalization without auto advance.
-Controller independently repeated database/Edge/gateway gates; details and remaining
-client gates live in the Active plan. Client contract/session gates passed above;
-real multi-round product integration is still pending.
-
-Historical Phase 2/3 verification: clean database reset; 290 pgTAP assertions; three-schema
-database lint; Edge format/lint/check and 100 tests; full iOS suite with 183 executed,
-181 passed, two expected opt-in integration skips and zero failures; clean Debug build;
-focused live-session/presentation proof 50/50 (44 session, six presentation) independently
-repeated after the Retry repair; prior account/recovery proof 48/48; and the recorded
-real two-client Auth/Edge/RLS/Realtime/Cron/relaunch run with 122 requests and
-30 canonical snapshots.
-Local Xcode 27.0/iOS 26.5 is a forward-toolchain deviation and does not satisfy hosted,
-distribution, or physical-device gates.
+Hosted deployment/Cron/backup/retention, hosted CI, Apple provider/distribution
+credentials, physical-device accessibility, production word provenance and trusted
+hosted client-IP provenance remain external release gates. Local Xcode27.0/Swift6.4/
+iOS26.5 is a forward-toolchain deviation from configured hosted CI. No paid
+commitment, push, hosting or distribution is authorized.

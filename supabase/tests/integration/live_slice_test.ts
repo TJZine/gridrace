@@ -24,6 +24,8 @@ const clientOptions = {
 };
 const admin = createClient(apiUrl, serviceKey, clientOptions);
 const createdUsers = new Set<string>();
+const createdMatches = new Set<string>();
+const deletionHashes = new Set<string>();
 const edgeMetrics: Array<
   Pick<EdgeResult, "bytes" | "elapsedMs"> & { name: string }
 > = [];
@@ -1186,7 +1188,7 @@ try {
             round_number: target,
           });
         const capture = (label: string, snapshot: Json) => {
-          console.log(`FIXTURE ${count}-${label} ${JSON.stringify(snapshot)}`);
+          captureSummary(`${count}-${label}`, snapshot);
         };
         let snapshot = await snap();
         capture("lobby", snapshot);
@@ -1718,7 +1720,7 @@ try {
         createdUsers.delete(guest.id);
         assertError(guess, 401, "not_authenticated");
         let snapshot = await snap();
-        console.log(`FIXTURE deletion-${boundary} ${JSON.stringify(snapshot)}`);
+        captureSummary(`deletion-${boundary}`, snapshot);
         assertDeletedMemberIdentity(snapshot);
         const nonfinal = target < 3;
         assert(
@@ -1774,9 +1776,7 @@ try {
             70_000,
           );
           snapshot = await snap();
-          console.log(
-            `FIXTURE deletion-${boundary}-revealed ${JSON.stringify(snapshot)}`,
-          );
+          captureSummary(`deletion-${boundary}-revealed`, snapshot);
           assert(
             nested(snapshot, "match", "status") ===
               (nonfinal ? "incomplete" : "completed"),
@@ -1937,10 +1937,9 @@ try {
           ) === "1",
           "queued Start has no future secret",
         );
-        console.log(
-          `FIXTURE deletion-${
-            deleteCreator ? "creator" : "guest"
-          }-queued-start ${JSON.stringify(snapshot)}`,
+        captureSummary(
+          `deletion-${deleteCreator ? "creator" : "guest"}-queued-start`,
+          snapshot,
         );
       }
     },
@@ -2013,7 +2012,7 @@ try {
         (snapshot.standings as Json).is_final === false,
         "ordinary partial standings",
       );
-      console.log(`FIXTURE ordinary-cron-nonfinal ${JSON.stringify(snapshot)}`);
+      captureSummary("ordinary-cron-nonfinal", snapshot);
       await sql(
         `update public.matches set expires_at=created_at+interval '1 millisecond' where id='${
           uuid(match)
@@ -2052,6 +2051,16 @@ try {
     `PASS live-slice integration ${edgeMetrics.length} requests ${snapshotMetrics.length} snapshots ${largestSnapshot} bytes max ${slowestMs}ms max`,
   );
 } finally {
+  // Track successful Create responses even if their caller fails before extracting ID.
+  // Match removal cascades its private answers, guesses and create receipts only.
+  for (const match of createdMatches) {
+    await sql(`delete from public.matches where id='${uuid(match)}'`);
+  }
+  for (const tokenHash of deletionHashes) {
+    await sql(
+      `delete from private.account_deletion_receipts where token_hash='${tokenHash}'`,
+    );
+  }
   for (const userId of createdUsers) {
     const prepared = await admin.rpc("delete_account", {
       p_user_id: userId,
@@ -2262,6 +2271,9 @@ async function rawEdge(
   body: string,
 ): Promise<EdgeResult> {
   const started = performance.now();
+  if (name === "delete-account" && session) {
+    deletionHashes.add(await sha256(session.access_token));
+  }
   const response = await fetch(`${apiUrl}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -2287,6 +2299,9 @@ async function rawEdge(
     bytes: new TextEncoder().encode(text).byteLength,
     elapsedMs: Math.round(performance.now() - started),
   };
+  if (name === "create-match" && response.status === 200) {
+    createdMatches.add(matchId(result));
+  }
   edgeMetrics.push({ name, bytes: result.bytes, elapsedMs: result.elapsedMs });
   return result;
 }
@@ -2405,6 +2420,19 @@ async function scenario(
   const started = performance.now();
   await action();
   console.log(`PASS ${name} ${Math.round(performance.now() - started)}ms`);
+}
+
+// Keep proof useful without logging private boards, answers, codes or identifiers.
+function captureSummary(label: string, snapshot: Json): void {
+  console.log(`FIXTURE ${label} ${
+    JSON.stringify({
+      status: nested(snapshot, "match", "status"),
+      currentRound: nested(snapshot, "match", "current_round"),
+      roundState: nested(snapshot, "round", "state"),
+      revealedCount: array(snapshot.revealed_rounds).length,
+      isFinal: isJson(snapshot.standings) ? snapshot.standings.is_final : null,
+    })
+  }`);
 }
 
 function data(result: EdgeResult): Json {
