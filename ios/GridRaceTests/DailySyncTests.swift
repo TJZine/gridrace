@@ -828,13 +828,20 @@ final class DailySyncTests: XCTestCase {
         defer { fixture.remove() }
         let local = progress(words: ["civic"])
         try fixture.store.save(local)
-        let remote = TestDailyRemote(userID: userID)
+        let remote = TestDailyRemote(
+            userID: userID,
+            progress: progressDTO(progress(words: [], hardMode: true), userID: userID, revision: 4)
+        )
 
         let status = try await fixture.engine(remote: remote).synchronize()
 
         XCTAssertEqual(status, .synced(fixture.syncDate))
-        let uploaded = await remote.currentProgress()
-        XCTAssertEqual(uploaded?.guesses.map(\.domain), local.acceptedGuesses)
+        let stored = await remote.currentProgress()
+        let uploaded = try XCTUnwrap(stored)
+        XCTAssertEqual(uploaded.guesses.map(\.domain), local.acceptedGuesses)
+        XCTAssertEqual(uploaded.hardModeEnabled, local.hardModeEnabled)
+        XCTAssertEqual(uploaded.revision, 5)
+        XCTAssertEqual(try fixture.store.loadProgress(), local)
         XCTAssertFalse(try fixture.store.loadSyncMetadata().hasPendingChanges)
     }
 
@@ -1363,17 +1370,24 @@ private actor TestDailyRemote: DailySyncRemote {
             progress = inserted
             return .stored(inserted)
         }
-        guard samePuzzle(upload, existing) else { return .conflict(.progress(existing)) }
+        guard sameIdentity(upload, existing) else { return .conflict(.progress(existing)) }
         let local = upload.guesses.map(\.domain)
         let cloud = existing.guesses.map(\.domain)
-        if local == cloud { return .stored(existing) }
-        if DailySyncReconciler.isPrefix(cloud, of: local) {
-            let advanced = dto(upload, revision: existing.revision + 1)
-            progress = advanced
-            return .stored(advanced)
+        let changesMode = upload.hardModeEnabled != existing.hardModeEnabled
+        if changesMode && !cloud.isEmpty { return .conflict(.progress(existing)) }
+        if !changesMode {
+            if local == cloud { return .stored(existing) }
+            if DailySyncReconciler.isPrefix(local, of: cloud) { return .serverAhead(existing) }
+            guard DailySyncReconciler.isPrefix(cloud, of: local) else {
+                return .conflict(.progress(existing))
+            }
         }
-        if DailySyncReconciler.isPrefix(local, of: cloud) { return .serverAhead(existing) }
-        return .conflict(.progress(existing))
+        if let expected = upload.expectedRevision, expected != existing.revision {
+            return .conflict(.progress(existing))
+        }
+        let advanced = dto(upload, revision: existing.revision + 1)
+        progress = advanced
+        return .stored(advanced)
     }
 
     func importResult(_ upload: DailyImportedResultUploadDTO) throws -> DailyResultImportOutcome {
@@ -1428,13 +1442,12 @@ private actor TestDailyRemote: DailySyncRemote {
         )
     }
 
-    private func samePuzzle(_ upload: DailyProgressUploadDTO, _ existing: DailyProgressDTO) -> Bool {
+    private func sameIdentity(_ upload: DailyProgressUploadDTO, _ existing: DailyProgressDTO) -> Bool {
         upload.puzzleID == existing.puzzleID
             && upload.puzzleNumber == existing.puzzleNumber
             && upload.puzzleDay == existing.puzzleDay
             && upload.wordPackID == existing.wordPackID
             && upload.scheduleVersion == existing.scheduleVersion
-            && upload.hardModeEnabled == existing.hardModeEnabled
     }
 }
 

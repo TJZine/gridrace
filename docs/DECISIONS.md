@@ -6,6 +6,23 @@ tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
 [Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
 tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
 
+## 2026-10-03 — Converge Started Daily Attempts Over Empty Boards
+
+**Decision:** For the same immutable Daily puzzle, an attempt containing accepted
+guesses takes precedence over an empty board's different Hard Mode choice. The
+progress RPC adopts incoming mode and guesses atomically only while stored
+progress is empty, checking any supplied expected revision. Two started attempts with
+differing modes still conflict; immutable completions retain precedence.
+
+**Rationale:** Hard Mode locks at the first accepted guess. An empty board has no
+locked attempt to preserve. This aligns server convergence with the accepted Swift
+reconciliation behavior rather than silently changing a started attempt's mode.
+
+**Consequences/revisit:** Use the existing sync owners and regression coverage.
+Preserve published migration history with a forward replacement; whether the
+original migration reached a preserved hosted database remains unknown. Imported
+Daily results remain owner-private personal history, never verified competition.
+
 ## 2026-10-03 — Adopt the Stamped Scorecard Visual Direction
 
 **Decision:** Replace the indigo/coral/teal lane-edge presentation with the

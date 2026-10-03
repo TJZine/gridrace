@@ -42,6 +42,13 @@ advances; divergent active attempts and distinct terminal results are shown as c
 rather than silently combined. Statistics are always recalculated from the merged
 immutable results.
 
+Hard Mode is attempt configuration, separate from immutable puzzle identity. A
+started attempt (accepted guesses) takes precedence over an empty board with a
+different mode. The progress RPC adopts mode and guesses atomically only while
+the stored board is empty and any supplied expected revision still matches.
+Both-empty boards may change mode under the same revision rule; two started
+attempts with different modes remain explicit conflicts.
+
 `public.daily_progress` is mutable only through `sync_daily_progress` and carries a
 monotonic revision. `public.daily_imported_results` is an immutable client-originated
 personal-history table written only through `import_daily_result`. Both are owner-only
@@ -236,7 +243,8 @@ round Retry. Canonical revisions and presentation generations reject stale respo
 nonfinal reveal keeps recovery active and final/incomplete stops after pending receipt
 resolution. Native views own round-keyed draft/error/focus/animation and prior reveal
 selection, rendering supplied SQL standings without ranking or aggregating them.
-The active plan owns remaining real independent-client proof and final review.
+Real independent-client proof and the independent final review are complete,
+recorded in the active plan; required OS-assisted accessibility proof remains pending.
 
 ## Phase 2/3 account deletion
 

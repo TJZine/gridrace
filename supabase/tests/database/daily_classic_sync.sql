@@ -232,6 +232,51 @@ select is(
   'hard mode cannot change after an accepted guess'
 );
 
+-- A started incoming attempt beats a different mode only while stored progress
+-- is empty. Stale revisions must leave the stored selection/board untouched.
+select is(
+  public.sync_daily_progress(
+    'daily-classic-2026-09-06', 7, 20702, 'daily-classic-en-US-v1', 1, true,
+    '[]', null
+  ) ->> 'status', 'inserted', 'differently configured empty cloud board inserts'
+);
+select is(
+  public.sync_daily_progress(
+    'daily-classic-2026-09-06', 7, 20702, 'daily-classic-en-US-v1', 1, false,
+    (select guesses from daily_payloads where name = 'first'), 99
+  ) ->> 'status', 'conflict', 'stale revision cannot adopt a started attempt mode'
+);
+select is(
+  (select jsonb_build_array(hard_mode_enabled, guesses, revision)
+   from public.daily_progress where puzzle_id = 'daily-classic-2026-09-06'),
+  '[true,[],1]'::jsonb, 'stale adoption preserves mode, guesses and revision'
+);
+select is(
+  public.sync_daily_progress(
+    'daily-classic-2026-09-06', 7, 20702, 'daily-classic-en-US-v1', 1, false,
+    (select guesses from daily_payloads where name = 'first'), 1
+  ) ->> 'status', 'advanced', 'started incoming attempt advances differently configured empty board'
+);
+select is(
+  (select jsonb_build_array(hard_mode_enabled, guesses, revision)
+   from public.daily_progress where puzzle_id = 'daily-classic-2026-09-06'),
+  jsonb_build_array(false, jsonb_set(
+    (select guesses from daily_payloads where name = 'first'),
+    '{0,accepted_at}', '"2026-08-31T12:00:00.000000Z"'::jsonb
+  ), 2), 'adoption persists mode and normalized guesses in one revision'
+);
+select is(
+  (select server_updated_at from public.daily_progress
+   where puzzle_id = 'daily-classic-2026-09-06'),
+  transaction_timestamp(), 'adoption uses the server-owned transaction timestamp'
+);
+select is(
+  public.sync_daily_progress(
+    'daily-classic-2026-09-06', 7, 20702, 'daily-classic-en-US-v1', 1, true,
+    (select guesses from daily_payloads where name = 'first'), 2
+  ) ->> 'status', 'conflict', 'two started attempts still conflict when modes differ'
+);
+
 select throws_ok(
   $$update public.daily_progress
     set user_id = '30000000-0000-0000-0000-000000000002'

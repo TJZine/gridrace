@@ -17,6 +17,13 @@ keep correct letters in place, move present letters away from their revealed wro
 positions, and include at least the highest duplicate count previously proved by
 correct or present evidence.
 
+For account synchronization, immutable puzzle identity excludes Hard Mode. A
+started attempt takes precedence over an empty board with a different mode. The
+cloud progress RPC may adopt that attempt's mode and accepted guesses only while
+the stored board is empty, preserving expected-revision protection. Both-empty
+boards can change mode; two started attempts with differing modes conflict.
+An immutable completed result still takes precedence over active progress.
+
 Progress includes the puzzle and schedule identity, draft, accepted words, feedback,
 timestamps, Hard Mode choice, and completion. Completion is immutable. One structured
 result per puzzle updates statistics idempotently. Solved consecutive puzzle days
