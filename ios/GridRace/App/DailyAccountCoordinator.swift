@@ -80,14 +80,17 @@ final class DailyAccountCoordinator {
     }
 
     func sessionChanged(to userID: UUID?) {
-        live.changeAccount(to: userID)
-        guard userID != currentUserID || activationUserID != nil else { return }
-        syncLifecycle?.invalidate()
-        syncTask?.cancel()
         guard let userID else {
-            activateGuest()
+            if currentUserID != nil || activationUserID != nil {
+                activateGuest()
+            } else {
+                // Daily may already be guest while live recovery cleanup is pending.
+                live.changeAccount(to: nil)
+            }
             return
         }
+        live.changeAccount(to: userID)
+        guard userID != currentUserID || activationUserID != nil else { return }
         activateAccount(userID)
     }
 

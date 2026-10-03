@@ -210,6 +210,29 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.daily.game.draft, "G")
     }
 
+    func testNilSessionKeepsFirstCleanupFailureReachableAndRetriesOnLaterNotification() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.coordinator.daily.typeLetter("G")
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        fixture.liveStore.clearFailuresRemaining = 1
+
+        fixture.coordinator.sessionChanged(to: nil)
+
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertNotEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        fixture.coordinator.sessionChanged(to: nil)
+
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+        XCTAssertFalse(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+    }
+
     func testSignOutHidesAccountDataAndKeepsFailedLiveCleanupReachable() async throws {
         let fixture = try makeLifecycleFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -691,6 +714,7 @@ private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchec
     private var state: LiveRecoveryState
     var rejectsLoads = false
     var rejectsClears = false
+    var clearFailuresRemaining = 0
 
     var storedState: LiveRecoveryState {
         lock.withLock { state }
@@ -713,6 +737,10 @@ private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchec
 
     func clear() throws {
         try lock.withLock {
+            if clearFailuresRemaining > 0 {
+                clearFailuresRemaining -= 1
+                throw TestError.failed
+            }
             if rejectsClears { throw TestError.failed }
             state = LiveRecoveryState()
             rejectsLoads = false
