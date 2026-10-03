@@ -46,6 +46,13 @@ roster member may reconnect.
 
 ## Screen behavior
 
+The S0a mechanical split groups presentation by screen in `AppRouting.swift`,
+`HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`,
+`SettingsHelpViews.swift`, `TutorialViews.swift`, `LiveMatchViews.swift`, and
+`LiveResultViews.swift`. Shared visual leaves live in `DesignSystem.swift` and
+`BoardViews.swift`; Account remains in `AccountView.swift`. This checkpoint
+preserves the shipped behavior below; the stamped presentation follows in S0b–S3.
+
 ### Daily Classic home and play
 
 Home leads with today's Daily Classic status: unplayed, in progress, solved, or

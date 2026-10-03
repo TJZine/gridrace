@@ -149,7 +149,7 @@ session/state machines, storage, backend, or share text.
 
 | Unit | Role | Write boundary | Depends on | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Not started | — |
+| S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Complete | 52 declaration bodies unchanged; six access changes; full iOS 214 passed/two opt-in skips; clean Debug; controller differential audit |
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Not started | — |
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Not started | — |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Not started | — |
@@ -306,7 +306,10 @@ The controller kickoff packet is
 [`2026-10-03-stamped-ui-refresh-kickoff.md`](2026-10-03-stamped-ui-refresh-kickoff.md);
 volatile run state (leases, baselines, callback results) lives in the gitignored
 `.codex/runs/stamped-ui-refresh/`. Controller runs the activation checkpoint, then S0a and S0b serially (each to one
-worker or locally), auditing, proving, and committing each. It then creates the
+worker or locally), auditing, proving, and committing each. Under D13, new work
+sessions use `create_thread`, inherit user model settings, and receive direct human
+authorization for one result callback to the controller chat after releasing leases.
+The controller ends dispatch turns without waiting or polling. It then creates the
 D9 worktrees and dispatches S1, S2, and S3 in parallel with the runbook's compact
 worker packet and a lease per unit. It integrates in order S2, S1, S3, proving
 each on the main checkout and committing per unit, then runs S4 and the final
@@ -321,6 +324,7 @@ review.
 | 2026-10-03 | D1–D6 | Recorded at authoring. Human chose rescope activation and delegated D3/D4 to the recommended design, authorizing app rework needed to fit it. |
 | 2026-10-03 | D7–D12 | Added from the adversarial plan review (below). |
 | 2026-10-03 | Activation baseline | Human authorized latest HEAD `2d19d2c` instead of the kickoff-file commit. Rescope activation transfers A9 intact to S4. |
+| 2026-10-03 | D13 workflow steering | Human replaced global engineering guidance with the shared develop/design/review/verify skills and instructed `create_thread` for new work sessions with one callback to this controller. Supersedes kickoff Ponytail enforcement and subagent dispatch. Accepted product scope, ownership, isolation, and no-polling boundaries remain. |
 
 ### Review findings
 
@@ -358,9 +362,23 @@ verified; byte baseline captured. Docs-only diff and local path references inspe
 search resolved to Historical evidence, the completed activation procedure, or the
 original kickoff instructions. No product write or product test in this checkpoint.
 
+S0a: worker result `/tmp/gridrace-stamped-s0a-result.json`; full iOS exit0,
+216 executed / 214 passed / two expected opt-in integration skips / zero failures;
+clean Debug exit0. Both use the assigned simulator, derived-data path and frozen
+package flags. Logs/results `/tmp/gridrace-stamped-s0a-tests.log`, `.xcresult`,
+and `/tmp/gridrace-stamped-s0a-clean-debug.log`. No backend lease or harness run.
+Controller checked all returned hashes, all 132 protected tracked bytes, six
+unrelated hashes, unchanged HEAD and empty index. Independently compared all 52
+declaration bodies against activation HEAD: only the six required access changes.
+Complete project diff inspected, registrations and `plutil -lint` passed;
+`git diff --check` passed. Exact-source runtime proof reused without redundant
+reruns. Controller audit `/tmp/gridrace-stamped-s0a-controller-audit.json`.
+S0a leases released, assigned simulator Shutdown; no owned process remains.
+
 ### Commit record
 
-Activation docs checkpoint: this commit, from authorized starting HEAD `2d19d2c`.
+Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
+authorized starting HEAD `2d19d2c`. S0a mechanical split: this commit.
 
 ## Blockers and stop conditions
 
@@ -372,8 +390,10 @@ Activation docs checkpoint: this commit, from authorized starting HEAD `2d19d2c`
 
 ## Next action
 
-Activation is complete. Controller dispatches S0a, then audits the full mechanical
-diff, proves full suite and clean Debug, and commits before S0b.
+S0a is complete and audited. Controller commits it, then dispatches S0b using
+`create_thread` with a bounded lease and one explicitly authorized callback to
+controller chat `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
+End dispatch turns without waiting or polling.
 
 ## Closeout checklist
 

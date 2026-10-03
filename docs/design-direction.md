@@ -1,7 +1,7 @@
 # GridRace Design Direction
 
 Status: Accepted direction, not implemented. The shipped app still uses the
-2026-09-04 indigo/coral/teal tokens in `ios/GridRace/App/Views.swift`. Until an
+2026-09-04 indigo/coral/teal tokens in `ios/GridRace/App/DesignSystem.swift`. Until an
 implementation plan lands, [`screen-flow.md`](screen-flow.md) describes current
 behavior; this file describes the target presentation.
 
