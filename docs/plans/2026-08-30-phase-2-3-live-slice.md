@@ -6,6 +6,13 @@ Last updated: 2026-10-02
 
 # Phase 2 and Phase 3 Live Slice Plan
 
+Historical credential-scan PASS entries in this plan describe the recorded harness
+runs, not independently established credential absence. The negated scanner
+commands could reach PASS after a match or error. The [approved PR repair](2026-10-02-phase-4-blind-race.md#approved-pr-1-review-repairs-2026-10-03)
+replaces that gate; existing execution artifacts and other software proof remain
+historical evidence. Current timestamp rules also preserve the zero-guess,
+all-forfeited countdown exception in [the API contract](../live-api-contract.md#canonical-match-status-timestamps-and-deletion-reason).
+
 ## Goal and current checkpoint
 
 Prove the first authoritative Blind Race: two authenticated players, one five-letter
@@ -564,7 +571,7 @@ change was required; all pre-existing changes remain unrelated.
 | DB-05 | Low | Initial pgTAP matrix lacked focused round/player unrelated checks and retry counter proof. | Controller inspection of 68 assertions. | Accepted | Added bounded rostered/unrelated/snapshot/counter assertions. | Closed: 79/79 pgTAP pass |
 | DB-06 | Medium | `join_match` is not serialized with deletion for the same account. | Join checks the profile before locking only the match; deletion takes the account lock, enumerates memberships and deletes the profile. A paused join can insert a new auth-linked membership after preparation and strand Auth deletion/receipt retry. Existing race uses a different replacement identity. | Accepted | Forward migration takes the existing account advisory lock before profile/rate/match work; add same-identity barrier race and terminal deletion/replay assertions. | Closed in `80696f9`: deterministic join/delete orderings, Auth/receipt cleanup, 281 pgTAP, three-schema lint, Edge and real integration passed |
 | DB-07 | Medium | Cron finalization and multi-match account deletion acquire match locks in different orders. | Expired-round enumeration orders by `ends_at,id`; deletion orders the user's matches by `match_id`, allowing a two-match M2→M1 versus M1→M2 cycle. | Accepted | Forward-migrate the Cron enumerator to match-ID order and add deterministic two-match deletion/finalizer barrier proof. | Closed in `ded5629`: deterministic two-match barrier, canonical convergence, 290 pgTAP, three-schema lint, Edge and real integration passed |
-| IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Validate `startsAt <= completedAt <= serverTime`; keep all other fail-closed checks. | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
+| IOS-01 | High | Snapshot mapper rejected a valid reveal finalized after `ends_at`. | P3-04 two-process relaunches failed after local Cron set `completed_at = transaction_timestamp()`; mapper capped completion at `endsAt`. | Accepted | Historically validate `startsAt <= completedAt <= serverTime`; upper bound superseded by [IOS-08/cffedf0](#ios-08-repair-and-acceptance-2026-09-26). | Closed in `1d004c1`: focused 6/6, full 146 with 2 expected skips, controller focused 6/6 |
 | IOS-02 | Medium | Failed sixth-guess command returns efficiency `0`, contradicting the frozen command contract and Swift receipt validator. | Migration sets `v_efficiency := 0` for failed and returns it; the client requires null unless solved, so an accepted request can remain durably pending. | Accepted | Forward migration returns null for unsolved command receipts while stored/snapshot efficiency stays zero; prove failed replay, decode and pending-intent clearance. | Closed in `037f9e3`: reset, 276 pgTAP, three-schema lint, Edge, Swift, real integration and controller focused proof passed |
 | IOS-03 | Low | Real failed-path XCTest hardcodes answer-eligible `ADORE` and expects six failed guesses. | Seed marks `adore` accepted, active and answer-eligible, so random selection can solve on the first guess. | Accepted | Host harness chooses/passes an accepted non-answer without exposing the answer to client processes; rerun full two-client/Cron proof. | Closed in `f79ce07`: disposable non-answer fixture, two failed clients/12 guesses, full two-client/Cron/relaunch and controller checks passed |
 | IOS-04 | Low | Snapshot mapper does not bind countdown/playing states to snapshot `server_time`. | It validates interval and names but accepts countdown at/after start and playing before start or at/after end, contrary to server-derived state. | Accepted | Require countdown `serverTime < startsAt` and playing `startsAt <= serverTime < endsAt`; add boundary-focused decode tests and full iOS proof. | Closed in `0b37297`: boundary mapper proof, focused 8/8, full 149 with two expected skips, clean Debug and controller focused 8/8 passed |
@@ -700,10 +707,12 @@ change was required; all pre-existing changes remain unrelated.
 - Both relaunched clients then failed closed on the valid scheduled reveal. Controller
   adjudication traced IOS-01 to the Swift mapper, not PostgreSQL: the server records
   transaction time for early all-terminal or delayed deadline/Cron completion, so a
-  valid `completed_at` may precede or follow `ends_at`. Snapshot `server_time` is the
-  canonical upper bound.
+  valid `completed_at` may precede or follow `ends_at`. Snapshot `server_time` was treated as the
+  canonical upper bound at this checkpoint. **Superseded:** [IOS-08/cffedf0](#ios-08-repair-and-acceptance-2026-09-26)
+  removed that upper bound because transaction/lock ordering can invert it.
 - Repair commit `1d004c1` now accepts exactly
-  `startsAt <= completedAt <= serverTime`, including boundary equality and delayed
+  `startsAt <= completedAt <= serverTime` at that commit (upper bound later
+  superseded by IOS-08/cffedf0), including boundary equality and delayed
   completion after `endsAt`, while rejecting pre-start and future completion and
   preserving every other fail-closed mapper rule. Focused mapper tests passed 6/6;
   the worker full suite passed 146 tests with two expected opt-in skips and zero
@@ -1414,7 +1423,7 @@ Phase 2/3 commits to date:
 | `2117d71 feat(live): add live match UI` | Add the complete server-backed live UI and focused presentation proof | Complete |
 | `06955d9 test(live): stabilize recovery backoff proof` | Synchronize the P3-02 retry proof on persisted match state | Complete; controller-verified |
 | `709ed36 docs(plan): record P3-03 completion` | Record accepted live UI evidence and release P3-04 | Complete |
-| `1d004c1 fix(live): accept delayed canonical reveal` | Accept server-valid early or delayed completion bounded by start and snapshot server time | Complete; IOS-01 closed |
+| `1d004c1 fix(live): accept delayed canonical reveal` | Accept early/delayed completion bounded by start and snapshot time at this commit; upper bound superseded by [IOS-08/cffedf0](#ios-08-repair-and-acceptance-2026-09-26) | Complete; IOS-01 closed |
 | `38e7309 docs(plan): record P3-04 mapper repair` | Record IOS-01 acceptance and the preserved continuation lease | Complete |
 | `0fcc113 test(live): prove two-client integration` | Add the opt-in two-client harness and complete the local P3-04 evidence gates | Complete; controller-verified |
 | `a6b5e1e docs(plan): record R-01 findings` | Record the first final-review findings and serialized remediation | Complete |

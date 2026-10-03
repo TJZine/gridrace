@@ -843,7 +843,9 @@ PASS and zero skip/failure, backend summary, cleanup and exact captured baseline
 equality. Auth/profile/Daily/live auth links/active rooms/rate rows returned to0;
 20 anonymous matches/40 rounds/100 words and all captured rows were unchanged.
 All 129 frozen runtime source files and original six unrelated hashes match.
-Privileged credentials are absent from both client containers. No reset/remote action.
+The run recorded credential scans for both client containers, but the negated
+scanner commands did not establish absence on matches/errors. See the approved
+PR repair below for the fail-closed gate and new evidence. No reset/remote action.
 
 Final latest-source full iOS: **215 executed/213 passed/two expected opt-in skips**,
 zero failures. The 60 actual invocations supply the live proof separately. Clean
@@ -940,3 +942,90 @@ read-only final review follows integration, then targeted remediation/checks and
 explicit-path conventional commits. Record exact proof/unavailable gates here.
 The naturally triggered main-targeted hosted run remains external until an
 explicitly authorized publish; local success cannot substitute for event proof.
+
+### PR repair implementation and verification checkpoint
+
+All nine source repairs are implemented in their existing owners. The credential
+scan is a sourced shell function shared with a small runnable fixture check;
+patterns travel on stdin (not process arguments), hidden/ignored files are searched,
+and raw scanner output is suppressed. No new dependency or test framework.
+
+Proof directory: `/tmp/gridrace-review-fixes.105pt88r` (private). Verified so far:
+
+- `npm ci`, portable and source-regeneration word-pack gates, and seed gate passed;
+  regenerated pack/provenance/manifest bytes and hashes matched the checked-in data.
+  Frozen Daily schedule remains 725 answers/25,545 accepted spellings. Shared rules
+  passed 3/3 and Edge
+  Functions passed 107/107, with existing format/lint/check gates.
+- `bash scripts/test_client_credential_scan.sh` and shell syntax passed: both dummy
+  credential matches, hidden/ignored files, fixed strings, scanner errors/missing
+  executable, empty secret and clean scans; failure output omits secrets/final PASS.
+- CI YAML parsed; main/development PR target filters, unchanged push policy,
+  both `persist-credentials: false` settings and permission/action pins inspected.
+  No changed-head hosted run has occurred; no push/manual CI/bot was triggered.
+- Restored the existing unlinked `gridrace` stack from its retained backup (no reset).
+  Inventoried 16 application/Auth tables; no Auth identities or active rooms;
+  scheduled `gridrace-finalize-rounds` remained active. Forward-applied only
+  `202610030001`; every inventoried count/data hash remained identical. Focused
+  Daily pgTAP passed 57/57 and three-schema lint passed with existing warnings.
+- A new disposable `gridrace-review-105pt88r` stack, separate 553xx ports and volumes,
+  proved `npx --no-install supabase db reset`, full pgTAP 746/746 and lint. Then
+  `db reset --version 202610020001`, retained Daily progress/completion fixtures,
+  `migration up --local`, exact row/ACL/owner/security-definer/search-path comparisons,
+  owned fixture cleanup and full pgTAP 746/746/lint all passed. Disposable stack
+  stopped with `--no-backup`; preserved `gridrace` volumes were never reset/deleted.
+- Frozen Xcode destination discovery passed. Owned simulator
+  `DD3FBA0D-8123-4E0D-AF25-EB8A175E0BD5` on iOS26.5 ran full suite: **216 executed,
+  214 passed/two expected opt-in skips**, zero failures; clean Debug build passed.
+  Both invocations used `-disableAutomaticPackageResolution
+  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates`, retained SourcePackages
+  and separate owned DerivedData/result paths. Actual Xcode27.0 is the previously
+  documented forward-toolchain deviation from hosted Xcode26.6. Local Node24.14.0
+  and Deno2.9.7 also differ from the pinned hosted Node20.20.2/Deno2.9.5; no
+  hosted-equivalence claim follows from these local gates.
+- Added Markdown paths/anchors and complete owned diff inspected; structural
+  checks passed. Preserved scratch/cache files and frozen lock hashes match.
+
+The first full pgTAP attempt on the preserved stack failed existing absolute-count
+fixture assumptions (retained anonymous history) and a new assertion incorrectly
+calling a private helper as authenticated. The assertion now uses independent
+expected normalized data, and a new puzzle-date collision was corrected. Existing
+coverage was retained; subsequent clean/full and preserved/focused proof passed.
+These initial failures are not described as successful verification.
+
+The repaired real integration passed at `/tmp/gridrace-live-integration.7win2f`:
+**60/60 real client invocations**, zero skips/failures, **429 backend requests and
+142 snapshots**, including 1/3/5 rounds, mixed scoring, original-deadline stopped-client
+Cron and both deletion-survivor boundaries. Both repaired container scans passed
+before final success. Cleanup reported `cleanup_failed=0`; all 16 retained table
+counts/data hashes exactly match the pre-upgrade inventory. The controller stopped
+its gateway, deleted all three owned simulators and restored the initially stopped
+shared stack with backup retained. All four pre-existing booted simulators remain;
+protected scratch/cache and package-lock hashes still match. No shared volume was
+reset or deleted. The complete source/new-file diff and `git diff --check` pass.
+
+The configured fresh Daybreak reviewer could not start: this account lacks
+`access_programs.cyber=daybreak_blue`. Following the controller's fallback proposal,
+the human instructed publication; the controller used a fresh read-only Sol/high
+reviewer to complete the gate. That reviewer inspected all nine repairs, their
+callers/tests and sanitized proof summaries and returned **no findings and no
+commit blocker**. It made no writes or runtime mutations. Controller adjudication:
+no remediation required; this review does not substitute for the executed gates.
+
+The human now authorizes committing and pushing `dev/classic-mode` to update PR #1.
+The initial local-only boundary above describes the earlier repair authorization;
+this later instruction permits the push and naturally triggered CI. Remote
+migration/deployment, thread resolution and manual bot/CI triggers remain outside
+scope. The approved repair scope was committed in `7ba3530`; unrelated UI planning
+commits and scratch files are preserved. Coherent repair commits are recorded below;
+the documentation/evidence closeout hash belongs in the final handoff rather than
+another tracking-only commit. OS-assisted A9 and hosted migration deployment history
+remain unresolved external facts. A changed-head main-targeted hosted run must be
+observed after publication; local gates alone do not establish PR-event coverage.
+
+| Repair commit | Scope |
+| --- | --- |
+| `965572e` | Forward Daily convergence migration, revision-sensitive regressions and authority updates. |
+| `6f8a98e` | Pin bundled answer count while preserving generic fixtures. |
+| `b2fa1b9` | Exactly one cleanup per nil notification with later recovery retry proof. |
+| `8e0ffe8` | Main-targeted PR coverage, checkout hardening and fail-closed private client scans. |

@@ -7,7 +7,7 @@ broader production MVP.
 
 ## Flow map
 
-The current app flow is:
+The Daily and account routes are:
 
 ```text
 Home
