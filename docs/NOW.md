@@ -28,12 +28,16 @@ controller audit:
 87 focused passes, full iOS 205 executed/203 passed/two expected integration skips,
 zero failures and clean Debug; controller independently repeated 87 focused passes.
 The accepted required transitive lock pin stayed exact under frozen native flags.
-The agreed multi-round native UI is implemented and locally verified: 89 focused
+The agreed multi-round native UI is checkpointed at `b2ad798` and locally verified: 89 focused
 passes, full iOS 213 executed/211 passed/two expected skips/zero failures, clean
 Debug build and 43 native fixture renders. Controller independently passed five
 affected presentation checks and inspected representative normal/AX5 renders.
-Real independent-client product proof, OS-assisted accessibility checks and fresh
-final review remain.
+Real 1/3/5-round proof passed 24 client invocations and six old-receipt
+advancement barriers. The mixed scoring case exposed a Resume fetch-generation
+race with Realtime absent. The one-call C5 lifecycle repair passed 64 affected
+tests and two independent controller regressions; full actual rerun is next. The whole matrix, Cron and
+deletion proof remain pending; all owned fixtures cleaned up and baseline preserved.
+OS-assisted accessibility checks and fresh final review remain.
 The first UI worker returned without writes after identifying a missing pending-Start
 presentation signal. The two-file repair is committed at `3f8adc5`: 62 affected
 tests passed and
@@ -46,7 +50,8 @@ Broader 2–8 players, rematch, history, links, moderation, presence, notificati
 hosting and retention remain later work. Preserve the proved components and all
 Daily/tutorial/account behavior.
 
-No confirmed local implementation defect remains. Hosted deployment,
+The known immediate-Resume fetch race has a targeted verified repair; the full
+real-client matrix must still verify it. Hosted deployment,
 Cron, backup/retention proof, hosted CI, Apple provider/distribution credentials,
 physical-device accessibility, production word provenance, trusted hosted client-IP
 provenance, and the broader MVP remain explicit external or later gates.

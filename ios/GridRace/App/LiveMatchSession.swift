@@ -376,6 +376,7 @@ final class LiveMatchSession {
     func resumeSavedMatch() {
         guard phase != .storageUnavailable, hasSavedMatch else { return }
         presentationGeneration += 1
+        cancelMatchTasks()
         isOpen = true
         // While Join is unresolved, Resume opens its eventual result, not the old pointer.
         if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }

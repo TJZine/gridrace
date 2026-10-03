@@ -237,6 +237,7 @@ Product writes require independent plan review/adjudication and controller accep
 | P4-I controller composition | ios/GridRace/App/SupabaseAccountService.swift; ios/GridRace/App/DailyAccountCoordinator.swift only if necessary; ios/GridRace.xcodeproj/project.pbxproj; ios/GridRace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved (only adjudicated missing swift-issue-reporting pin) | Serialized with P4-C integration: build2 composition and target settings; adjust project only if required. No new file registration/dependency expected. Controller owns shared assembly, workers return necessary changes as evidence. |
 | P4-U UI | ios/GridRace/App/DailyViews.swift (only live Create selector/action and related live entry presentation); ios/GridRace/App/LiveMatchViews.swift; ios/GridRaceTests/LiveMatchViewTests.swift | Agreed D3/D4 plus integrated client contracts. Reuse existing UI/reveal; add picker, labels, standings, Start next, prior reveals and incomplete/final routes. Focused tests and accessibility inspection; no Daily redesign. |
 | P4-C4 pending-Start presentation seam | ios/GridRace/App/LiveMatchSession.swift; ios/GridRaceTests/LiveMatchSessionTests.swift | Controller-traced UI-SESSION-UNRESOLVED-START. Expose read-only observable hasPendingStart from existing pendingStart; prove unchanged snapshots/Home/Resume and original-target Retry. No command/storage/contract behavior change. Release before fresh P4-U2. |
+| P4-C5 Resume fetch-generation repair | ios/GridRace/App/LiveMatchSession.swift; ios/GridRaceTests/LiveMatchSessionTests.swift | Controller-traced P4-V-RESUME-FETCH-GENERATION. Retire obsolete match tasks when explicit Resume advances presentation ownership; preserve original in-flight commands, pending intents/decisions and accepted revision. Deterministic no-Realtime suspended-fetch/repeated-Resume proof plus all session/store tests. Full suite/build after real matrix rerun. |
 | P4-V integration/proof | scripts/run_live_match_integration.sh; ios/GridRaceTests/LiveMatchIntegrationTests.swift; supabase/tests/integration/live_slice_test.ts | Integrated B/C/I/U, released earlier leases. Extend existing independent two-client product/Cron/relaunch harness for all counts, nonfinal boundaries, secrecy and pending retries. Controller sole database/simulator process coordinator runs full gates; mocks supplement. Controller adds proved host/candidate command to runbook only after success. |
 | P4-R final review | Repository READ ONLY | One fresh independent reviewer over integrated owned diff/contracts/proof/risk. Findings require reproduction or concrete invariant trace; controller records disposition. |
 | P4-F repair, conditional | Exact finding-owned file list set by controller | Bounded accepted repairs, affected proof rerun; controller targeted closure, no recursive whole reviews. |
@@ -672,9 +673,11 @@ D3/D4 resolved; P4-PR-01/02 accepted and repaired; no outstanding planning block
 P4-B is committed/proved at `ba65af9`. P4-C/I is committed at `335f210` after latest-source
 focused/full/clean Debug and controller audit/independent focused proof. P4-U
 returned a traced presentation seam before writes; P4-C4 closed at `3f8adc5`.
-P4-U2 is accepted for checkpoint after local UI gates and controller inspection.
-Next extend the existing three-file integration harness in P4-V, then controller
-runs actual independent-client/database/simulator proof and available native checks.
+P4-U2 is committed at `b2ad7985f05e52e797dd5d2f5fe37f6579f90945` after local UI
+gates and controller inspection.
+The three-file P4-V harness is authored. C5 closes the traced Resume race with
+targeted proof; next rerun the whole actual independent-client/database/simulator
+matrix, full iOS/clean Debug and available native checks.
 No product/UX decision is missing. Real independent-client V, one fresh final
 independent R, bounded accepted repairs and Historical closeout remain.
 
@@ -694,3 +697,103 @@ complete implementation, proof, review and required repairs.
 - [ ] Fresh independent final review complete; accepted fixes/targeted closure proved.
 - [ ] Authorities current; unrelated hashes preserved; owned changes committed.
 - [ ] Only then Historical closeout, commit report and explicit external release gates.
+
+## P4-V authoring and controller runtime in progress
+
+Fresh worker `01a1009f-f7e1-7073-95c1-b28d97ef6ffc` released all three
+harness-file and Swift/static-process leases before its single callback. Static
+checks passed; latest source compiled with 58 ordinary session passes and one
+expected opt-in integration skip. Those checks do not establish real-client proof.
+Controller inspected the complete harness change, verified all 128 protected
+tracked files and original six unrelated hashes, and traced two harness corrections:
+the copied frozen lock hash omitted eight characters, and a final Resume would
+inject another loss while resolving the saved receipt. The script now uses the
+actual accepted 64-character hash; Resume resolves without injecting a new loss.
+No product source or contract changes.
+
+Controller restored the existing unlinked local backup without reset. Current
+inventory: Auth/profile/Daily/live identity links/active matches all zero; 20
+anonymous retained matches, 40 rounds and 100 words; scheduled finalizer active.
+Captured protected baseline rows in mode-600 `/tmp/gridrace-phase4-v-baseline.json`.
+The actual independent-process matrix is running from
+`/tmp/gridrace-live-integration.peSW3T`, with outer log
+`/tmp/gridrace-phase4-controller-real-integration.log`. Newly created accounts,
+non-answer word and two simulator containers are owned fixtures; the shared
+backend and prior rows are preserved. No real success or final review is claimed
+while this run is in progress.
+
+The first actual run failed in the host Create wait: it called general snapshot
+Retry even after the saved Create had resolved, repeatedly moving ready back to
+recovering. The guest consequently timed out waiting for Start. Concrete trace:
+`canRetry` deliberately includes an open nonfinal room; the test must only Retry
+a pending Create. Restrict that loop to the durable pending intent and accept the
+valid already-full roster if Join arrives first. The delayed old-receipt barrier
+now allows 60 seconds for independent process launch skew instead of eight; its
+release still requires a real next-round snapshot. Every client invocation now
+requires an explicit real-client PASS and rejects an opt-in skip even if Xcode
+returns success. These are bounded harness fixes only.
+
+First-run cleanup passed (`cleanup_failed=0`) and every captured baseline row and
+inventory count remained exactly equal. Both owned proof simulators were deleted;
+no unrelated simulator was touched. Retained failed proof is
+`/tmp/gridrace-live-integration.peSW3T`. The corrected full matrix is running in
+`/tmp/gridrace-live-integration.FFQses`, outer log
+`/tmp/gridrace-phase4-controller-real-integration-rerun.log`.
+
+Second runtime attempt failed the host accepted-guess wait after one guess.
+Trace: an accepted-count snapshot can arrive before receipt recovery has returned
+the session to ready; the test issued its next guess while production input was
+locked, so the command correctly did nothing. Await the actual input-ready guard
+before each guess and await receipt resolution at the terminal player boundary.
+No product guard is relaxed. Second-run cleanup passed and complete baseline JSON
+was again equal. Failed proof remains in `/tmp/gridrace-live-integration.FFQses`.
+The corrected entire matrix is running in `/tmp/gridrace-live-integration.6g9S74`,
+outer log `/tmp/gridrace-phase4-controller-real-integration-final.log`; do not
+interpret that filename as a success claim.
+
+## P4-V Resume race adjudication and bounded repair
+
+Third actual matrix returned incomplete: **24/24 real product client invocations
+passed with zero skips** across 1/3/5 rounds, all SQL failed/tie/history gates and
+final process relaunches. Six real old receipts were held until a next-round
+Start and resolved with zero new-board guesses. Mixed initial host/guest passed,
+but mixed solve guest timed out on canonical relaunch and host consequently
+timed out on reveal. Cron, deletion and reused backend matrix did not run.
+No full V completion is claimed.
+
+| ID | Severity | Location | Claim/evidence | Disposition | Action/proof |
+| --- | --- | --- | --- | --- | --- |
+| P4-V-RESUME-FETCH-GENERATION | P1 | LiveMatchSession.resumeSavedMatch/requestRefresh/loadRecovery | loadRecovery automatically starts a pointer fetch. Immediate explicit Resume increments presentationGeneration while fetchTask is registered. beginRecovery requests refresh through that old slot. Old fetch response is correctly rejected by generation, and its cleanup returns without releasing that obsolete slot; no-Realtime recovery stalls. Real mixed guest relaunch timed out; product relaunches had pending receipts and took a different path. | accepted after concrete invariant trace, before final independent review | Fresh two-file C5 repair uses existing task lifecycle ownership, preserving in-flight commands and account/revision/intent invariants. Require deterministic suspended-fetch/duplicate-Resume regression with Realtime absent and all affected session/store proof. Then controller targeted inspection and whole actual matrix rerun. |
+
+Third-run scoped cleanup passed (`cleanup_failed=0`); complete captured baseline
+JSON, counts, Cron settings and rate rows were equal again. Both owned simulators
+were deleted. Controller gateway PID28760 received SIGINT and exited0; stopped
+only its local GridRace stack, preserving backup. No owned process remains and
+no unrelated simulator/container/file was touched. Logs/results retained under
+`/tmp/gridrace-live-integration.6g9S74`. No whole-scope/UX choice is reopened.
+
+## P4-C5 targeted closure
+
+Fresh worker `01a100ce-68cc-70b3-a152-a95065e1a394` released its two-file
+and sole Swift process lease before its single callback. The product change is
+one reuse of existing `cancelMatchTasks()` after advancing Resume presentation
+ownership and before fresh recovery. Original commands, pending Start/intent/
+decision, account identity and accepted revision are retained.
+
+Two deterministic regressions cover immediate and repeated no-Realtime Resume
+for active, nonfinal reveal, completed and incomplete snapshots; an obsolete
+higher-revision response is rejected, and a suspended current fetch retains its
+slot while Retry coalesces. The unchanged product failed the behavioral
+regression; repaired latest source passed both, then **64/64** affected tests
+(60 session/four store), zero failures/skips. Failed fixture-rich bundle was
+removed; sanitized failure log retained. Exact result and proof:
+`/tmp/gridrace-phase4-resume-fetch-result.json`; final focused `.log/.xcresult`
+uses prefix `/tmp/gridrace-phase4-resume-fetch-focused`.
+
+Controller inspected the complete two-file diff, returned hashes, all 129
+protected tracked bytes, six original unrelated hashes, unchanged HEAD/empty
+index and final evidence. Independently repeated both new regressions: **2/2
+passed**, `/tmp/gridrace-phase4-controller-resume-fetch.log` and `.xcresult`.
+Exact accepted package lock remained unchanged with frozen native flags.
+P4-V-RESUME-FETCH-GENERATION is closed at this bounded checkpoint; actual whole
+matrix rerun, full iOS/clean Debug and final independent review remain required.

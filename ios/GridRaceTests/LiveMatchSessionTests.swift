@@ -2256,6 +2256,80 @@ final class LiveMatchSessionTests: XCTestCase {
         session.leaveToHome()
     }
 
+    func testImmediateResumeRetiresAutomaticPointerFetchWithoutRealtime() async throws {
+        for label in ["3-round-2-playing", "3-round-1-reveal", "3-round-3-reveal", "deletion-active-revealed"] {
+            for resumeCount in [1, 3] {
+                let current = try Phase4LiveFixtures.snapshot(label)
+                var old = current
+                old.revision = current.revision + 1
+                let script = SnapshotScript(first: old, later: current)
+                let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
+                let session = makeSession(
+                    service: LiveServiceMock(snapshot: { _ in try await script.next() }),
+                    realtime: nil, store: store
+                )
+                session.changeAccount(to: UUID())
+                await eventually { await script.callCount == 1 }
+
+                for index in 1...resumeCount {
+                    session.resumeSavedMatch()
+                    await eventually { await script.callCount == index + 1 }
+                    await eventually { session.snapshot == current && session.phase == .ready }
+                }
+                await script.releaseFirst()
+                await Task.yield()
+                XCTAssertTrue(session.snapshot == current, label)
+                XCTAssertEqual(session.savedMatchID, current.match.id)
+                XCTAssertNil(session.pendingIntent)
+
+                // A completed old task must not strand the next explicit recovery either.
+                session.resumeSavedMatch()
+                await eventually { await script.callCount == resumeCount + 2 }
+                await eventually { session.snapshot == current && session.phase == .ready }
+                session.leaveToHome()
+            }
+        }
+    }
+
+    func testObsoletePointerFetchCannotReleaseRepeatedResumeFetchSlot() async throws {
+        let current = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        var old = current
+        old.revision = current.revision + 1
+        let script = SnapshotScript(first: old, later: current)
+        let currentGate = AsyncGate()
+        let calls = LockedCounter()
+        let oldReturned = LockedCounter()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            if calls.increment() == 1 {
+                let received = try await script.next()
+                oldReturned.increment()
+                return received
+            }
+            await currentGate.wait()
+            return current
+        }), realtime: nil, store: store)
+        session.changeAccount(to: UUID())
+        await eventually { await script.callCount == 1 }
+        session.resumeSavedMatch()
+        await eventually { calls.value == 2 }
+        session.resumeSavedMatch()
+        await eventually { calls.value == 3 }
+
+        // Finish obsolete work while the current presentation still owns a suspended fetch.
+        await script.releaseFirst()
+        await eventually { oldReturned.value == 1 }
+        await Task.yield()
+        XCTAssertNil(session.snapshot)
+        session.retry()
+        await currentGate.open()
+        await eventually { session.snapshot == current && session.phase == .ready }
+        await eventually { calls.value == 4 }
+        XCTAssertEqual(calls.value, 4, "Retry must coalesce behind the current fetch")
+        XCTAssertTrue(session.snapshot == current)
+        session.leaveToHome()
+    }
+
     func testDelayedSnapshotCannotReopenHomeOrReplaceResumedPresentation() async throws {
         let initial = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
         let next = try Phase4LiveFixtures.snapshot("3-round-2-playing")
