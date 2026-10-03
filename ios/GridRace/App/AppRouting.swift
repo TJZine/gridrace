@@ -39,7 +39,9 @@ struct DailyAppView: View {
                         LiveMatchFlowView(
                             session: app.live,
                             hapticsEnabled: app.daily.settings.hapticsEnabled,
-                            highContrast: app.daily.settings.highContrastEnabled
+                            highContrast: app.daily.settings.highContrastEnabled,
+                            isSignedIn: app.account.isSignedIn,
+                            openAccount: { path.append(.account) }
                         )
                     case .statistics: DailyStatisticsView(model: app.daily)
                     case .account: accountDestination
@@ -57,7 +59,9 @@ struct DailyAppView: View {
                     }
                 }
         }
-        .tint(Color.raceIndigo)
+        .environment(\.highContrastFeedback, app.daily.settings.highContrastEnabled)
+        .foregroundStyle(Color.ink)
+        .tint(Color.ink)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 app.foregrounded()
@@ -86,7 +90,8 @@ struct DailyAppView: View {
                 ? nil : { app.resolveFirstConflict(useCloud: true) },
             keepDeviceAttempt: app.conflicts.isEmpty
                 ? nil : { app.resolveFirstConflict(useCloud: false) },
-            conflictCount: app.conflicts.count
+            conflictCount: app.conflicts.count,
+            conflict: app.conflicts.first
         )
     }
 }
@@ -101,7 +106,7 @@ private struct DailyStorageUnavailableView: View {
             Text("Retry account storage, or sign out from Account to keep playing as a guest.")
         } actions: {
             Button("Retry", action: retry)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
             NavigationLink("Open Account", value: AppRoute.account)
         }
         .navigationTitle("Daily Classic")

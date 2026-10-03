@@ -13,7 +13,7 @@ struct DailyHomeView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
                     brandHeader
@@ -46,11 +46,11 @@ struct DailyHomeView: View {
         VStack(spacing: 2) {
             HStack(spacing: 8) {
                 Image(systemName: "flag.checkered.2.crossed")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(Color.raceIndigo)
+                    .font(StampType.title3.weight(.bold))
+                    .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
                 Text("GRIDRACE")
-                    .font(.title3.bold())
+                    .font(StampType.title3.bold())
                     .tracking(1.5)
                     .lineLimit(1)
             }
@@ -62,8 +62,8 @@ struct DailyHomeView: View {
             .dynamicTypeSize(dynamicTypeSize.isAccessibilitySize ? .large : dynamicTypeSize)
             if !dynamicTypeSize.isAccessibilitySize {
                 Text("One grid. One day. Make every row count.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
             }
         }
@@ -72,22 +72,22 @@ struct DailyHomeView: View {
 
     private var dailyCard: some View {
         HStack(spacing: 0) {
-            // Brand signature lane edge: fixed indigo, never a status color.
-            Color.raceIndigo
+            // Existing Home rule; the schedule layout is owned by S1.
+            Color.ink
                 .frame(width: 5)
                 .accessibilityHidden(true)
             VStack(spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("DAILY CLASSIC")
-                            .font(.caption.weight(.black))
+                            .font(StampType.caption.weight(.black))
                             .tracking(1.2)
-                            .foregroundStyle(Color.raceIndigo)
+                            .foregroundStyle(Color.ink)
                         Text("Puzzle #\(model.puzzle.number)")
-                            .font(.title2.bold())
+                            .font(StampType.title2.bold())
                         Label(model.homeStatus.title, systemImage: model.homeStatus.symbol)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                     Spacer()
                     MiniRaceGrid(rows: model.game.rows)
@@ -97,20 +97,20 @@ struct DailyHomeView: View {
                 if isDailyPlayable {
                     NavigationLink(value: AppRoute.daily) {
                         Text(model.homeStatus.action)
-                            .font(.headline)
+                            .font(StampType.heading)
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                 } else {
                     Text("Account storage must be available before this puzzle can be played.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryInk)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Button("Retry account storage", action: retryDailyStorage)
-                        .font(.headline)
+                        .font(StampType.heading)
                         .frame(maxWidth: .infinity, minHeight: 48)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                 }
 
@@ -118,17 +118,17 @@ struct DailyHomeView: View {
                     NextPuzzleLabel(reset: model.nextReset)
                 } else if model.settings.hardModeEnabled {
                     Label("Hard Mode", systemImage: "shield.checkered")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption.weight(.semibold))
+                        .foregroundStyle(Color.secondaryInk)
                 }
             }
             .padding(20)
         }
-        .background(Color.raceCard)
+        .background(Color.card)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
         .accessibilityElement(children: .contain)
     }
@@ -143,7 +143,7 @@ struct DailyHomeView: View {
                 HomeMetric(value: "\(model.history.statistics.gamesPlayed)", label: "Played")
             }
             .padding(.vertical, 14)
-            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -153,9 +153,9 @@ struct DailyHomeView: View {
     private var secondaryRoutes: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("LEARN")
-                .font(.caption.weight(.bold))
+                .font(StampType.caption.weight(.bold))
                 .tracking(1.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryInk)
                 .padding(.horizontal, 4)
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
@@ -167,10 +167,10 @@ struct DailyHomeView: View {
                     HomeRouteLabel(title: "Practice race", subtitle: "Revisit the local tutorial", symbol: "figure.run")
                 }
             }
-            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.raceLine, lineWidth: 1.5)
+                    .stroke(Color.line, lineWidth: 1.5)
             }
         }
         .padding(.top, 12)
@@ -182,19 +182,19 @@ struct DailyHomeView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("LIVE RACE")
-                        .font(.caption.weight(.black))
+                        .font(StampType.caption.weight(.black))
                         .tracking(1.2)
-                        .foregroundStyle(Color.raceIndigo)
+                        .foregroundStyle(Color.ink)
                     Text("Private two-player race")
-                        .font(.headline)
+                        .font(StampType.heading)
                     Text("1, 3, or 5 private server rounds")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
                 }
                 Spacer()
                 Image(systemName: "person.2.fill")
-                    .font(.title2)
-                    .foregroundStyle(Color.raceIndigo)
+                    .font(StampType.title2)
+                    .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
             }
 
@@ -205,11 +205,11 @@ struct DailyHomeView: View {
                     Label("Resolve saved live data", systemImage: "externaldrive.badge.exclamationmark")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
 
                 Text("Live recovery data could not be removed. Retry or discard it before creating or joining another race.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
             } else if live.hasSavedMatch {
                 Button {
                     live.resumeSavedMatch()
@@ -218,7 +218,7 @@ struct DailyHomeView: View {
                     Label("Resume live match", systemImage: "arrow.clockwise.circle.fill")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
             }
 
             if live.phase != .storageUnavailable {
@@ -233,16 +233,16 @@ struct DailyHomeView: View {
 
                 if !account.isSignedIn {
                     Text("Create and Join open Account first. Daily Classic stays available without signing in.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
                 }
             }
         }
         .padding(16)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
         .accessibilityElement(children: .contain)
     }
@@ -270,7 +270,7 @@ struct DailyHomeView: View {
             live.joinMatch(code: joinCode)
             openRoute(.live)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(OutlinedInkButtonStyle())
         .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
         .disabled(joinCode.count != 6 || live.isCommandInFlight)
     }
@@ -282,32 +282,32 @@ struct DailyHomeView: View {
                     PlayerAvatarView(seed: profile.avatarSeed, size: 48)
                 } else {
                     Image(systemName: account.isSignedIn ? "person.crop.circle" : "person.crop.circle.badge.plus")
-                        .font(.title2)
+                        .font(StampType.title2)
                         .frame(width: 48, height: 48)
-                        .background(Color.raceInset, in: Circle())
-                        .foregroundStyle(Color.raceIndigo)
+                        .background(Color.card, in: Circle())
+                        .foregroundStyle(Color.ink)
                         .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(account.profile?.displayName ?? "GridRace account")
-                        .font(.headline)
+                        .font(StampType.heading)
                     Text(account.isSignedIn
                         ? (syncMessage ?? "Save and sync your progress")
                         : "Save and sync your progress")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
                         .lineLimit(2)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption.bold())
-                    .foregroundStyle(.tertiary)
+                    .font(StampType.caption.bold())
+                    .foregroundStyle(Color.secondaryInk)
             }
             .padding(14)
-            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.raceLine, lineWidth: 1.5)
+                    .stroke(Color.line, lineWidth: 1.5)
             }
             .contentShape(Rectangle())
         }
@@ -325,28 +325,11 @@ private struct MiniRaceGrid: View {
             ForEach(0..<30, id: \.self) { index in
                 let row = index / 5
                 let column = index % 5
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(color(row: row, column: column))
+                FeedbackSeal(feedback: rows.indices.contains(row) ? rows[row].feedback[column] : nil)
                     .frame(width: 14, height: 14)
-                    .overlay {
-                        if rows.indices.contains(row) {
-                            Image(systemName: rows[row].feedback[column].symbolName)
-                                .font(.system(size: 7, weight: .black))
-                                .foregroundStyle(.white)
-                        }
-                    }
             }
         }
         .accessibilityHidden(true)
-    }
-
-    private func color(row: Int, column: Int) -> Color {
-        guard rows.indices.contains(row) else { return Color.raceLineSoft }
-        switch rows[row].feedback[column] {
-        case .absent: return Color.raceTeal
-        case .present: return Color.raceCoral
-        case .correct: return Color.raceIndigo
-        }
     }
 }
 
@@ -358,9 +341,9 @@ private struct HomeMetric: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(emphasized ? .title2.weight(.semibold).monospacedDigit() : .title3.weight(.medium).monospacedDigit())
-                .foregroundStyle(emphasized ? .primary : .secondary)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+                .font(.system(emphasized ? .title2 : .title3, design: .monospaced, weight: emphasized ? .semibold : .medium))
+                .foregroundStyle(emphasized ? Color.ink : Color.secondaryInk)
+            Text(label).font(StampType.caption2).foregroundStyle(Color.secondaryInk)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -375,19 +358,19 @@ private struct HomeRouteLabel: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: symbol)
-                .font(.headline)
+                .font(StampType.heading)
                 .frame(width: 42, height: 42)
-                .background(Color.raceInset, in: Circle())
-                .foregroundStyle(Color.raceIndigo)
+                .background(Color.card, in: Circle())
+                .foregroundStyle(Color.ink)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(StampType.heading)
+                Text(subtitle).font(StampType.caption).foregroundStyle(Color.secondaryInk)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
+                .font(StampType.caption.bold())
+                .foregroundStyle(Color.secondaryInk)
                 .accessibilityHidden(true)
         }
         .padding(14)

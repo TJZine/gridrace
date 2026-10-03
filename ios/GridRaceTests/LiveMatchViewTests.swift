@@ -248,7 +248,7 @@ final class LiveMatchViewTests: XCTestCase {
                 let view = NavigationStack {
                     LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility)
                 }
-                .tint(Color.raceIndigo)
+                .tint(Color.ink)
                 .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large)
                 .environment(\.legibilityWeight, accessibility ? .bold : .regular)
                 let host = UIHostingController(rootView: view)
@@ -285,7 +285,7 @@ final class LiveMatchViewTests: XCTestCase {
 
     @MainActor
     private func captureCreate(_ controls: LiveCreateControls, name: String, accessibility: Bool = false) async throws {
-        let host = UIHostingController(rootView: controls.padding(20).tint(Color.raceIndigo).background(Color.racePage)
+        let host = UIHostingController(rootView: controls.padding(20).tint(Color.ink).background(Color.page)
             .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)

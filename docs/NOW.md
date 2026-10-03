@@ -15,8 +15,10 @@ HEAD `2d19d2c`; the index and tracked tree were clean and the six unrelated file
 were captured by SHA-256. Activation is `cf9d48d`. S0a's mechanical view split is
 complete: 52 declaration bodies preserved, six necessary access changes, full
 iOS 214 passed/two opt-in skips and clean Debug. Controller differential audit
-and preservation checks passed. Next is serial S0b, isolated S1–S3, S4 with the
-human, and one fresh final review. New work sessions use callback-enabled chats
+and preservation checks passed. Remaining work is isolated S1–S3, S4 with the
+human, and one fresh final review. S0b has returned with passing full suite/build
+and contrast proof; the human approved the compact-QWERTY letter-key exception.
+S0b is complete; next is isolated S1–S3 dispatch from its checkpoint. New work sessions use callback-enabled chats
 under the human's updated workflow instruction; no waiting or polling loops.
 
 Phase 4 software evidence is preserved. Accepted planning/independent plan review is checkpointed at

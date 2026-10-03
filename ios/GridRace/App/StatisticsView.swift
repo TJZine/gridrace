@@ -5,7 +5,7 @@ struct DailyStatisticsView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 22) {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -35,18 +35,18 @@ struct DailyStatisticsView: View {
     private var todayResult: some View {
         if let result = model.history.result(for: model.puzzle.id) {
             VStack(spacing: 12) {
-                Text("TODAY").font(.caption.weight(.black)).tracking(1.2)
+                Text("TODAY").font(StampType.caption.weight(.black)).tracking(1.2)
                 Text(result.outcome == .solved ? "Solved in \(result.guessCount)" : "Not solved")
-                    .font(.headline)
+                    .font(StampType.heading)
                 ShareLink(item: DailyClassicShare.text(for: result)) {
                     Label("Share today's grid", systemImage: "square.and.arrow.up")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
                 NextPuzzleLabel(reset: model.nextReset)
             }
             .padding(18)
             .frame(maxWidth: .infinity)
-            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         } else {
             ContentUnavailableView(
                 "Today's result is waiting",
@@ -65,14 +65,14 @@ private struct StatisticCard: View {
     var body: some View {
         VStack(spacing: 4) {
             Text("\(value)\(showsPercentSign ? "%" : "")")
-                .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
-            Text(label).font(.subheadline).foregroundStyle(.secondary)
+                .font(.system(.largeTitle, design: .monospaced, weight: .bold)).monospacedDigit()
+            Text(label).font(.subheadline).foregroundStyle(Color.secondaryInk)
         }
         .frame(maxWidth: .infinity, minHeight: 96)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
@@ -103,7 +103,7 @@ private struct GuessDistributionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("GUESS DISTRIBUTION")
-                .font(.caption.weight(.black))
+                .font(StampType.caption.weight(.black))
                 .tracking(1.2)
             ForEach(1...6, id: \.self) { guess in
                 let isToday = todayGuessCount == guess
@@ -114,12 +114,12 @@ private struct GuessDistributionView: View {
                     GeometryReader { proxy in
                         let count = distribution[guess, default: 0]
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.raceInset)
-                            Capsule().fill(Color.raceIndigo)
+                            Capsule().fill(Color.card)
+                            Capsule().fill(Color.ink)
                                 .frame(width: barWidth(count: count, in: proxy.size.width))
                             if isToday {
                                 Capsule()
-                                    .stroke(Color.raceLineEmphasis, lineWidth: 1.5)
+                                    .stroke(Color.ink, lineWidth: 1.5)
                             }
                         }
                     }
@@ -128,8 +128,8 @@ private struct GuessDistributionView: View {
                     // white-on-fill), so AX5/Bold sizes cannot clip it or push
                     // it outside its contrasting fill.
                     Text("\(distribution[guess, default: 0])")
-                        .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(Color.raceInk)
+                        .font(StampType.caption.bold().monospacedDigit())
+                        .foregroundStyle(Color.ink)
                         .frame(minWidth: 28, alignment: .leading)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -138,8 +138,8 @@ private struct GuessDistributionView: View {
                     // staying visually invisible, so all bars align at any
                     // text size. The row's custom label owns the semantics.
                     Text("Today")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption2.bold())
+                        .foregroundStyle(Color.secondaryInk)
                         .opacity(isToday ? 1 : 0)
                 }
                 .accessibilityElement(children: .ignore)
@@ -149,10 +149,10 @@ private struct GuessDistributionView: View {
             }
         }
         .padding(18)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
     }
 }

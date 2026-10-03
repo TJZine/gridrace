@@ -42,11 +42,11 @@ struct DailySettingsView: View {
             Section {
                 Text("Daily Classic resets worldwide at 00:00 UTC. Reduce Motion follows your system accessibility setting.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryInk)
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color.racePage)
+        .background(Color.page)
         .navigationTitle("Settings")
     }
 }
@@ -54,13 +54,13 @@ struct DailySettingsView: View {
 struct DailyHelpView: View {
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Reach the finish in six")
-                        .font(.largeTitle.bold())
+                        .font(StampType.display.bold())
                     Text("Guess the five-letter answer in six accepted words. Each row gives evidence for your next move.")
-                        .font(.title3)
+                        .font(StampType.title3)
                     FeedbackExample(
                         letter: "R", feedback: .correct,
                         title: "Correct position", detail: "The checkmark means R is exactly where it belongs."
@@ -103,8 +103,8 @@ private struct FeedbackExample: View {
             TileView(letter: letter, feedback: feedback, isDraft: false, emptyLabel: "")
                 .frame(width: 58, height: 58)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(detail).font(.callout).foregroundStyle(.secondary)
+                Text(title).font(StampType.heading)
+                Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
             }
         }
         .accessibilityElement(children: .combine)
@@ -132,7 +132,7 @@ private struct DuplicateLetterExample: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
+            Text(title).font(StampType.heading)
             HStack(spacing: 5) {
                 ForEach(tiles.indices, id: \.self) { index in
                     TileView(
@@ -144,7 +144,7 @@ private struct DuplicateLetterExample: View {
                     .frame(width: 52, height: 52)
                 }
             }
-            Text(detail).font(.callout).foregroundStyle(.secondary)
+            Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
         }
         .accessibilityElement(children: .combine)
     }
@@ -161,36 +161,36 @@ struct DailyAttributionView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Where the words come from")
-                        .font(.largeTitle.bold())
+                        .font(StampType.display.bold())
                     Text("Daily Classic accepts a frozen baseline plus eligible English Wiktionary spellings. Answers are original GridRace curation.")
-                        .font(.title3)
+                        .font(StampType.title3)
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Wiktionary snapshot enwiktionary-20260901", systemImage: "archivebox")
-                            .font(.headline)
+                            .font(StampType.heading)
                         Text("Dump SHA-256 0b7f554b…14c5e719. The full hash is recorded in the shipped corpus notice.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                             .accessibilityLabel("Dump SHA-256 recorded in full in the shipped corpus notice.")
                         Link("Wiktionary dump archive for this release", destination: dumpsURL)
                             .font(.callout)
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Baseline union, expansions excluded", systemImage: "square.on.square")
-                            .font(.headline)
+                            .font(StampType.heading)
                         Text("Every one of the 8,508 frozen baseline spellings is kept verbatim. Wiktionary adds only explicitly evidenced forms; template-computed expansion-only forms stay excluded.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Wiktionary data terms apply to that portion", systemImage: "text.book.closed")
-                            .font(.headline)
+                            .font(StampType.heading)
                         Text("The Wiktionary-derived spellings are used under the Creative Commons Attribution-ShareAlike 4.0 International License and the GNU Free Documentation License, which require attribution and same-or-compatible licensing of adapted material.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                         Link("Creative Commons Attribution-ShareAlike 4.0 deed", destination: licenseDeedURL)
                             .font(.callout)
                         Link("Wiktionary copyright terms", destination: copyrightsURL)
@@ -198,18 +198,18 @@ struct DailyAttributionView: View {
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Extraction software is separately licensed", systemImage: "wrench.and.screwdriver")
-                            .font(.headline)
+                            .font(StampType.heading)
                         Text("The Wiktextract extraction tool is MIT-licensed software. That license covers the tool, not the dictionary data above.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                     Divider()
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Release review still pending", systemImage: "lock.fill")
-                            .font(.headline)
+                            .font(StampType.heading)
                         Text("Not cleared for distribution. Attribution review, baseline provenance beyond the historical web2 supplier note, and App Store and distribution review are still open release gates.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                 }
                 .frame(maxWidth: 560, alignment: .leading)

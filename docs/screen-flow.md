@@ -51,7 +51,12 @@ The S0a mechanical split groups presentation by screen in `AppRouting.swift`,
 `SettingsHelpViews.swift`, `TutorialViews.swift`, `LiveMatchViews.swift`, and
 `LiveResultViews.swift`. Shared visual leaves live in `DesignSystem.swift` and
 `BoardViews.swift`; Account remains in `AccountView.swift`. This checkpoint
-preserves the shipped behavior below; the stamped presentation follows in S0b–S3.
+preserves behavior. S0b now supplies paper/ink color roles, serif and monospaced
+type, round-seal tiles, feedback keys, ink controls and shared notice/countdown/
+opponent leaves. Correct uses claret fill and a check; present uses a double ring
+and rotating arrows; absent uses an unfilled dimmed bold letter and minus. The
+High-contrast feedback preference and Increased Contrast use the same strengthened
+marks. Feature layouts below remain transitional until S1–S3.
 
 ### Daily Classic home and play
 
@@ -212,6 +217,10 @@ Contacts, photos, chat, and visible email are outside the product.
   position,” “Letter L, present in another position,” or “Letter E, not in the
   word.”
 - Keyboard keys are buttons with meaningful labels and usable hit targets.
+- Action controls have at least 44×44pt targets. The human approved a compact
+  standard QWERTY exception for letter keys: about 32pt width on iPhone SE and
+  at least 48pt height. S4 measures the actual regions and checks usability;
+  no overlapping targets or alternate default layout is implied.
 - Correct, present, and absent differ by more than color in both board and
   keyboard treatments.
 - Increased Contrast and Bold Text strengthen rather than erase distinctions.

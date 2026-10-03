@@ -22,7 +22,7 @@ struct LiveCreateControls: View {
             Button(action: create) {
                 Text("Create").frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(OutlinedInkButtonStyle())
         }
         .disabled(live.isCommandInFlight || live.pendingIntent != nil)
     }
@@ -181,6 +181,8 @@ struct LiveMatchFlowView: View {
     @Bindable var session: LiveMatchSession
     let hapticsEnabled: Bool
     let highContrast: Bool
+    var isSignedIn = true
+    var openAccount: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var retainedError: String?
@@ -188,7 +190,7 @@ struct LiveMatchFlowView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             VStack(spacing: 0) {
                 if showsTopError, !showsSavedRecovery,
                    let message = retainedError ?? LiveMatchPresentation.errorMessage(session.lastError) {
@@ -203,7 +205,7 @@ struct LiveMatchFlowView: View {
                         VStack(spacing: 12) {
                             if let message = retainedError ?? LiveMatchPresentation.errorMessage(session.lastError) {
                                 Text(message).font(.callout.weight(.semibold))
-                                    .foregroundStyle(Color.raceDanger)
+                                    .foregroundStyle(Color.ink)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             pendingDecisionActions
@@ -272,7 +274,7 @@ struct LiveMatchFlowView: View {
                     ProgressView("Recovering live match")
                     Text("Waiting for a canonical server snapshot.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryInk)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding()
@@ -355,7 +357,7 @@ struct LiveMatchFlowView: View {
                     Text("Retry saved Start").fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     .frame(minHeight: 44)
                     .disabled(!session.canRetry)
             }
@@ -367,13 +369,13 @@ struct LiveMatchFlowView: View {
                     Text("Retry saved request").fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent).disabled(!session.canRetry)
+                .buttonStyle(InkButtonStyle()).disabled(!session.canRetry)
                 if let discardAction {
                     Button(role: .destructive, action: discardAction) {
                         Text("Discard saved request").fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
                 }
             }
         }
@@ -390,18 +392,9 @@ private struct LiveErrorBanner: View {
     let retry: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(message, systemImage: "exclamationmark.circle.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(Color.raceDanger)
-                .fixedSize(horizontal: false, vertical: true)
-            if let retry {
-                Button("Retry", action: retry).buttonStyle(.bordered).frame(minHeight: 44)
-            }
+        NoticeCard(message: message) {
+            if let retry { Button("Retry", action: retry).buttonStyle(OutlinedInkButtonStyle()) }
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.raceDanger, lineWidth: 1.5) }
         .accessibilityElement(children: .contain)
     }
 }
@@ -420,10 +413,10 @@ private struct LiveUnavailableView: View {
         } description: {
             Text(message)
         } actions: {
-            if let retry { Button("Retry", action: retry).buttonStyle(.borderedProminent) }
+            if let retry { Button("Retry", action: retry).buttonStyle(InkButtonStyle()) }
             if let discard {
                 Button(discardTitle, role: .destructive, action: discard)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
             }
             NavigationLink("Open Account", value: AppRoute.account)
         }
@@ -445,11 +438,11 @@ private struct LiveLobbyView: View {
             VStack(spacing: 20) {
                 VStack(spacing: 6) {
                     Text("PRIVATE ROOM")
-                        .font(.caption.weight(.black))
+                        .font(StampType.caption.weight(.black))
                         .tracking(1.2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryInk)
                     Text(snapshot.match.roundCount == 1 ? "1 round" : "\(snapshot.match.roundCount) rounds")
-                        .font(.headline)
+                        .font(StampType.heading)
                     Text(snapshot.match.joinCode)
                         .font(.system(.largeTitle, design: .monospaced, weight: .bold))
                         .tracking(4)
@@ -458,61 +451,61 @@ private struct LiveLobbyView: View {
                         .accessibilityLabel("Room code \(snapshot.match.joinCode.map(String.init).joined(separator: " "))")
                     Label(localStatus, systemImage: localStatusSymbol)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryInk)
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity)
-                .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("PLAYERS")
-                        .font(.caption.weight(.black))
+                        .font(StampType.caption.weight(.black))
                         .tracking(1.2)
                     ForEach(snapshot.members, id: \.id) { member in
                         HStack(spacing: 12) {
                             PlayerAvatarView(seed: member.avatarSeed, size: 48)
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(member.displayName).font(.headline)
+                                Text(member.displayName).font(StampType.heading)
                                 Text(member.id == snapshot.match.creatorMemberID ? "Room creator" : "Player two")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(StampType.caption)
+                                    .foregroundStyle(Color.secondaryInk)
                             }
                             Spacer()
                             if member.isSelf {
                                 Text("You")
-                                    .font(.caption.bold())
+                                    .font(StampType.caption.bold())
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(Color.raceInset, in: Capsule())
+                                    .background(Color.card, in: Capsule())
                             }
                         }
                         .accessibilityElement(children: .combine)
                     }
                     if snapshot.members.count == 1 {
                         Label("Waiting for player two", systemImage: "person.badge.clock")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                             .frame(minHeight: 44)
                     }
                 }
                 .padding(18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 18).stroke(Color.raceLine, lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: 18).stroke(Color.line, lineWidth: 1.5)
                 }
 
                 if expired {
                     Label("This lobby expired before the race started.", systemImage: "clock.badge.exclamationmark")
-                        .foregroundStyle(Color.raceDanger)
-                        .font(.headline)
+                        .foregroundStyle(Color.ink)
+                        .font(StampType.heading)
                         .multilineTextAlignment(.center)
                 } else if isCreator {
                     Button("Start race") { session.startMatch() }
                         .controlSize(.large)
-                        .font(.headline)
+                        .font(StampType.heading)
                         .frame(maxWidth: .infinity, minHeight: 48)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(InkButtonStyle())
                         .disabled(!LiveMatchPresentation.canStart(
                             snapshot: snapshot,
                             displayedServerTime: displayedTime,
@@ -522,12 +515,12 @@ private struct LiveLobbyView: View {
                         ) || session.phase != .ready)
                     if snapshot.members.count < 2 {
                         Text("Start becomes available when the second player joins.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(StampType.caption)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                 } else {
                     Text("Waiting for the room creator to start.")
-                        .font(.headline)
+                        .font(StampType.heading)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -562,14 +555,10 @@ private struct LiveCountdownView: View {
             GeometryReader { geometry in
                 ScrollView {
                     VStack(spacing: 18) {
-                        Text(LiveMatchPresentation.roundLabel(snapshot)).font(.headline)
+                        Text(LiveMatchPresentation.roundLabel(snapshot)).font(StampType.heading)
                         Text("Live race starts in")
-                            .font(.title2)
-                        Text(seconds == 0 ? "GO" : "\(seconds)")
-                            .font(.system(size: 92, weight: .black, design: .rounded))
-                            .minimumScaleFactor(0.5)
-                            .foregroundStyle(Color.raceCoral)
-                            .contentTransition(.numericText())
+                            .font(StampType.title2)
+                        CountdownNumeral(text: seconds == 0 ? "GO" : "\(seconds)")
                         ProgressView(value: Double(3 - seconds), total: 3)
                             .frame(maxWidth: 220)
                             .accessibilityHidden(true)
@@ -580,7 +569,7 @@ private struct LiveCountdownView: View {
                         }
                         Text("The server clock controls the start. Backgrounding does not pause it.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryInk)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -650,7 +639,6 @@ private struct LiveRoundView: View {
                         }
                     }
                     BoardView(rows: rows, draft: draft, isPlaying: canInput, highContrast: highContrast)
-                        .dynamicTypeSize(.large)
                         .padding(.horizontal)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: rows.count)
                     status
@@ -668,12 +656,9 @@ private struct LiveRoundView: View {
                     delete: deleteLetter,
                     highContrast: highContrast
                 )
-                // Fixed five-letter board and keyboard glyphs retain their shape;
-                // surrounding instructions and semantic labels keep full Dynamic Type.
-                .dynamicTypeSize(.large)
                 .padding(.vertical, 8)
-                .background(Color.racePage)
-                .overlay(alignment: .top) { Color.raceLine.frame(height: 1) }
+                .background(Color.page)
+                .overlay(alignment: .top) { Color.line.frame(height: 1) }
             }
         }
         .focusable(canInput)
@@ -730,13 +715,13 @@ private struct LiveRoundView: View {
             : AnyLayout(HStackLayout())
         return layout {
             VStack(alignment: .leading, spacing: 2) {
-                Text(LiveMatchPresentation.roundLabel(snapshot)).font(.headline)
-                Text(localConnectionText).font(.caption).foregroundStyle(.secondary)
+                Text(LiveMatchPresentation.roundLabel(snapshot)).font(StampType.heading)
+                Text(localConnectionText).font(StampType.caption).foregroundStyle(Color.secondaryInk)
             }
             if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 Label(remainingTime, systemImage: "timer")
-                    .font(.headline.monospacedDigit())
+                    .font(StampType.figure)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("\(remainingSeconds) seconds remaining")
             }
@@ -751,31 +736,31 @@ private struct LiveRoundView: View {
            session.lastError == .server(.requestConflict) || session.lastError == .server(.rateLimited) {
             VStack(spacing: 8) {
                 Text("Resolve the original saved guess before continuing.").font(.callout)
-                if let retainedError { Text(retainedError).foregroundStyle(Color.raceDanger) }
+                if let retainedError { Text(retainedError).foregroundStyle(Color.ink) }
                 Button { session.retry() } label: {
                     Text("Retry saved request").fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent).disabled(!session.canRetry)
+                .buttonStyle(InkButtonStyle()).disabled(!session.canRetry)
                 Button(role: .destructive) { session.discardPendingGuess() } label: {
                     Text("Discard saved request").fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(OutlinedInkButtonStyle())
             }.padding()
         } else if let player = selfPlayer, player.state.isTerminal {
             VStack(spacing: 8) {
-                Text(terminalTitle(player.state)).font(.title3.bold())
+                Text(terminalTitle(player.state)).font(StampType.title3.bold())
                 Text("Your accepted board is locked. Waiting for the canonical shared reveal.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
                 if session.phase == .recovering {
                     ProgressView("Recovering your connection")
                 } else if session.phase == .unavailable {
-                    if let retainedError { Text(retainedError).foregroundStyle(Color.raceDanger) }
+                    if let retainedError { Text(retainedError).foregroundStyle(Color.ink) }
                     Button("Retry") { session.retry() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(InkButtonStyle())
                         .disabled(!session.canRetry)
                 }
             }
@@ -785,22 +770,22 @@ private struct LiveRoundView: View {
             VStack(spacing: 10) {
                 ProgressView("Recovering your submitted guess")
                 Text("New submission is locked until the saved request is resolved.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
                 if let retainedError {
                     Text(retainedError)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(Color.raceDanger)
+                        .foregroundStyle(Color.ink)
                         .multilineTextAlignment(.center)
                 }
                 if session.lastError == .server(.requestConflict)
                     || session.lastError == .server(.rateLimited) {
                     HStack {
                         Button("Retry") { session.retry() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(InkButtonStyle())
                             .disabled(!session.canRetry)
                         Button("Discard", role: .destructive) { session.discardPendingGuess() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(OutlinedInkButtonStyle())
                     }
                 }
             }
@@ -812,15 +797,15 @@ private struct LiveRoundView: View {
                 } else {
                     Text(retainedError ?? "Your live connection is unavailable.")
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(Color.raceDanger)
+                        .foregroundStyle(Color.ink)
                         .multilineTextAlignment(.center)
                     Button("Retry") { session.retry() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(InkButtonStyle())
                         .disabled(!session.canRetry)
                 }
                 Text("Your accepted board is preserved. New input stays locked until recovery finishes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal)
@@ -829,8 +814,8 @@ private struct LiveRoundView: View {
             VStack(spacing: 8) {
                 ProgressView("Checking the final server state")
                 Text("The local timer ended. Only the server can finalize and reveal this round.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal)
@@ -840,8 +825,8 @@ private struct LiveRoundView: View {
                 .accessibilityFocused($errorFocus, equals: errorGeneration)
         } else {
             Text("Enter a five-letter word. The server validates every live guess.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(StampType.caption)
+                .foregroundStyle(Color.secondaryInk)
         }
     }
 

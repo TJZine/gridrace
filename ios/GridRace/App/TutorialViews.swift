@@ -8,7 +8,7 @@ struct TutorialView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             switch model.phase {
             case .introduction:
                 IntroductionView(model: model)
@@ -20,7 +20,7 @@ struct TutorialView: View {
                 RevealView(model: model)
             }
         }
-        .tint(Color.raceIndigo)
+        .tint(Color.ink)
         .onAppear { model.setReduceMotion(reduceMotion) }
         .onChange(of: reduceMotion) { _, value in model.setReduceMotion(value) }
         .onChange(of: scenePhase) { _, value in
@@ -42,13 +42,13 @@ private struct IntroductionView: View {
                 Spacer(minLength: 20)
                 Image(systemName: "flag.checkered.2.crossed")
                     .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(Color.raceIndigo)
+                    .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
                 Text("GridRace Tutorial")
-                    .font(.largeTitle.bold())
+                    .font(StampType.display.bold())
                     .multilineTextAlignment(.center)
                 Text("Solve the same five-letter word while Alex and Sam race beside you.")
-                    .font(.title3)
+                    .font(StampType.title3)
                     .multilineTextAlignment(.center)
                 Label(
                     "Opponent letters, feedback, and keyboard clues stay private during play.",
@@ -56,15 +56,15 @@ private struct IntroductionView: View {
                 )
                 .font(.body.weight(.semibold))
                 .padding()
-                .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                 Text("This is an on-device practice race. Its answer and ghost moves are bundled with the app; production games will rely on the server.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
                 Button("Start local race") {
                     model.startTutorial()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
                 .controlSize(.large)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 NavigationLink(value: AppRoute.settings) {
@@ -73,7 +73,7 @@ private struct IntroductionView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.raceIndigo)
+                .foregroundStyle(Color.ink)
             }
             .frame(maxWidth: 560)
             .padding(24)
@@ -90,12 +90,8 @@ private struct CountdownView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Local race starts in")
-                .font(.title2)
-            Text("\(seconds)")
-                .font(.system(size: 92, weight: .black, design: .rounded))
-                .minimumScaleFactor(0.5)
-                .foregroundStyle(Color.raceCoral)
-                .contentTransition(.numericText())
+                .font(StampType.title2)
+            CountdownNumeral(text: "\(seconds)")
             // Determinate 3-second progress; presentation only, hidden from
             // VoiceOver so the combined label above stays the single speech.
             ProgressView(value: Double(3 - seconds), total: 3)
@@ -103,7 +99,7 @@ private struct CountdownView: View {
                 .accessibilityHidden(true)
             Text("The deadline uses absolute timestamps and does not pause in the background.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryInk)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
         }
@@ -131,14 +127,14 @@ private struct RaceView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Local tutorial")
-                                .font(.headline)
+                                .font(StampType.heading)
                             Text("Clue-free opponent progress")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(StampType.caption)
+                                .foregroundStyle(Color.secondaryInk)
                         }
                         Spacer()
                         Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
-                            .font(.headline.monospacedDigit())
+                            .font(StampType.figure)
                             .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
                     }
                     .padding(.horizontal)
@@ -162,8 +158,8 @@ private struct RaceView: View {
                             .onAppear { errorFocus = errorGeneration }
                     } else {
                         Text("Type a five-letter word from the tutorial list.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(StampType.caption)
+                            .foregroundStyle(Color.secondaryInk)
                     }
                 }
                 .padding(.vertical, 12)
@@ -176,9 +172,9 @@ private struct RaceView: View {
                 errorFocus = model.errorMessage != nil ? errorGeneration : nil
             }
             .padding(.vertical, 8)
-            .background(Color.racePage)
+            .background(Color.page)
             .overlay(alignment: .top) {
-                Color.raceLine.frame(height: 1)
+                Color.line.frame(height: 1)
             }
         }
     }
@@ -240,12 +236,12 @@ private struct RevealView: View {
         ScrollView {
             VStack(spacing: 20) {
                 Text("Local reveal")
-                    .font(.largeTitle.bold())
+                    .font(StampType.display.bold())
                 Text("Answer: \(TutorialModel.answer.uppercased())")
-                    .font(.title2.bold())
+                    .font(StampType.title2.bold())
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
-                    .background(Color.raceInset, in: Capsule())
+                    .background(Color.card, in: Capsule())
                     .accessibilityFocused($focus, equals: .answer)
 
                 ForEach(Array(model.revealBoards.enumerated()), id: \.element.id) { index, board in
@@ -257,7 +253,7 @@ private struct RevealView: View {
                     let visibleCount = usesStableReveal ? board.rows.count : model.visibleRows(in: index)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text(board.name).font(.headline)
+                            Text(board.name).font(StampType.heading)
                             Spacer()
                             Text(board.result)
                                 .font(.subheadline.weight(.semibold))
@@ -281,10 +277,10 @@ private struct RevealView: View {
                         }
                     }
                     .padding()
-                    .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                     .overlay {
                         RoundedRectangle(cornerRadius: 18)
-                            .stroke(Color.raceLine, lineWidth: 1.5)
+                            .stroke(Color.line, lineWidth: 1.5)
                     }
                 }
 
@@ -293,13 +289,13 @@ private struct RevealView: View {
                 // appearing mid-traversal after the timed rows complete.
                 if model.revealSummaryVisible || (voiceOverEnabled && totalRevealRows > 0) {
                     Text(model.comparisonSummary)
-                        .font(.headline)
+                        .font(StampType.heading)
                         .multilineTextAlignment(.center)
                         .padding()
-                        .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+                        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                         .accessibilityFocused($focus, equals: .summary)
                     Button("Replay tutorial") { model.replay() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .frame(minHeight: 44)
                 }

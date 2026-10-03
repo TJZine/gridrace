@@ -13,6 +13,7 @@ struct AccountView: View {
     // Number of unresolved merge conflicts. Drives one conflict-heading focus
     // per successive conflict even while the resolve callbacks stay nonnil.
     var conflictCount = 0
+    var conflict: DailySyncConflict? = nil
 
     @State private var rawAppleNonce: String?
     @State private var editingProfile = false
@@ -36,7 +37,7 @@ struct AccountView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
                     if !model.isConfigured {
@@ -111,13 +112,13 @@ struct AccountView: View {
         VStack(spacing: 18) {
             Image(systemName: "person.crop.circle.badge.plus")
                 .font(.system(size: 52, weight: .semibold))
-                .foregroundStyle(Color.raceIndigo)
+                .foregroundStyle(Color.ink)
                 .accessibilityHidden(true)
             Text("Save and sync your progress")
-                .font(.title2.bold())
+                .font(StampType.title2.bold())
                 .multilineTextAlignment(.center)
             Text("Keep playing without an account, or sign in to restore your Daily Classic history on your devices.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryInk)
                 .multilineTextAlignment(.center)
 
             SignInWithAppleButton(.signIn) { request in
@@ -154,7 +155,7 @@ struct AccountView: View {
                         Text("Sign in to local Supabase")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
                     .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking)
                 }
                 .textFieldStyle(.roundedBorder)
@@ -163,10 +164,10 @@ struct AccountView: View {
             #endif
         }
         .padding(24)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
     }
 
@@ -179,23 +180,23 @@ struct AccountView: View {
                     profileEditor(isInitialSetup: profile.needsSetup)
                 } else {
                     Text(profile.displayName)
-                        .font(.title2.bold())
+                        .font(StampType.title2.bold())
                     Label("Signed in", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryInk)
                     privacyReassurance
                     Button { editingProfile = true } label: {
                         Text("Edit profile")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity)
-            .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.raceLine, lineWidth: 1.5)
+                    .stroke(Color.line, lineWidth: 1.5)
             }
 
             if let syncMessage {
@@ -209,7 +210,7 @@ struct AccountView: View {
                     Label("Add local Daily Classic history", systemImage: "arrow.up.doc")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
             }
 
             VStack(spacing: 12) {
@@ -235,7 +236,7 @@ struct AccountView: View {
                     Text("Try again")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(OutlinedInkButtonStyle())
                 .disabled(model.isWorking)
             }
             .frame(maxWidth: .infinity, minHeight: 180)
@@ -247,15 +248,15 @@ struct AccountView: View {
     // definition never duplicates on screen).
     private var privacyReassurance: some View {
         Text("Your email is never shown to other players.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(StampType.caption)
+            .foregroundStyle(Color.secondaryInk)
             .multilineTextAlignment(.center)
     }
 
     private func profileEditor(isInitialSetup: Bool) -> some View {
         VStack(spacing: 14) {
             Text(isInitialSetup ? "Choose your player name" : "Edit profile")
-                .font(.title3.bold())
+                .font(StampType.title3.bold())
             privacyReassurance
             TextField("Player name", text: $model.displayNameDraft)
                 .textInputAutocapitalization(.words)
@@ -267,14 +268,14 @@ struct AccountView: View {
             if PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil {
                 Text("Use 2–16 letters, numbers, spaces, apostrophes, or hyphens.")
                     .font(.callout)
-                    .foregroundStyle(Color.raceDanger)
+                    .foregroundStyle(Color.ink)
                     .multilineTextAlignment(.center)
             }
             Button { model.randomizeAvatar() } label: {
                 Text("Try another avatar")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(OutlinedInkButtonStyle())
             .disabled(model.isWorking)
             HStack {
                 if !isInitialSetup {
@@ -296,7 +297,7 @@ struct AccountView: View {
                     Text("Save")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
                 .disabled(
                     model.isWorking
                         || PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil
@@ -309,7 +310,7 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(Color.raceIndigo)
+                    .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
                 Text(message)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,7 +320,7 @@ struct AccountView: View {
                         Text("Retry")
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
                 }
             }
             if let useCloudAttempt, let keepDeviceAttempt {
@@ -328,17 +329,17 @@ struct AccountView: View {
                         Text("Use synced attempt")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     Button(action: keepDeviceAttempt) {
                         Text("Keep this device")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(OutlinedInkButtonStyle())
                 }
             }
         }
         .padding(16)
-        .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
             if useCloudAttempt != nil { conflictFocus = conflictGeneration }
         }

@@ -1,9 +1,8 @@
 # GridRace Design Direction
 
-Status: Accepted direction, not implemented. The shipped app still uses the
-2026-09-04 indigo/coral/teal tokens in `ios/GridRace/App/DesignSystem.swift`. Until an
-implementation plan lands, [`screen-flow.md`](screen-flow.md) describes current
-behavior; this file describes the target presentation.
+Status: Accepted direction; shared foundation implemented in S0b. Feature screens
+remain transitional until S1–S3. [`screen-flow.md`](screen-flow.md) describes the
+shipped checkpoint; this file describes the full accepted target presentation.
 
 Accepted by the human on 2026-10-03 after a simulator audit and rendered direction
 comparisons. It supersedes the 2026-09-04 refresh's visual direction (lane-edge
@@ -89,6 +88,10 @@ Rules:
   tiles hurt legibility; trigger from Increased Contrast or a setting.
 - Meaning never depends on color: symbol, ring/fill form, and accessibility label
   all carry it.
+- Human-approved compact keyboard exception (2026-10-03): standard QWERTY
+  letter keys may be about 32pt wide on iPhone SE, retaining at least 48pt height.
+  Action controls retain 44×44pt targets. No overlapping hit regions or alternate
+  default layout; S4 measures actual regions and checks usability.
 
 ### Structure
 

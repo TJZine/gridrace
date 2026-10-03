@@ -107,7 +107,8 @@ session/state machines, storage, backend, or share text.
   limited to the decisions below.
 - Views render state and send intents; no Supabase calls or evaluation in views.
 - Accessibility: VoiceOver labels and focus order per `screen-flow.md`, 44pt
-  targets, Reduce Motion parity, Increased Contrast strengthens, Dynamic Type on
+  targets with the approved compact-QWERTY letter-key exception (D15), Reduce
+  Motion parity, Increased Contrast strengthens, Dynamic Type on
   all text roles, no truncation (round view scrolls at accessibility sizes).
 
 ## Accepted decisions
@@ -126,6 +127,7 @@ session/state machines, storage, backend, or share text.
 | D10 | Home's Live row status reflects existing session state: `storageUnavailable` → "Saved race needs attention" with a Resolve stamp (opens Live); `hasSavedMatch` → "Saved race" with a Resume stamp (calls `resumeSavedMatch()`, opens Live); otherwise "Create or join a room". |
 | D11 | Lobby: while only one player is present the host sees "Waiting for player two" with Copy and Share and no Start button; Start appears when player two joins and is disabled only for the existing in-flight, pending, expiry, and phase blockers. |
 | D12 | Contrast: light ink secondary is `#6B6352` (5.0:1 on page). Absent letters at ≥3:1 follow Apple's HIG minimum for bold text of any size; tile letters (`title2`, about 22pt) and key labels must stay bold. (WCAG large text would not cover 16pt bold keys; the HIG bold rule is the accepted bar.) Empty dashed rings are decorative at default (slot geometry and the solid draft row identify the board); Increased Contrast and the High-contrast feedback setting switch to one set: absent letter `#6B6352` / dark `#A39A86`, empty rings in ink secondary, present ring 3.5pt, correct unchanged. |
+| D15 | Human approved the compact standard QWERTY letter-key exception on 2026-10-03: about 32.3pt wide at SE default type, at least 48pt tall. Action controls retain at least 44×44pt targets. No overlapping targets or alternate default keyboard layout. S4 measures actual regions and confirms usability; other accessibility obligations remain. |
 
 ## Target file layout (S0a)
 
@@ -150,7 +152,7 @@ session/state machines, storage, backend, or share text.
 | Unit | Role | Write boundary | Depends on | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Complete | 52 declaration bodies unchanged; six access changes; full iOS 214 passed/two opt-in skips; clean Debug; controller differential audit |
-| S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Not started | — |
+| S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Not started | — |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Not started | — |
 | S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Not started | — |
@@ -237,7 +239,7 @@ keyboard-slot cards fit at default size and scroll at accessibility sizes;
 VoiceOver labels and focus order (countdown, draft/error, terminal message,
 answer, rows, summary) with VoiceOver actually running; Reduce Motion with the OS
 setting actually on; hardware keyboard letters, delete, and return on Daily,
-live, and tutorial; haptics optional and non-semantic; 44pt hit regions measured.
+live, and tutorial; haptics optional and non-semantic; 44pt action hit regions and D15 letter-key regions measured.
 Source tests and screenshots do not substitute for the OS-assisted checks; the
 human performs them if tooling cannot reach the simulator. This closes Phase 4 A9.
 
@@ -325,6 +327,7 @@ review.
 | 2026-10-03 | D7–D12 | Added from the adversarial plan review (below). |
 | 2026-10-03 | Activation baseline | Human authorized latest HEAD `2d19d2c` instead of the kickoff-file commit. Rescope activation transfers A9 intact to S4. |
 | 2026-10-03 | D13 workflow steering | Human replaced global engineering guidance with the shared develop/design/review/verify skills and instructed `create_thread` for new work sessions with one callback to this controller. Supersedes kickoff Ponytail enforcement and subagent dispatch. Accepted product scope, ownership, isolation, and no-polling boundaries remain. |
+| 2026-10-03 | D14 worker settings | Human specifies `worker` = `gpt-6.1-sol` / medium and `worker_luna` = `gpt-5.6-luna` / xhigh for future implementation chats. S1/S2 use worker; S3 uses worker_luna. Current S0b Sol/high is explicitly permitted to finish unchanged. |
 
 ### Review findings
 
@@ -375,10 +378,29 @@ Complete project diff inspected, registrations and `plutil -lint` passed;
 reruns. Controller audit `/tmp/gridrace-stamped-s0a-controller-audit.json`.
 S0a leases released, assigned simulator Shutdown; no owned process remains.
 
+S0b returned via its single authorized chat callback after releasing leases.
+Result `/tmp/gridrace-stamped-s0b-result.json`; final full suite exit0,
+216 total / 214 passed / two expected opt-in skips / zero failures, and clean
+Debug exit0 with frozen flags and exact lock. Native fixtures include 44 normal/
+AX5 attachments at 393pt width, not SE or OS-assisted acceptance. AX5 screen
+containers remain transitional and must be repaired by S1–S3 before S4.
+Controller inspected shared leaves, D6 contracts and call-site changes, verified
+all 12 returned source hashes, 132 protected tracked files, six unrelated files,
+unchanged HEAD/empty index, and independently recomputed all 56 contrast pairs;
+all required pairs pass. Normal and AX5 playing renders inspected. No source
+finding established. Audit `/tmp/gridrace-stamped-s0b-controller-audit.json`;
+contrast `/tmp/gridrace-stamped-s0b-contrast.json`; contracts
+`/tmp/gridrace-stamped-s0b-contracts.json`. All owned processes stopped and the
+assigned simulator is Shutdown. No backend harness or OS acceptance claimed.
+The human approved the compact QWERTY exception (D15); S0b acceptance is complete.
+Contrast minima: body 5.0511:1, bold letters/required graphics 3.0694:1.
+Exact-source suite/build proof is reused; this approval changes docs, not product bytes.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
-authorized starting HEAD `2d19d2c`. S0a mechanical split: this commit.
+authorized starting HEAD `2d19d2c`. S0a mechanical split:
+`38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: this commit.
 
 ## Blockers and stop conditions
 
@@ -390,9 +412,10 @@ authorized starting HEAD `2d19d2c`. S0a mechanical split: this commit.
 
 ## Next action
 
-S0a is complete and audited. Controller commits it, then dispatches S0b using
-`create_thread` with a bounded lease and one explicitly authorized callback to
-controller chat `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
+S0b is complete. Controller commits the checkpoint, then prepares D9
+worktrees, cloned simulators and frozen resolves before callback-enabled S1–S3
+dispatch using D14 settings. Integration remains S2 → S1 → S3. Controller chat is
+`01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
 End dispatch turns without waiting or polling.
 
 ## Closeout checklist

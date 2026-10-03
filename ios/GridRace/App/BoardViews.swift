@@ -1,63 +1,99 @@
 import SwiftUI
 
-/// Split-time opponent rows. Shows only already-visible live fields (avatar,
-/// name, accepted count `n/6`, connection presentation, coarse state) in stable
-/// roster order. Never position, placement, gap-as-rank, exact timing, words,
-/// feedback, or keyboard state.
+/// Both flows supply already-public progress and their existing spoken summary.
+/// The leaf owns neither roster ordering nor connectivity or gameplay policy.
+struct OpponentLine<Avatar: View>: View {
+    let name: String
+    let count: String
+    let state: String
+    let stateSymbol: String
+    var connection: String? = nil
+    let accessibilitySummary: String
+    @ViewBuilder var avatar: () -> Avatar
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(spacing: 8))
+        layout {
+            avatar().accessibilityHidden(true)
+            Text(name).font(StampType.heading)
+            Text(count).font(StampType.caption.bold())
+                .contentTransition(.numericText())
+            if let connection {
+                Text(connection).font(StampType.caption).foregroundStyle(Color.secondaryInk)
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+            Label(state, systemImage: stateSymbol)
+                .font(StampType.caption)
+                .foregroundStyle(Color.secondaryInk)
+        }
+        .foregroundStyle(Color.ink)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .paperCard()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+}
+
 struct OpponentStrip: View {
     let opponents: [OpponentProgress]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 4) {
             ForEach(opponents) { opponent in
-                HStack(spacing: 12) {
+                OpponentLine(
+                    name: opponent.name,
+                    count: "\(opponent.acceptedGuessCount)/6",
+                    state: opponent.state.spokenDescription.capitalized,
+                    stateSymbol: opponent.state == .playing ? "hourglass" : "flag.checkered",
+                    connection: opponent.isConnected ? "Connected" : "Disconnected",
+                    accessibilitySummary: opponent.accessibilityLabel
+                ) {
                     Image(systemName: opponent.avatarSymbol)
-                        .font(.headline)
-                        .frame(width: 42, height: 42)
-                        .background(Color.raceInset, in: Circle())
-                        .foregroundStyle(Color.raceIndigo)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(opponent.name).font(.headline)
-                        HStack(spacing: 6) {
-                            Text("\(opponent.acceptedGuessCount)/6")
-                                .font(.subheadline.monospacedDigit())
-                                .fixedSize(horizontal: true, vertical: false)
-                                .contentTransition(.numericText())
-                            Image(systemName: opponent.isConnected ? "wifi" : "wifi.slash")
-                                .font(.caption2.bold())
-                                .foregroundStyle(opponent.isConnected ? Color.raceTeal : Color.raceDanger)
-                                .accessibilityHidden(true)
-                            Text(opponent.isConnected ? "Connected" : "Disconnected")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Label(
-                        opponent.state.spokenDescription.capitalized,
-                        systemImage: opponent.state == .playing
-                            ? "hourglass" : "flag.checkered"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.raceInset, in: Capsule())
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.raceLine, lineWidth: 1.5)
+                        .font(StampType.caption.bold())
+                        .foregroundStyle(Color.ink)
                 }
                 .animation(reduceMotion ? nil : .snappy, value: opponent.acceptedGuessCount)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(opponent.accessibilityLabel)
             }
         }
         .padding(.horizontal)
+    }
+}
+
+/// The proposed height participates in sizing as well as width. Scroll views
+/// propose no height; there the natural six-row size is used. A caller can
+/// reserve a keyboard slot and propose the remaining height without a second
+/// board implementation. If too little room remains, the minimum readable
+/// size overflows for the owning scroll container instead of clipping text.
+private struct BoardRowsLayout: Layout {
+    let minimumTileSize: CGFloat
+    let preferredTileSize: CGFloat
+    private let spacing: CGFloat = 6
+
+    private func tileSize(_ proposal: ProposedViewSize) -> CGFloat {
+        let widthLimit = proposal.width.map { ($0 - spacing * 4) / 5 } ?? preferredTileSize
+        let heightLimit = proposal.height.map { ($0 - spacing * 5) / 6 } ?? preferredTileSize
+        return max(minimumTileSize, min(preferredTileSize, widthLimit, heightLimit))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let tile = tileSize(proposal)
+        return CGSize(width: tile * 5 + spacing * 4, height: tile * 6 + spacing * 5)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let tile = tileSize(ProposedViewSize(bounds.size))
+        for (index, row) in subviews.enumerated() {
+            row.place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY + CGFloat(index) * (tile + spacing)),
+                proposal: ProposedViewSize(width: tile * 5 + spacing * 4, height: tile)
+            )
+        }
     }
 }
 
@@ -66,40 +102,73 @@ struct BoardView: View {
     let draft: String
     let isPlaying: Bool
     var highContrast = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .title2) private var preferredTileSize: CGFloat = 54
 
     var body: some View {
-        VStack(spacing: 6) {
-            ForEach(0..<6, id: \.self) { rowIndex in
-                HStack(spacing: 6) {
-                    ForEach(0..<5, id: \.self) { columnIndex in
-                        let tile = tile(row: rowIndex, column: columnIndex)
-                        TileView(
-                            letter: tile.letter,
-                            feedback: tile.feedback,
-                            isDraft: tile.isDraft,
-                            emptyLabel: "Empty tile, row \(rowIndex + 1), column \(columnIndex + 1)",
-                            highContrast: highContrast
-                        )
-                    }
-                }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView(.horizontal) { board }
+            } else {
+                board
             }
         }
-        .frame(maxWidth: 350)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Your six-row game board")
     }
 
-    private func tile(row: Int, column: Int) -> (letter: Character?, feedback: Feedback?, isDraft: Bool) {
-        if rows.indices.contains(row) {
-            let accepted = rows[row]
-            return (Array(accepted.word.uppercased())[column], accepted.feedback[column], false)
+    private var board: some View {
+        BoardRowsLayout(minimumTileSize: minimumTileSize, preferredTileSize: preferredTileSize) {
+            ForEach(0..<6, id: \.self) { rowIndex in
+                let acceptedRow = rows.indices.contains(rowIndex) ? rows[rowIndex] : nil
+                let isDraftRow = rowIndex == rows.count && isPlaying
+                TileRowView(
+                    word: acceptedRow?.word ?? (isDraftRow ? draft : ""),
+                    feedback: acceptedRow?.feedback ?? [],
+                    isDraft: isDraftRow,
+                    rowNumber: rowIndex + 1,
+                    highContrast: highContrast,
+                    scrollsAtAccessibilitySize: false
+                )
+            }
         }
-        if row == rows.count, isPlaying {
-            let letters = Array(draft)
-            return (letters.indices.contains(column) ? letters[column] : nil, nil, true)
+    }
+}
+
+/// Shared shape grammar for full tiles and the small history board.
+/// Empty rings are decorative at default; strengthened rings use secondary ink.
+struct FeedbackSeal: View {
+    let feedback: Feedback?
+    var isDraft = false
+    var highContrast = false
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.highContrastFeedback) private var highContrastFeedback
+
+    private var strengthened: Bool { highContrast || highContrastFeedback || contrast == .increased }
+
+    var body: some View {
+        switch feedback {
+        case .correct:
+            Circle().fill(Color.correct)
+        case .present:
+            Circle().strokeBorder(Color.present, lineWidth: strengthened ? 3.5 : 2)
+                .overlay {
+                    Circle().inset(by: strengthened ? 6 : 5)
+                        .strokeBorder(Color.present, lineWidth: 1)
+                }
+        case .absent:
+            Color.clear
+        case .none:
+            Circle().fill(isDraft ? Color.card : Color.clear)
+                .overlay {
+                    Circle().strokeBorder(
+                        isDraft ? Color.ink : (strengthened ? Color.strengthenedSecondaryInk : Color.line),
+                        style: StrokeStyle(lineWidth: isDraft ? 2 : 1, dash: isDraft ? [] : [3, 3])
+                    )
+                }
         }
-        return (nil, nil, false)
     }
 }
 
@@ -109,80 +178,95 @@ struct TileView: View {
     let isDraft: Bool
     let emptyLabel: String
     var highContrast = false
-
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.highContrastFeedback) private var highContrastFeedback
     @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(fillColor)
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(borderColor, lineWidth: borderWidth)
-            // Lane-edge signature: a bold leading edge carries feedback meaning
-            // alongside the symbol and accessible label, never color alone.
-            if feedback != nil {
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white)
-                        .frame(width: 5)
-                        .padding(.vertical, 7)
-                        .padding(.leading, 5)
+        ZStack {
+            FeedbackSeal(feedback: feedback, isDraft: isDraft, highContrast: highContrast)
+            VStack(spacing: 0) {
+                if let letter {
+                    Text(String(letter).uppercased())
+                        .font(StampType.tile)
+                        .fontWeight(legibilityWeight == .bold || isDraft ? .black : .bold)
+                }
+                if let feedback {
+                    Image(systemName: feedback.symbolName)
+                        .font(.system(.caption2, weight: .black))
                         .accessibilityHidden(true)
-                    Spacer(minLength: 0)
                 }
             }
-            if let letter {
-                Text(String(letter).uppercased())
-                    .font(.title2)
-                    .fontWeight(isDraft || legibilityWeight == .bold ? .black : .bold)
-                    .foregroundStyle(feedback == nil ? Color.raceInk : Color.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            if let feedback {
-                Image(systemName: feedback.symbolName)
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundStyle(.white)
-                    .padding(6)
-            }
+            .foregroundStyle(letterColor)
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
 
-    private var fillColor: Color {
-        guard let feedback else { return isDraft ? Color.raceCard : Color.raceInset }
+    private var letterColor: Color {
         switch feedback {
-        case .absent: return Color.raceTeal
-        case .present: return Color.raceCoral
-        case .correct: return Color.raceIndigo
+        case .correct: Color.feedbackLetter
+        case .present: Color.present
+        case .absent: highContrast || highContrastFeedback || contrast == .increased ? Color.strengthenedAbsent : Color.absent
+        case .none: Color.ink
         }
-    }
-
-    private var borderColor: Color {
-        // Adaptive system primary: dark edge in light, light edge in dark,
-        // so the stroke contrasts both fills and surfaces in each appearance.
-        if isHighContrast { return .primary }
-        if feedback != nil { return .white }
-        return isDraft ? Color.raceLineEmphasis : Color.raceLine
-    }
-
-    private var borderWidth: CGFloat {
-        if isHighContrast { return 3 }
-        if feedback != nil { return 1.5 }
-        return isDraft ? 2.5 : 1.5
     }
 
     private var accessibilityLabel: String {
         guard let letter else { return emptyLabel }
-        if let feedback {
-            return "Letter \(letter), \(feedback.accessibilityMeaning)."
-        }
+        if let feedback { return "Letter \(letter), \(feedback.accessibilityMeaning)." }
         return "Letter \(letter), draft."
     }
+}
 
-    private var isHighContrast: Bool { highContrast || contrast == .increased }
+struct TileRowView: View {
+    let word: String
+    let feedback: [Feedback]
+    var isDraft = false
+    var rowNumber = 1
+    var highContrast = false
+    var scrollsAtAccessibilitySize = true
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize && scrollsAtAccessibilitySize {
+                ScrollView(.horizontal) { tiles }
+            } else {
+                tiles
+            }
+        }
+    }
+
+    private var tiles: some View {
+        let letters = Array(word.uppercased())
+        return HStack(spacing: 6) {
+            ForEach(0..<5, id: \.self) { index in
+                TileView(
+                    letter: letters.indices.contains(index) ? letters[index] : nil,
+                    feedback: feedback.indices.contains(index) ? feedback[index] : nil,
+                    isDraft: isDraft,
+                    emptyLabel: "Empty tile, row \(rowNumber), column \(index + 1)",
+                    highContrast: highContrast
+                )
+                .frame(minWidth: minimumTileSize, minHeight: minimumTileSize)
+            }
+        }
+    }
+}
+
+struct CountdownNumeral: View {
+    let text: String
+    @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 92
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: size, weight: .black, design: .serif))
+            .foregroundStyle(Color.present)
+            .contentTransition(.numericText())
+    }
 }
 
 struct LetterKeyboardView: View {
@@ -192,44 +276,15 @@ struct LetterKeyboardView: View {
     let delete: () -> Void
     var highContrast = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let rows = [Array("QWERTYUIOP"), Array("ASDFGHJKL"), Array("ZXCVBNM")]
 
     var body: some View {
-        VStack(spacing: 5) {
-            letterRow(rows[0])
-            letterRow(rows[1]).padding(.horizontal, 14)
-            HStack(spacing: 4) {
-                // The visible indigo surface lives inside the label so the
-                // press style transforms the whole key, not just the icon.
-                Button(action: submit) {
-                    Image(systemName: "return")
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(RaceKeyPressStyle())
-                .frame(minWidth: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Submit guess")
-
-                ForEach(rows[2], id: \.self) { letter in
-                    KeyboardKey(
-                        letter: letter,
-                        feedback: keyboard.feedback(for: letter),
-                        highContrast: highContrast
-                    ) { typeLetter(letter) }
-                }
-
-                Button(action: delete) {
-                    Image(systemName: "delete.left")
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.raceIndigo, in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(RaceKeyPressStyle())
-                .frame(minWidth: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Delete letter")
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView(.horizontal) { keys }
+            } else {
+                keys
             }
         }
         .padding(.horizontal, 8)
@@ -237,15 +292,44 @@ struct LetterKeyboardView: View {
         .accessibilityLabel("Letter keyboard")
     }
 
+    private var keys: some View {
+        VStack(spacing: 5) {
+            letterRow(rows[0])
+            letterRow(rows[1]).padding(.horizontal, 14)
+            HStack(spacing: 4) {
+                actionKey(symbol: "return", label: "Submit guess", action: submit)
+                ForEach(rows[2], id: \.self) { letter in
+                    letterKey(letter)
+                }
+                actionKey(symbol: "delete.left", label: "Delete letter", action: delete)
+            }
+        }
+    }
+
+    private func actionKey(symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(.callout, weight: .bold))
+                .foregroundStyle(Color.card)
+                .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+                .background(Color.ink, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(RaceKeyPressStyle())
+        .contentShape(Rectangle())
+        .accessibilityLabel(label)
+    }
+
     private func letterRow(_ letters: [Character]) -> some View {
         HStack(spacing: 4) {
             ForEach(letters, id: \.self) { letter in
-                KeyboardKey(
-                    letter: letter,
-                    feedback: keyboard.feedback(for: letter),
-                    highContrast: highContrast
-                ) { typeLetter(letter) }
+                letterKey(letter)
             }
+        }
+    }
+
+    private func letterKey(_ letter: Character) -> some View {
+        KeyboardKey(letter: letter, feedback: keyboard.feedback(for: letter), highContrast: highContrast) {
+            typeLetter(letter)
         }
     }
 }
@@ -255,28 +339,39 @@ struct KeyboardKey: View {
     let feedback: Feedback?
     var highContrast = false
     let action: () -> Void
-
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.highContrastFeedback) private var highContrastFeedback
+    @ScaledMetric(relativeTo: .callout) private var keyHeight: CGFloat = 48
+    @ScaledMetric(relativeTo: .callout) private var keyWidth: CGFloat = 26
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 1) {
-                Text(String(letter))
-                    .font(.callout.bold())
+            VStack(spacing: 0) {
+                Text(String(letter)).font(StampType.key)
                 if let feedback {
                     Image(systemName: feedback.symbolName)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.system(.caption2, weight: .black))
+                        .accessibilityHidden(true)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .foregroundStyle(feedback == nil ? Color.raceInk : Color.white)
-            .background(fillColor, in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        isHighContrast ? Color.primary : Color.raceLine,
-                        lineWidth: isHighContrast ? 2.5 : 1
-                    )
+            .foregroundStyle(letterColor)
+            .frame(minWidth: keyWidth, maxWidth: .infinity, minHeight: keyHeight)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 10)
+                switch feedback {
+                case .correct:
+                    shape.fill(Color.correct)
+                case .present:
+                    shape.strokeBorder(Color.present, lineWidth: strengthened ? 3.5 : 2)
+                        .overlay {
+                            shape.inset(by: strengthened ? 6 : 5).strokeBorder(Color.present, lineWidth: 1)
+                        }
+                case .absent:
+                    Color.clear
+                case .none:
+                    shape.fill(Color.card)
+                        .overlay { shape.strokeBorder(Color.ink, lineWidth: 1) }
+                }
             }
         }
         .buttonStyle(RaceKeyPressStyle())
@@ -284,12 +379,14 @@ struct KeyboardKey: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    private var fillColor: Color {
+    private var strengthened: Bool { highContrast || highContrastFeedback || contrast == .increased }
+
+    private var letterColor: Color {
         switch feedback {
-        case .none: Color.raceCard
-        case .absent: Color.raceTeal
-        case .present: Color.raceCoral
-        case .correct: Color.raceIndigo
+        case .correct: Color.feedbackLetter
+        case .present: Color.present
+        case .absent: highContrast || highContrastFeedback || contrast == .increased ? Color.strengthenedAbsent : Color.absent
+        case .none: Color.ink
         }
     }
 
@@ -297,65 +394,33 @@ struct KeyboardKey: View {
         guard let feedback else { return "Letter \(letter)" }
         return "Letter \(letter), \(feedback.accessibilityMeaning)."
     }
-
-    private var isHighContrast: Bool { highContrast || contrast == .increased }
 }
 
 struct RevealRowView: View {
     let row: GuessRow
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<5, id: \.self) { index in
-                TileView(
-                    letter: Array(row.word.uppercased())[index],
-                    feedback: row.feedback[index],
-                    isDraft: false,
-                    emptyLabel: ""
-                )
-            }
-        }
-        .frame(maxWidth: 320)
+        TileRowView(word: row.word, feedback: row.feedback).frame(maxWidth: 320)
     }
 }
 
 struct LiveOpponentRow: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let member: LiveMatchMember
     let player: LiveRoundPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-            : AnyLayout(HStackLayout(spacing: 12))
-        layout {
-            PlayerAvatarView(seed: member.avatarSeed, size: 44)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(member.displayName).font(.headline)
-                Text("\(player.acceptedGuessCount)/6 guesses")
-                    .font(.subheadline.monospacedDigit())
-                    .contentTransition(.numericText())
-            }
-            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-            Label(
-                LiveMatchPresentation.playerStateText(player.state).capitalized,
-                systemImage: player.state == .playing ? "hourglass" : "flag.checkered"
-            )
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.raceInset, in: Capsule())
+        OpponentLine(
+            name: member.displayName,
+            count: "\(player.acceptedGuessCount)/6 guesses",
+            state: LiveMatchPresentation.playerStateText(player.state).capitalized,
+            stateSymbol: player.state == .playing ? "hourglass" : "flag.checkered",
+            accessibilitySummary: LiveMatchPresentation.opponentAccessibilityLabel(member: member, player: player)
+        ) {
+            PlayerAvatarView(seed: member.avatarSeed, size: 24)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
-        .overlay { RoundedRectangle(cornerRadius: 18).stroke(Color.raceLine, lineWidth: 1.5) }
         .padding(.horizontal)
         .animation(reduceMotion ? nil : .snappy, value: player.acceptedGuessCount)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(LiveMatchPresentation.opponentAccessibilityLabel(member: member, player: player))
     }
 }
 
@@ -364,20 +429,10 @@ struct LiveRevealRowView: View {
     let highContrast: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<5, id: \.self) { index in
-                TileView(
-                    letter: Array(row.word.uppercased())[index],
-                    feedback: row.feedback[index],
-                    isDraft: false,
-                    emptyLabel: "",
-                    highContrast: highContrast
-                )
-            }
-        }
-        .frame(maxWidth: 320)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
+        TileRowView(word: row.word, feedback: row.feedback, rowNumber: row.sequence, highContrast: highContrast)
+            .frame(maxWidth: 320)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
     }
 
     private var accessibilityLabel: String {

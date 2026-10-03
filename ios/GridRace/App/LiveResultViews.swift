@@ -30,19 +30,19 @@ struct LiveRevealView: View {
         ScrollView {
             VStack(spacing: 20) {
                 Text(LiveMatchPresentation.roundLabel(snapshot, number: displayedRound.number))
-                    .font(.headline).accessibilityAddTraits(.isHeader)
+                    .font(StampType.heading).accessibilityAddTraits(.isHeader)
                 if displayedRound.number != snapshot.round.number {
                     Text("Viewing a prior reveal. Current match: \(LiveMatchPresentation.roundLabel(snapshot)).")
-                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .font(.callout).foregroundStyle(Color.secondaryInk).multilineTextAlignment(.center)
                 }
                 if let answer = displayedRound.answer, boards.count == snapshot.members.count {
                     Text("Answer: \(answer.uppercased())")
-                        .font(.title.bold())
+                        .font(StampType.title.bold())
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
-                        .background(Color.raceInset, in: Capsule())
+                        .background(Color.card, in: Capsule())
                         .accessibilityFocused($focus, equals: .answer)
 
                     ForEach(Array(boards.enumerated()), id: \.element.member.id) { index, board in
@@ -58,14 +58,13 @@ struct LiveRevealView: View {
                                 PlayerAvatarView(seed: board.member.avatarSeed, size: 42)
                                     .accessibilityHidden(true)
                                 Text(board.member.isSelf ? "You" : board.member.displayName)
-                                    .font(.headline)
+                                    .font(StampType.heading)
                                 if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                                 Text(LiveMatchPresentation.playerStateText(board.player.state).capitalized)
-                                    .font(.caption.weight(.semibold))
+                                    .font(StampType.caption.weight(.semibold))
                             }
                             ForEach(Array(board.rows.prefix(count).enumerated()), id: \.offset) { rowIndex, row in
                                 LiveRevealRowView(row: row, highContrast: highContrast)
-                                    .dynamicTypeSize(.large)
                                     .accessibilityFocused($focus, equals: .row(preceding + rowIndex))
                             }
                             if stableReveal || count == board.rows.count {
@@ -74,19 +73,19 @@ struct LiveRevealView: View {
                             }
                         }
                         .padding()
-                        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+                        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 18).stroke(Color.raceLine, lineWidth: 1.5)
+                            RoundedRectangle(cornerRadius: 18).stroke(Color.line, lineWidth: 1.5)
                         }
                     }
 
                     if stableReveal || visibleRows >= totalRows {
-                        Text("Round standings").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                        Text("Round standings").font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
                         Text(comparisonSummary)
-                            .font(.headline)
+                            .font(StampType.heading)
                             .multilineTextAlignment(.center)
                             .padding()
-                            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+                            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                             .accessibilityFocused($focus, equals: .summary)
                         matchResults
                         if snapshot.revealedRounds.count > 1 {
@@ -104,7 +103,7 @@ struct LiveRevealView: View {
                         }
                         nextRoundAction
                         Button("Home", action: goHome)
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(InkButtonStyle())
                             .controlSize(.large)
                             .frame(minHeight: 44)
                     }
@@ -144,29 +143,29 @@ struct LiveRevealView: View {
     private var matchResults: some View {
         if snapshot.match.status == .incomplete {
             Text("Match incomplete")
-                .font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                .font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
             Text("A player account was deleted. Unstarted rounds cannot continue. Revealed rounds are preserved.")
                 .font(.callout).multilineTextAlignment(.center)
         }
         if let standings = snapshot.standings {
             VStack(alignment: .leading, spacing: 12) {
                 Text(LiveMatchPresentation.standingsTitle(standings))
-                    .font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    .font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
                 Text("Through \(standings.throughRound) of \(snapshot.match.roundCount) revealed rounds")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(Color.secondaryInk)
                 ForEach(snapshot.members.sorted { $0.isSelf && !$1.isSelf }, id: \.id) { member in
                     if let standing = standings.players.first(where: { $0.memberID == member.id }) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(member.isSelf ? "You" : member.displayName).font(.headline)
+                            Text(member.isSelf ? "You" : member.displayName).font(StampType.heading)
                             Text(LiveMatchPresentation.standingSummary(standing))
-                                .font(.subheadline.monospacedDigit())
+                                .font(.system(.subheadline, design: .monospaced))
                         }
                         .accessibilityElement(children: .combine)
                     }
                 }
             }
             .padding().frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         }
     }
 
@@ -178,7 +177,7 @@ struct LiveRevealView: View {
                 Button("Start next round (\(snapshot.match.currentRound + 1) of \(snapshot.match.roundCount))") {
                     session.startMatch()
                 }
-                .font(.headline).buttonStyle(.borderedProminent).controlSize(.large).frame(minHeight: 48)
+                .font(StampType.heading).buttonStyle(InkButtonStyle()).controlSize(.large).frame(minHeight: 48)
                 .disabled(session.phase != .ready || !LiveMatchPresentation.canStart(
                     snapshot: snapshot,
                     displayedServerTime: session.displayedServerTime ?? snapshot.serverTime,
@@ -188,7 +187,7 @@ struct LiveRevealView: View {
                 ))
             } else {
                 Text("Waiting for the room creator to start the next round.")
-                    .font(.headline).multilineTextAlignment(.center)
+                    .font(StampType.heading).multilineTextAlignment(.center)
             }
         }
     }

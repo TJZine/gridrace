@@ -43,7 +43,7 @@ struct DailyGameView: View {
 
     var body: some View {
         ZStack {
-            Color.racePage.ignoresSafeArea()
+            Color.page.ignoresSafeArea()
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -116,9 +116,9 @@ struct DailyGameView: View {
                         highContrast: model.settings.highContrastEnabled
                     )
                     .padding(.vertical, 8)
-                    .background(Color.racePage)
+                    .background(Color.page)
                     .overlay(alignment: .top) {
-                        Color.raceLine.frame(height: 1)
+                        Color.line.frame(height: 1)
                     }
                 }
             }
@@ -200,7 +200,7 @@ struct DailyGameView: View {
             )
         }
         .font(.subheadline.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Color.secondaryInk)
         .padding(.horizontal, 20)
     }
 
@@ -216,13 +216,13 @@ struct DailyGameView: View {
             if model.game.progress.hardModeEnabled {
                 if model.game.rows.isEmpty {
                     Text("Hard Mode: revealed clues must be reused.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
                 }
             } else {
                 Text("Enter any accepted five-letter word.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
             }
         }
     }
@@ -249,8 +249,8 @@ struct DailyGameView: View {
            model.game.progress.hardModeEnabled,
            !model.game.rows.isEmpty {
             Text("Hard Mode locked: keep ✓ letters in place and reuse ↻ letters elsewhere.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(StampType.caption)
+                .foregroundStyle(Color.secondaryInk)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
@@ -279,55 +279,55 @@ struct DailyGameView: View {
         } else if model.previousDisplayedStreak > 0 {
             Text("Streak ended.")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryInk)
         }
     }
 
     private var resultPanel: some View {
         VStack(spacing: 12) {
             Text("ANSWER")
-                .font(.caption.weight(.bold))
+                .font(StampType.caption.weight(.bold))
                 .tracking(1.2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryInk)
                 .accessibilityHidden(true)
             Text(model.puzzle.answer.uppercased())
-                .font(.title.bold())
+                .font(StampType.title.bold())
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
-                .background(Color.raceInset, in: Capsule())
+                .background(Color.card, in: Capsule())
                 .accessibilityFocused($axFocus, equals: .resultHeader)
                 .accessibilityLabel(resultHeaderLabel)
             Text(model.game.completion?.outcome == .solved
                 ? "Solved in \(model.game.completion?.guessCount ?? 0)"
                 : "Not solved")
-                .font(.headline)
+                .font(StampType.heading)
                 // Sighted copy only: the answer capsule above already
                 // announces the full result (outcome, guess count, answer).
                 .accessibilityHidden(true)
             streakContext
             Text("Locked result.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(StampType.caption)
+                .foregroundStyle(Color.secondaryInk)
             if let result = model.game.completedResult {
                 ShareLink(item: DailyClassicShare.text(for: result)) {
                     Label("Share result", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
                 NavigationLink(value: AppRoute.statistics) {
                     Label("View statistics", systemImage: "chart.bar.fill")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(OutlinedInkButtonStyle())
             }
             NextPuzzleLabel(reset: model.nextReset)
         }
         .padding(18)
         .frame(maxWidth: 440)
-        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.raceLine, lineWidth: 1.5)
+                .stroke(Color.line, lineWidth: 1.5)
         }
         .padding(.horizontal, 20)
         .accessibilityElement(children: .contain)
@@ -335,7 +335,7 @@ struct DailyGameView: View {
 }
 
 /// Compact six-segment attempts-used indicator for the Daily header.
-/// Filled segments use raceIndigo; remaining segments are indigo outlines,
+/// Filled segments use ink; remaining segments are ink outlines,
 /// so used vs remaining never depends on color alone. One AX element.
 private struct GuessesUsedIndicator: View {
     let used: Int
@@ -346,11 +346,11 @@ private struct GuessesUsedIndicator: View {
             ForEach(0..<6, id: \.self) { index in
                 if index < used {
                     Capsule()
-                        .fill(Color.raceIndigo)
+                        .fill(Color.ink)
                         .frame(width: 18, height: 6)
                 } else {
                     Capsule()
-                        .stroke(Color.raceIndigo, lineWidth: 1.5)
+                        .stroke(Color.ink, lineWidth: 1.5)
                         .frame(width: 18, height: 6)
                 }
             }
@@ -377,8 +377,8 @@ struct NextPuzzleLabel: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             Label("Next puzzle in \(remaining(at: context.date))", systemImage: "clock")
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(StampType.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(Color.secondaryInk)
                 .accessibilityLabel("Next puzzle available in \(spokenRemaining(at: context.date))")
         }
     }
