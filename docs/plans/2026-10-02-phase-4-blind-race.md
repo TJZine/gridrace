@@ -903,3 +903,40 @@ required before agreed local closeout; no new whole-scope approval is requested.
 Phase 2/3 stays Historical and this Phase 4 plan stays Active. Hosted CI/provider/
 Cron/backup/retention, physical-device, production word/IP provenance and
 distribution remain external release gates; no push or deployment is authorized.
+
+## Approved PR #1 review repairs, 2026-10-03
+
+The human authorized implementation and commits for all nine valid findings from
+this chat's suggestion review, including follow-ups and adjacent scan-scope proof.
+This controller integrates the repairs here; no second Active plan or UI-plan
+activation is introduced. Baseline is `ab1eeb4`. Phase 4's outstanding A9 status and
+the separately accepted UI plan are preserved.
+
+High-risk boundaries: Daily sync RPC/revisions, auth cleanup, privileged scan and
+CI. Preserve immutable identity/completion, started-attempt mode conflicts, grants,
+RLS, account isolation, frozen package lock and existing integration ownership.
+Deployment of the original Daily migration to preserved hosted data is unknown;
+use a forward migration without rewriting history. No remote deployment, push,
+review publication or bot/CI trigger is authorized by this local repair request.
+
+| ID | Disposition / owner | Repair / acceptance |
+| --- | --- | --- |
+| PR-01 | accepted / CI | Add main-targeted PR coverage; retain push policy and existing jobs; align runbook. |
+| PR-02 | accepted / SQL + existing Swift proof | Stored-empty Daily board adopts incoming mode and guesses under revision protection; update pgTAP and engine/remote regression. |
+| PR-03 | modified / integration harness | Scan both privileged values; only status1 is clean; fail on errors, empty inputs and missing scanner; hide diagnostics and include hidden/ignored container files. |
+| PR-04 | modified / bundled Daily loader | Pin answer count only at bundled identity boundary; retain generic small fixtures. |
+| PR-05 | accepted / CI | Disable persisted checkout credentials in both jobs without changing permissions/action pins. |
+| PR-06 | modified / account coordinator | Exactly one live cleanup per nil notification, retaining later already-guest retries; prove one-shot failure and recovery with existing lifecycle fixtures. |
+| PR-07 | modified / Historical plan | Mark obsolete snapshot upper bound superseded by IOS-08 without rewriting historical implementation. |
+| PR-08 | modified / screen flow | Label first map as Daily/account routes; retain separate live map. |
+| PR-09 | modified / architecture | Correct stale remaining-proof sentence; completed independent-client/final review and pending OS-assisted proof remain distinct. |
+
+Verification: inspect complete owned diff and preservation hashes; focused shell
+fixtures; portable word-pack gate; pgTAP/lint, clean reset and forward path on a
+new controller-owned disposable stack; frozen Xcode discovery/focused/full tests
+and clean Debug build; repaired real integration on inventoried unlinked loopback
+stack with controller-owned gateway and retained cache. One fresh configured
+read-only final review follows integration, then targeted remediation/checks and
+explicit-path conventional commits. Record exact proof/unavailable gates here.
+The naturally triggered main-targeted hosted run remains external until an
+explicitly authorized publish; local success cannot substitute for event proof.
