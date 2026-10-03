@@ -621,19 +621,60 @@ hashes, all 129 protected tracked files, original six unrelated hashes, HEAD/ind
 status and latest gate evidence. Independently executed both new regressions:
 **2/2 passed**, zero failures; `/tmp/gridrace-phase4-controller-start-seam.log`
 and `.xcresult`. Frozen native flags/exact lock preserved. The accepted integration
-finding is closed; final independent implementation review is still required later.
+finding is closed and checkpointed at `3f8adc5bae333f6736f10e3fa85bd0502e3c6424`;
+final independent implementation review is still required later.
 Fresh P4-U2 uses `hasPendingStart` to disable new Start and offer original-target
 Retry even after an error-free unchanged snapshot or Home/Resume. No view-local
 command latch and no widened UI source lease.
+
+## P4-U2 integration and remaining native proof
+
+Worker `01a10076-f978-76d3-a03f-f7222d9221b6` completed the exact three-file
+UI package, released file/process leases and returned one callback. Native Create
+1/3/5 default3, Round N of M, existing self-first reveal, supplied SQL standings,
+creator-only first/next Start, pending-Start original Retry, pending-guess terminal
+Retry/Discard, final/incomplete/Home and prior reveals are implemented. View-local
+draft/error/animation/focus are keyed by canonical match/round; saved guesses from
+another round never hydrate the new draft. No new contract or persisted state.
+
+Latest final-source focused **89/89** (12 view, 58 session, four recovery, 15 actual
+LiveMatchServiceTests), full iOS **213 executed/211 passed/two expected opt-in skips**,
+zero failures; clean Debug passed. Exact commands/logs/results and hashes:
+`/tmp/gridrace-phase4-ui-resume-result.json`; complete-suffixed focused/full/build
+artifacts are final-source proof. Earlier wrong mapper filter and test-count
+commentary were corrected, and AX5 countdown clipping repaired before these gates.
+Controller complete source/test diff inspection, three source hashes/all128
+protected/six original unrelated hashes, HEAD/index and final artifact markers
+verified. Controller independently repeated **five affected presentation checks,
+5/5 passed**: `/tmp/gridrace-phase4-controller-ui-targeted.log` and `.xcresult`.
+Exact accepted Package.resolved bytes retained after all frozen native invocations.
+
+Meaningful test-only native hosting renders actual SwiftUI with captured canonical
+fixtures; 43 screenshots include normal/AX5+Bold/high contrast and scroll bottoms.
+Manifest `/tmp/gridrace-phase4-ui-resume-native-complete/manifest.json`. Controller
+inspected prior reveal with current standings/Start next, incomplete AX5/Home and
+terminal saved-request AX5/actions. These renders prove layout, not two-client
+backend behavior or OS-assisted accessibility. No production fixture/debug route.
+
+Precise remaining limits: OS-assisted VoiceOver swipe/focus/announcements and Reduce
+Motion toggle; hardware keyboard, touch/haptic feel and measured hit regions;
+physical device. Worker CUA Simulator access failed; controller independently
+confirmed native inventory lacks Simulator and `com.apple.iphonesimulator` is an
+invalid app in this tool. Native test labels/source retain semantics/stable reveal
+branch, but screenshots are not that missing OS proof. Existing portrait keyboard
+key widths may be below44pt (48pt tall); new actions have internal44pt minimum.
+Carry available native checks into P4-V; physical-device checks remain external.
+Do not claim beta/production readiness from local completion.
 
 ## Blockers, stop conditions and next action
 
 D3/D4 resolved; P4-PR-01/02 accepted and repaired; no outstanding planning blocker.
 P4-B is committed/proved at `ba65af9`. P4-C/I is committed at `335f210` after latest-source
 focused/full/clean Debug and controller audit/independent focused proof. P4-U
-returned a traced presentation seam before writes. P4-C4 is accepted after narrow
-closure proof; checkpoint it, then dispatch fresh Sol/medium P4-U2 within the
-agreed three-file UI lease.
+returned a traced presentation seam before writes; P4-C4 closed at `3f8adc5`.
+P4-U2 is accepted for checkpoint after local UI gates and controller inspection.
+Next extend the existing three-file integration harness in P4-V, then controller
+runs actual independent-client/database/simulator proof and available native checks.
 No product/UX decision is missing. Real independent-client V, one fresh final
 independent R, bounded accepted repairs and Historical closeout remain.
 

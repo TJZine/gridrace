@@ -28,11 +28,17 @@ controller audit:
 87 focused passes, full iOS 205 executed/203 passed/two expected integration skips,
 zero failures and clean Debug; controller independently repeated 87 focused passes.
 The accepted required transitive lock pin stayed exact under frozen native flags.
-Substantive UI, real independent-client product proof and fresh final review remain.
+The agreed multi-round native UI is implemented and locally verified: 89 focused
+passes, full iOS 213 executed/211 passed/two expected skips/zero failures, clean
+Debug build and 43 native fixture renders. Controller independently passed five
+affected presentation checks and inspected representative normal/AX5 renders.
+Real independent-client product proof, OS-assisted accessibility checks and fresh
+final review remain.
 The first UI worker returned without writes after identifying a missing pending-Start
-presentation signal. The two-file repair is accepted: 62 affected tests passed and
+presentation signal. The two-file repair is committed at `3f8adc5`: 62 affected
+tests passed and
 the controller independently passed both new lifecycle/Observation regressions.
-Fresh UI implementation consumes the read-only signal; full/build gates follow UI.
+The native UI consumes the read-only signal; latest full/build gates include it.
 Current execution belongs to the
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
 

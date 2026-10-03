@@ -2,7 +2,8 @@
 
 This document is the current architecture authority. It separates the permanent
 local Daily Classic mode, the Phase 1 tutorial, the implemented Phase 2/3 client,
-and the locally verified Phase 4 multi-round backend. Phase 4 client work is pending.
+and locally verified Phase 4 multi-round backend/client. Real independent-client
+multi-round verification and final review remain pending.
 
 ## Daily Classic architecture
 
@@ -97,7 +98,7 @@ Type behavior; domain rules do not depend on those presentation choices.
 The implemented local slice is a native SwiftUI client backed by authoritative
 Supabase. Phase 2 owns the backend/authentication trust boundary. Phase 3 connects
 the fixed two-player, one-round client slice to it. Phase 4 extends the backend
-to exactly two players and 1/3/5 rounds; client transport/recovery/UI remain pending.
+to exactly two players and 1/3/5 rounds with implemented native transport/recovery/UI.
 The complete 2–8-player MVP and its other excluded features remain later work.
 
 The client displays server-owned state and submits authenticated intents.
@@ -224,8 +225,15 @@ deletes, a started round finishes under existing forfeit/deadline rules and
 retained roster identities are anonymized. If configured rounds remain, status is
 incomplete with null match completion and partial standings; final-round deletion
 still yields completed/final results. Cron finalizes deadlines but never advances.
-Swift v2 transport, durable intent migration and cross-round recovery/UI are still
-pending; the active plan owns their separate leases and integration proof.
+Swift transport requires v2 even in legacy floor-1 rooms. Durable format-1 intents
+migrate atomically to format 2 in the existing account-private recovery filename,
+retaining original build/count/round/UUID. The session keeps pending guesses across
+round/final boundaries and an observable read-only pending-Start signal for original
+round Retry. Canonical revisions and presentation generations reject stale responses;
+nonfinal reveal keeps recovery active and final/incomplete stops after pending receipt
+resolution. Native views own round-keyed draft/error/focus/animation and prior reveal
+selection, rendering supplied SQL standings without ranking or aggregating them.
+The active plan owns remaining real independent-client proof and final review.
 
 ## Phase 2/3 account deletion
 

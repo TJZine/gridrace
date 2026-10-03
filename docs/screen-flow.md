@@ -110,8 +110,11 @@ Round N of M, the existing reveal followed by canonical standings, creator-only
 Start next, and final standings/Home/prior reveals. If either account deletes,
 finish the started round then show incomplete/Home with preserved anonymized
 reveals and partial standings. Ordinary creator absence keeps the reveal waiting.
-The backend implements these boundaries; this material UI direction is approved
-but its Swift presentation remains pending. No presence, transfer or auto advance.
+Backend and native presentation implement these boundaries. Saved Start Retry
+uses the original session-owned target even after Home/Resume; pending old-round
+guesses cannot populate a later-round draft. Prior reveal selection leaves current
+commands and SQL standings unchanged. Real independent-client and OS-assisted
+accessibility verification remain pending. No presence, transfer or auto advance.
 
 ### Countdown and round
 
@@ -182,11 +185,11 @@ Nothing is omitted, delayed behind animation, or communicated by color alone.
 
 ### Results, rematch, history, and profile
 
-Full results are future work and show round placements followed by match
-placement using the exact comparators in `game-rules.md`. If another configured
-round remains, reveal stays available until the creator starts its countdown.
-After the final reveal, Results offers Rematch or Home. Rematch creates a new
-match; it does not reopen or mutate the completed one.
+Phase 4 shows round placements followed by canonical match standings using the
+exact comparators in `game-rules.md`. A nonfinal reveal waits for creator Start
+next; final and incomplete results offer Home and preserved prior reveals.
+Incomplete standings remain partial. Rematch is later work: it will create a new
+match rather than reopen or mutate the completed one.
 
 Competitive history remains later; Daily statistics/history stay available. Phase 2/3
 Profile manages display name, generated avatar,

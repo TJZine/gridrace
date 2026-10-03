@@ -91,9 +91,10 @@ opponent count/game state. Daily remains the primary, account-optional home acti
 
 Phase 4 extends the anytime private Blind Race to exactly two players and 1/3/5
 rounds, default 3, with explicit creator countdowns, nonrepeating server-selected
-answers, preserved reveals and canonical cumulative/final standings. Its backend
-and Edge contracts are implemented and locally verified; Swift transport, recovery
-and the agreed native selector/results UI remain pending. After either account
+answers, preserved reveals and canonical cumulative/final standings. Its backend,
+Edge, Swift transport/recovery and agreed native selector/results UI are implemented
+and locally verified. Real independent-client multi-round proof and final review
+remain pending. After either account
 deletes, finish the started round and freeze unstarted remaining rounds as
 incomplete. Ordinary creator absence waits; no transfer or automatic advance.
 This mode uses independent random private answers, never the shared Daily answer.
@@ -115,11 +116,11 @@ not Phase 3 behavior.
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
 | Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic, accounts, live create/join and Resume implemented |
-| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 3 client implemented; Phase 4 1/3/5 backend implemented, selector pending; links later |
+| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 4 native 1/3/5 selector and manual-code flow implemented; links later |
 | Lobby | Show the private roster; only the creator starts, with no readiness state. | Fixed Phase 3 slice implemented |
 | Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 tutorial and fixed Phase 3 server-backed slice implemented |
 | Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 tutorial and fixed Phase 3 shared reveal implemented |
-| Results | Show exact round/match placement and summary. | Round placement implemented; Phase 4 canonical match standings backend implemented, presentation pending |
+| Results | Show exact round/match placement and summary. | Round placement implemented; Phase 4 canonical match standings and final/incomplete presentation implemented |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Derive personal Daily statistics from synchronized immutable imported results. | Implemented for Daily Classic; competitive history later |
 | Profile | Manage display name, generated avatar, synchronization, sign out, and account deletion. Email is never exposed. | Implemented; blocks later |

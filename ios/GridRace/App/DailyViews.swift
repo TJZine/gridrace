@@ -92,6 +92,39 @@ struct DailyAppView: View {
     }
 }
 
+/// The native Create selection belongs to this action, independent of Join and
+/// of the session's immutable saved request.
+struct LiveCreateControls: View {
+    @Bindable var live: LiveMatchSession
+    let isSignedIn: Bool
+    let openRoute: (AppRoute) -> Void
+    @State var roundCount = 3
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Rounds", selection: $roundCount) {
+                Text("1 round").tag(1)
+                Text("3 rounds").tag(3)
+                Text("5 rounds").tag(5)
+            }
+            .pickerStyle(.menu)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minHeight: 44)
+            Button(action: create) {
+                Text("Create").frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+        }
+        .disabled(live.isCommandInFlight || live.pendingIntent != nil)
+    }
+
+    func create() {
+        guard isSignedIn else { openRoute(.account); return }
+        live.createMatch(roundCount: roundCount)
+        openRoute(.live)
+    }
+}
+
 struct DailyHomeView: View {
     @Bindable var model: DailyClassicModel
     @Bindable var account: AccountModel
@@ -279,7 +312,7 @@ struct DailyHomeView: View {
                         .foregroundStyle(Color.raceIndigo)
                     Text("Private two-player race")
                         .font(.headline)
-                    Text("One server-authoritative round")
+                    Text("1, 3, or 5 private server rounds")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -314,6 +347,7 @@ struct DailyHomeView: View {
             }
 
             if live.phase != .storageUnavailable {
+                LiveCreateControls(live: live, isSignedIn: account.isSignedIn, openRoute: openRoute)
                 Group {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(spacing: 10) { liveControls }
@@ -340,18 +374,6 @@ struct DailyHomeView: View {
 
     @ViewBuilder
     private var liveControls: some View {
-        Button("Create") {
-            guard account.isSignedIn else {
-                openRoute(.account)
-                return
-            }
-            live.createMatch()
-            openRoute(.live)
-        }
-        .buttonStyle(.bordered)
-        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
-        .disabled(live.isCommandInFlight)
-
         TextField("Room code", text: $joinCode)
             .textFieldStyle(.roundedBorder)
             .frame(minHeight: 44)

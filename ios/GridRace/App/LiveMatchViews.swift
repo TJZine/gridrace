@@ -10,19 +10,62 @@ enum LiveMatchPresentation {
         min(3, max(0, Int(ceil(startsAt.timeIntervalSince(displayedServerTime)))))
     }
 
+    static func roundLabel(_ snapshot: LiveMatchSnapshot, number: Int? = nil) -> String {
+        "Round \(number ?? snapshot.round.number) of \(snapshot.match.roundCount)"
+    }
+
+    static func roundIdentity(_ snapshot: LiveMatchSnapshot, number: Int? = nil) -> String {
+        "\(snapshot.match.id)-\(number ?? snapshot.round.number)"
+    }
+
+    static func countdownLabel(_ snapshot: LiveMatchSnapshot, seconds: Int) -> String {
+        let start = seconds == 0 ? "Live race starting" : "Live race starts in \(seconds)"
+        let deletion = snapshot.match.terminalReason == nil ? ""
+            : ", A player account was deleted. This round will finish; remaining rounds cannot start."
+        return "\(roundLabel(snapshot)), \(start)\(deletion)"
+    }
+
     static func canStart(
         snapshot: LiveMatchSnapshot,
         displayedServerTime: Date,
-        isCommandInFlight: Bool
+        isCommandInFlight: Bool,
+        hasPendingIntent: Bool = false,
+        hasPendingStart: Bool = false
     ) -> Bool {
-        guard snapshot.match.status == .lobby,
-              snapshot.round.state == .pending,
+        guard !isCommandInFlight, !hasPendingIntent, !hasPendingStart,
+              snapshot.match.terminalReason == nil,
               snapshot.members.count == 2,
-              snapshot.members.first(where: \LiveMatchMember.isSelf)?.id
-                == snapshot.match.creatorMemberID,
-              displayedServerTime < snapshot.match.expiresAt
+              snapshot.members.allSatisfy({ !$0.isDeleted }),
+              snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID
         else { return false }
-        return !isCommandInFlight
+        if snapshot.match.status == .lobby {
+            return snapshot.round.state == .pending && displayedServerTime < snapshot.match.expiresAt
+        }
+        return snapshot.match.status == .inProgress && snapshot.round.state == .revealed
+            && snapshot.match.currentRound < snapshot.match.roundCount
+    }
+
+    static func initialDraft(snapshot: LiveMatchSnapshot, pending: LivePendingIntent?, draft: String) -> String {
+        if case .guess(let matchID, _, let word, let roundNumber, _) = pending {
+            return matchID == snapshot.match.id && roundNumber == snapshot.round.number ? word : ""
+        }
+        return draft
+    }
+
+    static func resolvedGuessClearsDraft(
+        snapshot: LiveMatchSnapshot, previous: LivePendingIntent?, current: LivePendingIntent?, draft: String
+    ) -> Bool {
+        guard current == nil, draft.isEmpty,
+              case .guess(let matchID, _, _, let roundNumber, _) = previous else { return false }
+        return matchID == snapshot.match.id && roundNumber == snapshot.round.number
+    }
+
+    static func standingsTitle(_ standings: LiveMatchStandings) -> String {
+        standings.isFinal ? "Final match standings" : "Match standings so far"
+    }
+
+    static func standingSummary(_ standing: LiveMatchStanding) -> String {
+        "Place \(standing.placement) · \(standing.roundsSolved) rounds solved · \(standing.efficiencyPoints) efficiency points · \(standing.totalSolveDurationMilliseconds) ms total solve time"
     }
 
     static func rows(for player: LiveRoundPlayer?) -> [GuessRow] {
@@ -81,8 +124,8 @@ enum LiveMatchPresentation {
         }
     }
 
-    static func revealBoards(snapshot: LiveMatchSnapshot) -> [LiveRevealBoard] {
-        let players = Dictionary(uniqueKeysWithValues: snapshot.round.players.map { ($0.memberID, $0) })
+    static func revealBoards(snapshot: LiveMatchSnapshot, round: LiveRound? = nil) -> [LiveRevealBoard] {
+        let players = Dictionary(uniqueKeysWithValues: (round ?? snapshot.round).players.map { ($0.memberID, $0) })
         return snapshot.members
             .sorted { lhs, rhs in
                 if lhs.isSelf != rhs.isSelf { return lhs.isSelf }
@@ -106,6 +149,7 @@ struct LiveMatchFlowView: View {
     let hapticsEnabled: Bool
     let highContrast: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var retainedError: String?
     @State private var retainsDraftError = false
 
@@ -113,13 +157,28 @@ struct LiveMatchFlowView: View {
         ZStack {
             Color.racePage.ignoresSafeArea()
             VStack(spacing: 0) {
-                if showsTopError,
+                if showsTopError, !showsSavedRecovery,
                    let message = retainedError ?? LiveMatchPresentation.errorMessage(session.lastError) {
-                    RaceErrorBanner(message: message, retry: retryAction)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
+                    ScrollView {
+                        LiveErrorBanner(message: message, retry: retryAction).padding()
+                    }
+                    .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 220 : 130)
                 }
                 content
+                if session.snapshot?.round.state != .playing, showsSavedRecovery {
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            if let message = retainedError ?? LiveMatchPresentation.errorMessage(session.lastError) {
+                                Text(message).font(.callout.weight(.semibold))
+                                    .foregroundStyle(Color.raceDanger)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            pendingDecisionActions
+                        }.padding()
+                    }
+                    .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 300 : 180)
+                    .accessibilityElement(children: .contain)
+                }
             }
         }
         .navigationTitle("Live Race")
@@ -129,6 +188,10 @@ struct LiveMatchFlowView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Home", systemImage: "house") { goHome() }
             }
+        }
+        .onChange(of: session.snapshot.map { LiveMatchPresentation.roundIdentity($0) }) { _, _ in
+            retainedError = nil
+            retainsDraftError = false
         }
         .onChange(of: session.lastError) { _, error in
             if let message = LiveMatchPresentation.errorMessage(error) {
@@ -177,7 +240,6 @@ struct LiveMatchFlowView: View {
                     Text("Waiting for a canonical server snapshot.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    pendingDecisionActions
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding()
@@ -203,6 +265,7 @@ struct LiveMatchFlowView: View {
             LiveLobbyView(session: session, snapshot: snapshot)
         case .countdown:
             LiveCountdownView(session: session, snapshot: snapshot)
+                .id(LiveMatchPresentation.roundIdentity(snapshot))
         case .playing:
             LiveRoundView(
                 session: session,
@@ -211,8 +274,10 @@ struct LiveMatchFlowView: View {
                 highContrast: highContrast,
                 retainedError: $retainedError
             )
+            .id(LiveMatchPresentation.roundIdentity(snapshot))
         case .revealed:
             LiveRevealView(
+                session: session,
                 snapshot: snapshot,
                 highContrast: highContrast,
                 goHome: goHome
@@ -241,18 +306,41 @@ struct LiveMatchFlowView: View {
         }
     }
 
+    private var showsSavedRecovery: Bool {
+        session.hasPendingStart || (session.pendingIntent != nil
+            && (session.lastError == .server(.requestConflict) || session.lastError == .server(.rateLimited)))
+    }
+
     @ViewBuilder
     private var pendingDecisionActions: some View {
-        if session.pendingIntent != nil,
+        if session.hasPendingStart {
+            VStack(spacing: 8) {
+                Text("Saved Start is unresolved. Retry the original round.")
+                    .font(.callout).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { session.retry() } label: {
+                    Text("Retry saved Start").fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: 44)
+                    .disabled(!session.canRetry)
+            }
+        } else if session.pendingIntent != nil,
            session.lastError == .server(.requestConflict)
             || session.lastError == .server(.rateLimited) {
-            HStack {
-                Button("Retry saved request") { session.retry() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!session.canRetry)
+            VStack(spacing: 10) {
+                Button { session.retry() } label: {
+                    Text("Retry saved request").fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent).disabled(!session.canRetry)
                 if let discardAction {
-                    Button("Discard saved request", role: .destructive, action: discardAction)
-                        .buttonStyle(.bordered)
+                    Button(role: .destructive, action: discardAction) {
+                        Text("Discard saved request").fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -261,6 +349,27 @@ struct LiveMatchFlowView: View {
     private func goHome() {
         session.leaveToHome()
         dismiss()
+    }
+}
+
+private struct LiveErrorBanner: View {
+    let message: String
+    let retry: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(message, systemImage: "exclamationmark.circle.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.raceDanger)
+                .fixedSize(horizontal: false, vertical: true)
+            if let retry {
+                Button("Retry", action: retry).buttonStyle(.bordered).frame(minHeight: 44)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.raceDanger, lineWidth: 1.5) }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -306,6 +415,8 @@ private struct LiveLobbyView: View {
                         .font(.caption.weight(.black))
                         .tracking(1.2)
                         .foregroundStyle(.secondary)
+                    Text(snapshot.match.roundCount == 1 ? "1 round" : "\(snapshot.match.roundCount) rounds")
+                        .font(.headline)
                     Text(snapshot.match.joinCode)
                         .font(.system(.largeTitle, design: .monospaced, weight: .bold))
                         .tracking(4)
@@ -365,14 +476,17 @@ private struct LiveLobbyView: View {
                         .multilineTextAlignment(.center)
                 } else if isCreator {
                     Button("Start race") { session.startMatch() }
+                        .controlSize(.large)
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .buttonStyle(.borderedProminent)
                         .disabled(!LiveMatchPresentation.canStart(
                             snapshot: snapshot,
                             displayedServerTime: displayedTime,
-                            isCommandInFlight: session.isCommandInFlight
-                        ))
+                            isCommandInFlight: session.isCommandInFlight,
+                            hasPendingIntent: session.pendingIntent != nil,
+                            hasPendingStart: session.hasPendingStart
+                        ) || session.phase != .ready)
                     if snapshot.members.count < 2 {
                         Text("Start becomes available when the second player joins.")
                             .font(.caption)
@@ -412,28 +526,41 @@ private struct LiveCountdownView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.2)) { _ in
             let seconds = remaining
-            VStack(spacing: 18) {
-                Text("Live race starts in")
-                    .font(.title2)
-                Text(seconds == 0 ? "GO" : "\(seconds)")
-                    .font(.system(size: 92, weight: .black, design: .rounded))
-                    .minimumScaleFactor(0.5)
-                    .foregroundStyle(Color.raceCoral)
-                    .contentTransition(.numericText())
-                ProgressView(value: Double(3 - seconds), total: 3)
-                    .frame(maxWidth: 220)
-                    .accessibilityHidden(true)
-                Text("The server clock controls the start. Backgrounding does not pause it.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 18) {
+                        Text(LiveMatchPresentation.roundLabel(snapshot)).font(.headline)
+                        Text("Live race starts in")
+                            .font(.title2)
+                        Text(seconds == 0 ? "GO" : "\(seconds)")
+                            .font(.system(size: 92, weight: .black, design: .rounded))
+                            .minimumScaleFactor(0.5)
+                            .foregroundStyle(Color.raceCoral)
+                            .contentTransition(.numericText())
+                        ProgressView(value: Double(3 - seconds), total: 3)
+                            .frame(maxWidth: 220)
+                            .accessibilityHidden(true)
+                        if snapshot.match.terminalReason != nil {
+                            Text("A player account was deleted. This round will finish; remaining rounds cannot start.")
+                                .font(.callout).multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text("The server clock controls the start. Backgrounding does not pause it.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: max(0, geometry.size.height - 40))
                     .padding(.horizontal)
+                    .padding(.vertical, 20)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(LiveMatchPresentation.countdownLabel(snapshot, seconds: seconds))
+                    .accessibilityAddTraits(.updatesFrequently)
+                    .accessibilityFocused($focused)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(seconds == 0 ? "Live race starting" : "Live race starts in \(seconds)")
-            .accessibilityAddTraits(.updatesFrequently)
-            .accessibilityFocused($focused)
         }
         .onAppear { focused = true }
     }
@@ -454,6 +581,7 @@ private struct LiveRoundView: View {
     let highContrast: Bool
     @Binding var retainedError: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var acceptsHardwareInput: Bool
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var draft = ""
@@ -479,12 +607,17 @@ private struct LiveRoundView: View {
             ScrollView {
                 VStack(spacing: 14) {
                     roundHeader
+                    if snapshot.match.terminalReason != nil {
+                        Text("A player account was deleted. Finish this round; the match cannot continue afterward.")
+                            .font(.callout).multilineTextAlignment(.center).padding(.horizontal)
+                    }
                     ForEach(snapshot.members.filter { !$0.isSelf }, id: \.id) { member in
                         if let player = snapshot.round.players.first(where: { $0.memberID == member.id }) {
                             LiveOpponentRow(member: member, player: player)
                         }
                     }
                     BoardView(rows: rows, draft: draft, isPlaying: canInput, highContrast: highContrast)
+                        .dynamicTypeSize(.large)
                         .padding(.horizontal)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: rows.count)
                     status
@@ -502,6 +635,9 @@ private struct LiveRoundView: View {
                     delete: deleteLetter,
                     highContrast: highContrast
                 )
+                // Fixed five-letter board and keyboard glyphs retain their shape;
+                // surrounding instructions and semantic labels keep full Dynamic Type.
+                .dynamicTypeSize(.large)
                 .padding(.vertical, 8)
                 .background(Color.racePage)
                 .overlay(alignment: .top) { Color.raceLine.frame(height: 1) }
@@ -512,16 +648,20 @@ private struct LiveRoundView: View {
         .onAppear {
             previousAcceptedCount = selfPlayer?.acceptedGuessCount ?? 0
             if draft.isEmpty {
-                if case .guess(_, _, let word, _, _) = session.pendingIntent {
-                    draft = word
-                } else {
-                    draft = session.guessDraft
-                }
+                draft = LiveMatchPresentation.initialDraft(
+                    snapshot: snapshot, pending: session.pendingIntent, draft: session.guessDraft
+                )
             }
             acceptsHardwareInput = canInput
         }
-        .onChange(of: session.guessDraft) { _, value in
-            if !value.isEmpty { draft = value }
+        .onChange(of: session.guessDraft) { _, value in draft = value }
+        .onChange(of: session.pendingIntent) { previous, current in
+            if LiveMatchPresentation.resolvedGuessClearsDraft(
+                snapshot: snapshot, previous: previous, current: current, draft: session.guessDraft
+            ) {
+                draft = ""
+                retainedError = nil
+            }
         }
         .onChange(of: selfPlayer?.acceptedGuessCount ?? 0) { oldValue, newValue in
             if newValue > oldValue || newValue > previousAcceptedCount {
@@ -552,24 +692,45 @@ private struct LiveRoundView: View {
     }
 
     private var roundHeader: some View {
-        HStack {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+        return layout {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Live round").font(.headline)
+                Text(LiveMatchPresentation.roundLabel(snapshot)).font(.headline)
                 Text(localConnectionText).font(.caption).foregroundStyle(.secondary)
             }
-            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 Label(remainingTime, systemImage: "timer")
                     .font(.headline.monospacedDigit())
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("\(remainingSeconds) seconds remaining")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
     }
 
     @ViewBuilder
     private var status: some View {
-        if let player = selfPlayer, player.state.isTerminal {
+        if session.pendingIntent != nil,
+           session.lastError == .server(.requestConflict) || session.lastError == .server(.rateLimited) {
+            VStack(spacing: 8) {
+                Text("Resolve the original saved guess before continuing.").font(.callout)
+                if let retainedError { Text(retainedError).foregroundStyle(Color.raceDanger) }
+                Button { session.retry() } label: {
+                    Text("Retry saved request").fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent).disabled(!session.canRetry)
+                Button(role: .destructive) { session.discardPendingGuess() } label: {
+                    Text("Discard saved request").fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }.padding()
+        } else if let player = selfPlayer, player.state.isTerminal {
             VStack(spacing: 8) {
                 Text(terminalTitle(player.state)).font(.title3.bold())
                 Text("Your accepted board is locked. Waiting for the canonical shared reveal.")
@@ -641,7 +802,7 @@ private struct LiveRoundView: View {
             }
             .padding(.horizontal)
         } else if let retainedError {
-            RaceErrorBanner(message: retainedError)
+            LiveErrorBanner(message: retainedError, retry: nil)
                 .padding(.horizontal)
                 .accessibilityFocused($errorFocus, equals: errorGeneration)
         } else {
@@ -715,12 +876,16 @@ private struct LiveRoundView: View {
 }
 
 private struct LiveOpponentRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let member: LiveMatchMember
     let player: LiveRoundPlayer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 12) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             PlayerAvatarView(seed: member.avatarSeed, size: 44)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -729,7 +894,7 @@ private struct LiveOpponentRow: View {
                     .font(.subheadline.monospacedDigit())
                     .contentTransition(.numericText())
             }
-            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             Label(
                 LiveMatchPresentation.playerStateText(player.state).capitalized,
                 systemImage: player.state == .playing ? "hourglass" : "flag.checkered"
@@ -740,6 +905,7 @@ private struct LiveOpponentRow: View {
             .background(Color.raceInset, in: Capsule())
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.raceCard, in: RoundedRectangle(cornerRadius: 18))
         .overlay { RoundedRectangle(cornerRadius: 18).stroke(Color.raceLine, lineWidth: 1.5) }
         .padding(.horizontal)
@@ -756,25 +922,34 @@ private enum LiveRevealFocus: Hashable {
 }
 
 private struct LiveRevealView: View {
+    @Bindable var session: LiveMatchSession
     let snapshot: LiveMatchSnapshot
     let highContrast: Bool
     let goHome: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AccessibilityFocusState private var focus: LiveRevealFocus?
     @State private var visibleRows = 0
 
-    private var boards: [LiveRevealBoard] { LiveMatchPresentation.revealBoards(snapshot: snapshot) }
+    private var displayedRound: LiveRound { session.displayedReveal ?? snapshot.round }
+    private var boards: [LiveRevealBoard] { LiveMatchPresentation.revealBoards(snapshot: snapshot, round: displayedRound) }
     private var totalRows: Int { boards.reduce(0) { $0 + $1.rows.count } }
     private var stableReveal: Bool { reduceMotion || voiceOverEnabled }
     private var revealID: String {
-        "\(snapshot.match.id.uuidString)-\(snapshot.round.completedAt?.timeIntervalSince1970 ?? 0)-\(stableReveal)"
+        "\(LiveMatchPresentation.roundIdentity(snapshot, number: displayedRound.number))-\(stableReveal)"
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                if let answer = snapshot.round.answer, boards.count == snapshot.members.count {
+                Text(LiveMatchPresentation.roundLabel(snapshot, number: displayedRound.number))
+                    .font(.headline).accessibilityAddTraits(.isHeader)
+                if displayedRound.number != snapshot.round.number {
+                    Text("Viewing a prior reveal. Current match: \(LiveMatchPresentation.roundLabel(snapshot)).")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                if let answer = displayedRound.answer, boards.count == snapshot.members.count {
                     Text("Answer: \(answer.uppercased())")
                         .font(.title.bold())
                         .lineLimit(1)
@@ -790,17 +965,21 @@ private struct LiveRevealView: View {
                             ? board.rows.count
                             : min(board.rows.count, max(0, visibleRows - preceding))
                         VStack(alignment: .leading, spacing: 10) {
-                            HStack {
+                            let layout = dynamicTypeSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                                : AnyLayout(HStackLayout())
+                            layout {
                                 PlayerAvatarView(seed: board.member.avatarSeed, size: 42)
                                     .accessibilityHidden(true)
                                 Text(board.member.isSelf ? "You" : board.member.displayName)
                                     .font(.headline)
-                                Spacer()
+                                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                                 Text(LiveMatchPresentation.playerStateText(board.player.state).capitalized)
                                     .font(.caption.weight(.semibold))
                             }
                             ForEach(Array(board.rows.prefix(count).enumerated()), id: \.offset) { rowIndex, row in
                                 LiveRevealRowView(row: row, highContrast: highContrast)
+                                    .dynamicTypeSize(.large)
                                     .accessibilityFocused($focus, equals: .row(preceding + rowIndex))
                             }
                             if stableReveal || count == board.rows.count {
@@ -816,12 +995,28 @@ private struct LiveRevealView: View {
                     }
 
                     if stableReveal || visibleRows >= totalRows {
+                        Text("Round standings").font(.title2.bold()).accessibilityAddTraits(.isHeader)
                         Text(comparisonSummary)
                             .font(.headline)
                             .multilineTextAlignment(.center)
                             .padding()
                             .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
                             .accessibilityFocused($focus, equals: .summary)
+                        matchResults
+                        if snapshot.revealedRounds.count > 1 {
+                            Picker("Revealed round", selection: Binding(
+                                get: { session.selectedRevealNumber ?? snapshot.round.number },
+                                set: { session.selectReveal(number: $0 == snapshot.round.number ? nil : $0) }
+                            )) {
+                                ForEach(snapshot.revealedRounds, id: \.number) { round in
+                                    Text("Round \(round.number)").tag(round.number)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: 44)
+                        }
+                        nextRoundAction
                         Button("Home", action: goHome)
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
@@ -859,10 +1054,63 @@ private struct LiveRevealView: View {
         .onChange(of: reduceMotion) { _, enabled in if enabled { focus = .answer } }
     }
 
+    @ViewBuilder
+    private var matchResults: some View {
+        if snapshot.match.status == .incomplete {
+            Text("Match incomplete")
+                .font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            Text("A player account was deleted. Unstarted rounds cannot continue. Revealed rounds are preserved.")
+                .font(.callout).multilineTextAlignment(.center)
+        }
+        if let standings = snapshot.standings {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(LiveMatchPresentation.standingsTitle(standings))
+                    .font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                Text("Through \(standings.throughRound) of \(snapshot.match.roundCount) revealed rounds")
+                    .font(.callout).foregroundStyle(.secondary)
+                ForEach(snapshot.members.sorted { $0.isSelf && !$1.isSelf }, id: \.id) { member in
+                    if let standing = standings.players.first(where: { $0.memberID == member.id }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(member.isSelf ? "You" : member.displayName).font(.headline)
+                            Text(LiveMatchPresentation.standingSummary(standing))
+                                .font(.subheadline.monospacedDigit())
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .padding().frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    @ViewBuilder
+    private var nextRoundAction: some View {
+        if snapshot.match.status == .inProgress, snapshot.match.terminalReason == nil,
+           snapshot.match.currentRound < snapshot.match.roundCount {
+            if snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID {
+                Button("Start next round (\(snapshot.match.currentRound + 1) of \(snapshot.match.roundCount))") {
+                    session.startMatch()
+                }
+                .font(.headline).buttonStyle(.borderedProminent).controlSize(.large).frame(minHeight: 48)
+                .disabled(session.phase != .ready || !LiveMatchPresentation.canStart(
+                    snapshot: snapshot,
+                    displayedServerTime: session.displayedServerTime ?? snapshot.serverTime,
+                    isCommandInFlight: session.isCommandInFlight,
+                    hasPendingIntent: session.pendingIntent != nil,
+                    hasPendingStart: session.hasPendingStart
+                ))
+            } else {
+                Text("Waiting for the room creator to start the next round.")
+                    .font(.headline).multilineTextAlignment(.center)
+            }
+        }
+    }
+
     private func boardSummary(_ board: LiveRevealBoard) -> String {
         let guesses = board.player.acceptedGuessCount == 1 ? "1 guess" : "\(board.player.acceptedGuessCount) guesses"
         let placement = board.player.placement.map { "place \($0)" } ?? "placement unavailable"
-        return "\(guesses) used, \(placement)."
+        return "\(guesses) used, round \(placement)."
     }
 
     private var comparisonSummary: String {
