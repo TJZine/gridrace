@@ -42,7 +42,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
 
         switch role {
         case "host":
-            session.createMatch()
+            session.createMatch(roundCount: 1)
             try await eventually("host create") {
                 session.phase == .ready && session.snapshot?.members.count == 1
             }
@@ -151,25 +151,28 @@ private actor MeasuredLiveMatchService: LiveMatchServicing {
 
     init(_ base: any LiveMatchServicing) { self.base = base }
 
-    func createMatch(requestID: UUID) async throws -> UUID {
-        try await measure { try await base.createMatch(requestID: requestID) }
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
+        try await measure { try await base.createMatch(requestID: requestID, roundCount: roundCount, clientBuild: clientBuild) }
     }
 
     func joinMatch(code: String) async throws -> UUID {
         try await measure { try await base.joinMatch(code: code) }
     }
 
-    func startMatch(id: UUID) async throws -> UUID {
-        try await measure { try await base.startMatch(id: id) }
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID {
+        try await measure { try await base.startMatch(id: id, roundNumber: roundNumber) }
     }
 
     func submitGuess(
         matchID: UUID,
+        roundNumber: Int,
         requestID: UUID,
-        guess: String
+        guess: String,
+        clientBuild: Int
     ) async throws -> LiveGuessReceipt {
         try await measure {
-            try await base.submitGuess(matchID: matchID, requestID: requestID, guess: guess)
+            try await base.submitGuess(matchID: matchID, roundNumber: roundNumber, requestID: requestID,
+                                       guess: guess, clientBuild: clientBuild)
         }
     }
 

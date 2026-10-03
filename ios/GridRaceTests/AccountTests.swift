@@ -310,6 +310,62 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
     }
 
+    func testBothRecoveryFormatsUseSameFileAndCleanupOnlyTheSignedOutOrDeletedAccount() async throws {
+        for format in [1, 2] {
+            for deletesAccount in [false, true] {
+                let root = FileManager.default.temporaryDirectory
+                    .appending(path: "GridRaceLiveCleanup-\(UUID().uuidString)")
+                defer { try? FileManager.default.removeItem(at: root) }
+                let userID = UUID(), otherID = UUID(), matchID = UUID(), requestID = UUID()
+                let owner = LiveMatchRecoveryStore(rootDirectory: root, userID: userID)
+                let other = LiveMatchRecoveryStore(rootDirectory: root, userID: otherID)
+                let otherState = LiveRecoveryState(matchID: UUID())
+                try other.save(otherState)
+                let otherFile = other.directory.appending(path: "live-recovery-v1.json")
+                let otherBytes = try Data(contentsOf: otherFile)
+                let ownerFile = owner.directory.appending(path: "live-recovery-v1.json")
+                try FileManager.default.createDirectory(at: owner.directory, withIntermediateDirectories: true)
+                if format == 1 {
+                    try Data(#"{"formatVersion":1,"matchID":"\#(matchID)","pendingIntent":{"kind":"guess","matchID":"\#(matchID)","requestID":"\#(requestID)","word":"STONE"}}"#.utf8)
+                        .write(to: ownerFile)
+                } else {
+                    try owner.save(LiveRecoveryState(matchID: matchID, pendingIntent:
+                        .guess(matchID: matchID, requestID: requestID, word: "STONE", roundNumber: 3, clientBuild: 2)))
+                }
+                let account = AccountServiceMock()
+                account.appleSession = AccountSession(userID: userID, expiresAt: Date().addingTimeInterval(3_600))
+                account.loadedProfile = PlayerProfile(userID: userID, displayName: "Alex", avatarSeed: "seed",
+                                                     createdAt: .distantPast, updatedAt: .distantPast)
+                let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+                    urlString: "http://127.0.0.1:54321", publishableKey: "local-test-key"))
+                let coordinator = try DailyAccountCoordinator(
+                    dailyPack: DailyWordPack.load(bundle: .main), tutorialPack: WordPack.load(bundle: .main),
+                    guestStore: DailyClassicStore(directory: root.appending(path: "Guest")),
+                    accountService: SupabaseAccountService(configuration: configuration), accountModelService: account,
+                    accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+                    liveStoreFactory: { LiveMatchRecoveryStore(rootDirectory: root, userID: $0) })
+                coordinator.live.backgrounded()
+                await coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+                XCTAssertEqual(coordinator.live.savedMatchID, matchID)
+                XCTAssertEqual(try owner.load().formatVersion, 2, "legacy migration saves in the original path")
+                XCTAssertEqual(coordinator.live.pendingIntent,
+                    .guess(matchID: matchID, requestID: requestID, word: "STONE",
+                           roundNumber: format == 1 ? 1 : 3, clientBuild: format == 1 ? 1 : 2))
+                if deletesAccount { await coordinator.account.deleteAccount() }
+                else { await coordinator.account.signOut() }
+                XCTAssertFalse(FileManager.default.fileExists(atPath: ownerFile.path))
+                XCTAssertEqual(try Data(contentsOf: otherFile), otherBytes)
+                XCTAssertEqual(try other.load(), otherState)
+                XCTAssertNil(coordinator.live.pendingIntent)
+                XCTAssertNil(coordinator.live.savedMatchID)
+                XCTAssertEqual(coordinator.live.phase, .inactive)
+                XCTAssertNil(coordinator.account.errorMessage)
+                XCTAssertEqual(account.deleteCount, deletesAccount ? 1 : 0)
+                XCTAssertEqual(account.signOutCount, deletesAccount ? 0 : 1)
+            }
+        }
+    }
+
     private func makeLifecycleFixture() throws -> LifecycleFixture {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "GridRaceAccountLifecycleTests-\(UUID().uuidString)")

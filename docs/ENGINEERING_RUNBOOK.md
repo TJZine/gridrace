@@ -185,6 +185,11 @@ GRIDRACE_LOCAL_INTEGRATION=1 deno run \
   --allow-net=127.0.0.1,localhost \
   --allow-run=/opt/homebrew/opt/libpq/bin/psql \
   supabase/tests/integration/live_slice_test.ts
+# P4-C controller proved this frozen resolve on the accepted complete local lock.
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
+  -derivedDataPath /tmp/gridrace-phase4-client-derived-test \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -resolvePackageDependencies
 xcodebuild -project ios/GridRace.xcodeproj -list
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \

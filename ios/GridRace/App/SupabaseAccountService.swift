@@ -21,7 +21,7 @@ final class SupabaseAccountService: AccountServicing {
     private let client: SupabaseClient
     private let clientBuild: Int
 
-    static func configured(bundle: Bundle = .main, clientBuild: Int = 1) -> SupabaseAccountService? {
+    static func configured(bundle: Bundle = .main, clientBuild: Int = 2) -> SupabaseAccountService? {
         guard let configuration = Configuration(
             urlString: bundle.object(forInfoDictionaryKey: "GridRaceSupabaseURL") as? String,
             publishableKey: bundle.object(forInfoDictionaryKey: "GridRaceSupabasePublishableKey") as? String
@@ -29,7 +29,7 @@ final class SupabaseAccountService: AccountServicing {
         return SupabaseAccountService(configuration: configuration, clientBuild: clientBuild)
     }
 
-    init(configuration: Configuration, clientBuild: Int = 1) {
+    init(configuration: Configuration, clientBuild: Int = 2) {
         // Supabase's Apple-platform default persists Auth sessions in KeychainLocalStorage.
         client = SupabaseClient(
             supabaseURL: configuration.projectURL,

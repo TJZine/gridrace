@@ -22,8 +22,12 @@ Phase 4 is active: anytime private two-player Blind Race with 1/3/5 rounds
 canonical round/match standings and cross-round recovery. UI and freeze-after-either-
 account-deletion decisions are accepted. Independent plan review was adjudicated
 and checkpointed at `3a01d9a` before product writes. P4-B backend/Edge is implemented
-and locally verified; Swift contract/session/storage, build-2 composition, UI,
-real independent-client product proof and fresh final review remain pending.
+and locally verified at `ba65af9`. Swift contract/session/storage and build-2
+composition are now accepted after latest-source worker proof and controller audit:
+87 focused passes, full iOS 205 executed/203 passed/two expected integration skips,
+zero failures and clean Debug; controller independently repeated 87 focused passes.
+The accepted required transitive lock pin stayed exact under frozen native flags.
+Substantive UI, real independent-client product proof and fresh final review remain.
 Current execution belongs to the
 [Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md).
 
@@ -44,7 +48,8 @@ errors; Edge format/lint/check and 107 tests. Real gateway proof covers 1/3/5
 rounds, exact standings/ties, private nonrepeating answers, duplicate/stale command
 barriers, deletion boundaries and scheduled finalization without auto advance.
 Controller independently repeated database/Edge/gateway gates; details and remaining
-client gates live in the Active plan. No Phase 4 iOS proof is claimed yet.
+client gates live in the Active plan. Client contract/session gates passed above;
+real multi-round product integration is still pending.
 
 Historical Phase 2/3 verification: clean database reset; 290 pgTAP assertions; three-schema
 database lint; Edge format/lint/check and 100 tests; full iOS suite with 183 executed,

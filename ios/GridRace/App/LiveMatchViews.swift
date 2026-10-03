@@ -69,6 +69,8 @@ enum LiveMatchPresentation {
             case .notEnoughPlayers: "Two players are required to start."
             case .roundNotActive: "The round is not accepting guesses yet."
             case .roundAlreadyFinished: "The round has finished. Refreshing the result."
+            case .invalidMatchConfiguration: "Choose 1, 3, or 5 rounds."
+            case .matchIncomplete: "This match cannot continue because a player account was deleted."
             case .invalidGuessFormat: "Enter exactly five English letters."
             case .wordNotAccepted: "That word is not accepted. Try another word."
             case .rateLimited: "Too many attempts. Retry this same guess in a moment."
@@ -510,7 +512,7 @@ private struct LiveRoundView: View {
         .onAppear {
             previousAcceptedCount = selfPlayer?.acceptedGuessCount ?? 0
             if draft.isEmpty {
-                if case .guess(_, _, let word) = session.pendingIntent {
+                if case .guess(_, _, let word, _, _) = session.pendingIntent {
                     draft = word
                 } else {
                     draft = session.guessDraft

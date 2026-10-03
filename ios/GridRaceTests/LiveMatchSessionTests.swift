@@ -32,13 +32,85 @@ final class LiveMatchRecoveryStoreTests: XCTestCase {
         XCTAssertEqual(try first.load(), LiveRecoveryState())
     }
 
+    func testLegacyFilesDecodeExactPayloadAndMigrateInTheSameProtectedPath() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "GridRaceV1Migration-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = LiveMatchRecoveryStore(rootDirectory: root, userID: UUID())
+        let other = LiveMatchRecoveryStore(rootDirectory: root, userID: UUID())
+        let match = UUID(), request = UUID()
+        try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
+        let file = store.directory.appending(path: "live-recovery-v1.json")
+        for kind in ["pointer", "create", "guess"] {
+            var json: [String: Any] = ["formatVersion": 1]
+            if kind != "create" { json["matchID"] = match.uuidString }
+            if kind == "create" { json["pendingIntent"] = ["kind": "create", "requestID": request.uuidString] }
+            if kind == "guess" {
+                json["pendingIntent"] = ["kind": "guess", "matchID": match.uuidString,
+                                         "requestID": request.uuidString, "word": "STONE"]
+            }
+            let original = try JSONSerialization.data(withJSONObject: json)
+            try original.write(to: file)
+            var state = try store.load()
+            XCTAssertEqual(state.formatVersion, 1)
+            XCTAssertEqual(try Data(contentsOf: file), original, "load itself must not destroy legacy evidence")
+            if kind == "create" {
+                XCTAssertEqual(state.pendingIntent, .create(requestID: request, roundCount: 1, clientBuild: 1))
+            } else if kind == "guess" {
+                XCTAssertEqual(state.pendingIntent, .guess(matchID: match, requestID: request, word: "STONE",
+                                                           roundNumber: 1, clientBuild: 1))
+            }
+            state.formatVersion = 2
+            try store.save(state)
+            XCTAssertEqual(try store.load(), state)
+            XCTAssertEqual(try other.load(), LiveRecoveryState())
+            let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+            XCTAssertEqual(saved["formatVersion"] as? Int, 2)
+            try store.clear()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        }
+    }
+
+    func testUnknownMissingAndInconsistentV2RecoveryPreservesOriginalBytes() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "GridRaceV2Invalid-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = LiveMatchRecoveryStore(rootDirectory: root, userID: UUID())
+        try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
+        let file = store.directory.appending(path: "live-recovery-v1.json")
+        let match = UUID(), request = UUID()
+        let cases: [[String: Any]] = [
+            ["formatVersion": 99],
+            ["formatVersion": 1, "pendingIntent": ["kind": "create", "requestID": request.uuidString,
+                                                  "roundCount": 3, "clientBuild": 2]],
+            ["formatVersion": 1, "matchID": match.uuidString,
+             "pendingIntent": ["kind": "guess", "matchID": match.uuidString, "requestID": request.uuidString,
+                               "word": "STONE", "roundNumber": 2]],
+            ["formatVersion": 2, "pendingIntent": ["kind": "create", "requestID": request.uuidString]],
+            ["formatVersion": 2, "matchID": match.uuidString,
+             "pendingIntent": ["kind": "create", "requestID": request.uuidString, "roundCount": 3, "clientBuild": 2]],
+            ["formatVersion": 2, "pendingIntent": ["kind": "create", "requestID": request.uuidString,
+                                                  "roundCount": 3, "clientBuild": 1]],
+            ["formatVersion": 2, "matchID": match.uuidString,
+             "pendingIntent": ["kind": "guess", "matchID": match.uuidString, "requestID": request.uuidString,
+                               "word": "STONE", "roundNumber": 2, "clientBuild": 1]],
+            ["formatVersion": 2, "matchID": match.uuidString,
+             "pendingIntent": ["kind": "guess", "matchID": UUID().uuidString, "requestID": request.uuidString,
+                               "word": "STONE", "roundNumber": 2, "clientBuild": 2]],
+        ]
+        for object in cases {
+            let original = try JSONSerialization.data(withJSONObject: object)
+            try original.write(to: file)
+            XCTAssertThrowsError(try store.load())
+            XCTAssertEqual(try Data(contentsOf: file), original)
+        }
+    }
+
     func testCorruptOrInconsistentRecoveryFailsClosed() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "GridRaceLiveRecoveryCorrupt-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let store = LiveMatchRecoveryStore(rootDirectory: root, userID: UUID())
         try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
-        try Data(#"{"formatVersion":2}"#.utf8).write(
+        try Data(#"{"formatVersion":3}"#.utf8).write(
             to: store.directory.appending(path: "live-recovery-v1.json")
         )
         XCTAssertThrowsError(try store.load()) {
@@ -959,34 +1031,39 @@ final class LiveMatchSessionTests: XCTestCase {
     }
 
     func testSignalsCoalesceAndPreCommandSnapshotCannotOverwriteCommandRecovery() async throws {
-        let matchID = UUID()
-        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
+        let lobby = try Phase4LiveFixtures.snapshot("3-lobby")
+        let playing = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: lobby.match.id))
         let realtime = RealtimeHub()
-        let script = SnapshotScript(
-            first: Self.snapshot(matchID: matchID, status: .lobby, round: .pending),
-            later: Self.snapshot(matchID: matchID, status: .inProgress, round: .playing)
-        )
-        let service = LiveServiceMock(
-            start: { $0 },
-            snapshot: { _ in try await script.next() }
-        )
+        let script = SnapshotScript(first: lobby, later: playing)
+        let calls = LockedCounter()
+        let starts = LockedValues<Int>()
+        let service = LiveServiceMock(snapshot: { _ in
+            if calls.increment() == 1 { return lobby }
+            return try await script.next()
+        }, startTargeted: { id, target in
+            XCTAssertEqual(id, lobby.match.id)
+            starts.append(target)
+            return id
+        })
         let session = makeSession(service: service, realtime: realtime, store: store)
         session.changeAccount(to: UUID())
-        await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
+        await eventually { session.snapshot == lobby }
+        realtime.send(.signal)
         await eventually { await script.callCount == 1 }
 
         session.startMatch()
         realtime.send(.signal)
         realtime.send(.signal)
-        await eventually { !session.isCommandInFlight }
+        await eventually { !session.isCommandInFlight && starts.values == [1] }
         await script.releaseFirst()
 
         await eventually { await script.callCount == 2 }
-        await eventually { session.phase == .ready }
-        XCTAssertEqual(session.snapshot?.match.status, .inProgress)
+        await eventually { session.snapshot == playing && session.phase == .ready }
         let finalCallCount = await script.callCount
         XCTAssertEqual(finalCallCount, 2)
+        session.leaveToHome()
     }
 
     func testAccountChangeClearsOldRecoveryAndDiscardsLateSnapshot() async throws {
@@ -1858,6 +1935,379 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(finalCallCount, 2)
     }
 
+    func testLegacyMigrationSaveMustSucceedBeforeAnyCommandOrSnapshot() async throws {
+        for isGuess in [false, true] {
+            let match = UUID(), request = UUID()
+            let intent: LivePendingIntent = isGuess
+                ? .guess(matchID: match, requestID: request, word: "STONE", roundNumber: 1, clientBuild: 1)
+                : .create(requestID: request, roundCount: 1, clientBuild: 1)
+            let original = LiveRecoveryState(formatVersion: 1, matchID: isGuess ? match : nil, pendingIntent: intent)
+            let store = MemoryLiveRecoveryStore(original)
+            store.rejectsWrites = true
+            let dispatches = LockedCounter()
+            let session = makeSession(service: LiveServiceMock(
+                snapshot: { id in
+                    XCTAssertEqual(store.storedState.formatVersion, 2)
+                    dispatches.increment()
+                    return Self.snapshot(matchID: id, status: .completed, round: .revealed)
+                },
+                createConfigured: { id, count, build in
+                    XCTAssertEqual(store.storedState.formatVersion, 2)
+                    XCTAssertEqual(id, request); XCTAssertEqual(count, 1); XCTAssertEqual(build, 1)
+                    dispatches.increment(); return match
+                },
+                submitTargeted: { id, round, requestID, word, build in
+                    XCTAssertEqual(store.storedState.formatVersion, 2)
+                    XCTAssertEqual(id, match); XCTAssertEqual(round, 1); XCTAssertEqual(requestID, request)
+                    XCTAssertEqual(word, "STONE"); XCTAssertEqual(build, 1)
+                    dispatches.increment(); return Self.receipt()
+                }
+            ), realtime: nil, store: store)
+            session.changeAccount(to: UUID())
+            await Task.yield()
+            XCTAssertEqual(session.phase, .storageUnavailable)
+            XCTAssertEqual(dispatches.value, 0)
+            XCTAssertEqual(store.storedState, original)
+            session.resumeSavedMatch(); session.foregrounded(); session.createMatch(); session.startMatch()
+            XCTAssertEqual(dispatches.value, 0)
+            store.rejectsWrites = false
+            session.retry()
+            await eventually { session.phase == .ready && !session.isCommandInFlight }
+            XCTAssertEqual(dispatches.value, 2)
+            XCTAssertNil(store.storedState.pendingIntent)
+            XCTAssertEqual(store.storedState.formatVersion, 2)
+            session.leaveToHome()
+        }
+    }
+
+    func testCreateCountIsDurableAndRetriedWithoutReplacingUUIDOrBuild() async throws {
+        for count in [1, 3, 5] {
+            let request = UUID(), match = UUID()
+            let store = MemoryLiveRecoveryStore()
+            let calls = LockedValues<LivePendingIntent>()
+            let session = LiveMatchSession(service: LiveServiceMock(createConfigured: { id, roundCount, build in
+                let intent = LivePendingIntent.create(requestID: id, roundCount: roundCount, clientBuild: build)
+                XCTAssertEqual(store.storedState.pendingIntent, intent)
+                calls.append(intent)
+                throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, storeFactory: { _ in store }, makeUUID: { request })
+            session.changeAccount(to: UUID())
+            session.createMatch(roundCount: count)
+            await eventually { !session.isCommandInFlight }
+            session.retry()
+            await eventually { calls.values.count == 2 && !session.isCommandInFlight }
+            XCTAssertEqual(calls.values, Array(repeating: .create(requestID: request, roundCount: count, clientBuild: 2), count: 2))
+            XCTAssertNil(session.savedMatchID)
+            XCTAssertNotEqual(session.savedMatchID, match)
+            session.leaveToHome()
+        }
+    }
+
+    func testUncertainStartRetryKeepsCapturedTargetAndHistorySelectionNeverTargetsCommands() async throws {
+        let initial = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        let later = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id))
+        let realtime = RealtimeHub()
+        let starts = LockedValues<Int>()
+        let snapshots = LockedCounter()
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            snapshots.increment()
+            return initial
+        }, startTargeted: { _, round in
+            starts.append(round)
+            throw LiveMatchServiceError.unavailable
+        }), realtime: realtime, store: store,
+        timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { session.phase == .ready }
+        session.selectReveal(number: 1)
+        session.startMatch()
+        session.startMatch()
+        await eventually { !session.isCommandInFlight && snapshots.value == 2 }
+        session.retry()
+        await eventually { !session.isCommandInFlight && starts.values.count == 2 }
+        XCTAssertEqual(starts.values, [2, 2])
+        XCTAssertEqual(session.snapshot?.round.number, 1)
+        XCTAssertEqual(session.displayedReveal?.number, 1)
+        session.leaveToHome()
+        XCTAssertEqual(later.round.number, 2)
+    }
+
+    func testOldGuessReceiptAfterNewRoundClearsExactIntentWithoutChangingBoardDraftOrClock() async throws {
+        for succeeds in [false, true] {
+            let current = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+            let request = UUID()
+            let intent = LivePendingIntent.guess(matchID: current.match.id, requestID: request, word: "STONE",
+                                                 roundNumber: 1, clientBuild: 1)
+            let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id, pendingIntent: intent))
+            let realtime = RealtimeHub()
+            let attempts = LockedCounter()
+            let gate = AsyncGate()
+            let clock = UptimeBox(100)
+            let session = makeSession(service: LiveServiceMock(snapshot: { _ in current }, submitTargeted: {
+                match, round, id, word, build in
+                XCTAssertEqual(match, current.match.id); XCTAssertEqual(round, 1)
+                XCTAssertEqual(id, request); XCTAssertEqual(word, "STONE"); XCTAssertEqual(build, 1)
+                if attempts.increment() == 1 { throw LiveMatchServiceError.server(.requestConflict) }
+                await gate.wait()
+                if succeeds { return Self.receipt() }
+                throw LiveMatchServiceError.server(.wordNotAccepted)
+            }), realtime: realtime, store: store, uptime: { clock.value })
+            session.changeAccount(to: UUID()); realtime.send(.ready)
+            await eventually { session.snapshot?.round.number == 2 && !session.isCommandInFlight }
+            XCTAssertEqual(session.pendingIntent, intent, "snapshot is never acknowledgement")
+            XCTAssertTrue(session.isInputLocked)
+            XCTAssertEqual(session.guessDraft, "")
+            session.selectReveal(number: 1)
+            session.retry()
+            await eventually { attempts.value == 2 }
+            clock.value = 105
+            XCTAssertEqual(session.displayedServerTime, current.serverTime.addingTimeInterval(5))
+            await gate.open()
+            await eventually { !session.isCommandInFlight && session.pendingIntent == nil && session.phase == .ready }
+            XCTAssertNil(store.storedState.pendingIntent)
+            XCTAssertEqual(session.snapshot?.round, current.round)
+            XCTAssertEqual(session.guessDraft, "")
+            XCTAssertEqual(session.displayedServerTime, current.serverTime)
+            XCTAssertEqual(session.selectedRevealNumber, 1)
+            XCTAssertNil(session.lastError)
+            session.leaveToHome()
+        }
+    }
+
+    func testNonfinalRevealWatchdogAdvancesWithLostEventsAndFinalResumeCatchesUpOnce() async throws {
+        let first = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        let next = try Phase4LiveFixtures.snapshot("3-round-2-countdown")
+        let final = try Phase4LiveFixtures.snapshot("3-round-3-reveal")
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: first.match.id))
+        let realtime = RealtimeHub()
+        let script = SnapshotScript(first: first, later: next, suspendFirst: false)
+        let timers = LockedCounter(), fetches = LockedCounter()
+        let gate = AsyncGate()
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            let call = fetches.increment()
+            if call > 2 { return final }
+            return try await script.next()
+        }), realtime: realtime, store: store,
+        timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(50), retryBackoff: [.seconds(66)]),
+        sleep: { duration in
+            if duration == .seconds(99) { try await Task.sleep(for: duration) }
+            else { timers.increment(); await gate.wait() }
+        })
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { session.phase == .ready && timers.value == 1 }
+        session.selectReveal(number: 1)
+        await gate.open()
+        await eventually { session.snapshot?.match.status == .completed }
+        XCTAssertNil(session.selectedRevealNumber)
+        XCTAssertEqual(session.guessDraft, "")
+        let count = fetches.value
+        try await Task.sleep(for: .milliseconds(10))
+        XCTAssertEqual(fetches.value, count)
+        session.leaveToHome()
+        session.resumeSavedMatch()
+        realtime.send(.ready)
+        await eventually { session.phase == .ready && fetches.value == count + 1 }
+        try await Task.sleep(for: .milliseconds(10))
+        XCTAssertEqual(fetches.value, count + 1)
+        session.leaveToHome()
+    }
+
+    func testLowerRevisionIsIgnoredWhileEqualRevisionCanAdvanceCountdownToPlaying() async throws {
+        var countdown = try Phase4LiveFixtures.snapshot("3-round-2-countdown")
+        var playing = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        playing.revision = countdown.revision
+        var stale = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        stale.revision = countdown.revision - 1
+        let calls = LockedCounter()
+        let realtime = RealtimeHub()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: countdown.match.id))
+        countdown.revision = playing.revision
+        let initial = countdown, equal = playing, older = stale
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            switch calls.increment() { case 1: initial; case 2: older; default: equal }
+        }), realtime: realtime, store: store)
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { session.snapshot?.round.state == .countdown }
+        realtime.send(.signal)
+        await eventually { calls.value == 2 }
+        await Task.yield()
+        XCTAssertEqual(session.snapshot?.round, initial.round)
+        realtime.send(.signal)
+        await eventually { session.snapshot?.round.state == .playing }
+        XCTAssertEqual(session.snapshot?.revision, initial.revision)
+        session.leaveToHome()
+    }
+
+    func testDelayedSnapshotCannotReopenHomeOrReplaceResumedPresentation() async throws {
+        let initial = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        let next = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        let script = SnapshotScript(first: initial, later: next)
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id))
+        let realtime = RealtimeHub()
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in try await script.next() }),
+                                  realtime: realtime, store: store)
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { await script.callCount == 1 }
+        session.leaveToHome()
+        session.resumeSavedMatch(); realtime.send(.ready)
+        await eventually { session.snapshot?.round.number == 2 }
+        await script.releaseFirst()
+        await Task.yield()
+        XCTAssertEqual(session.snapshot?.round, next.round)
+        session.leaveToHome()
+        XCTAssertNil(session.snapshot)
+    }
+
+    func testPendingConflictAndRateLimitStayExplicitAcrossAdvanceAndRepeatedReadyEvents() async throws {
+        for denial in [LiveMatchServerError.requestConflict, .rateLimited] {
+            let initial = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+            let next = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+            let intent = LivePendingIntent.guess(matchID: initial.match.id, requestID: UUID(), word: "STONE",
+                                                 roundNumber: 1, clientBuild: 2)
+            let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id, pendingIntent: intent))
+            let realtime = RealtimeHub(), guesses = LockedCounter(), snapshots = LockedCounter()
+            let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+                snapshots.increment() == 1 ? initial : next
+            }, submitTargeted: { _, _, _, _, _ in
+                guesses.increment()
+                throw LiveMatchServiceError.server(denial)
+            }), realtime: realtime, store: store)
+            session.changeAccount(to: UUID()); realtime.send(.ready)
+            await eventually { session.snapshot?.round.number == 1 && !session.isCommandInFlight }
+            realtime.send(.signal)
+            await eventually { session.snapshot?.round.number == 2 }
+            realtime.send(.ready)
+            await eventually { snapshots.value >= 3 }
+            XCTAssertEqual(guesses.value, 1)
+            XCTAssertEqual(session.lastError, .server(denial))
+            XCTAssertEqual(session.pendingIntent, intent)
+            XCTAssertEqual(session.phase, .unavailable)
+            XCTAssertTrue(session.canRetry)
+            XCTAssertTrue(session.isInputLocked)
+            session.retry()
+            await eventually { guesses.value == 2 && !session.isCommandInFlight }
+            XCTAssertEqual(store.storedState.pendingIntent, intent)
+            session.discardPendingGuess()
+            await eventually { session.phase == .ready }
+            XCTAssertNil(store.storedState.pendingIntent)
+            session.leaveToHome()
+        }
+    }
+
+    func testTerminalSnapshotKeepsUncertainReceiptRetryUntilDurablyResolved() async throws {
+        for label in ["3-round-3-reveal", "deletion-active-revealed"] {
+            let final = try Phase4LiveFixtures.snapshot(label)
+            let requestID = UUID()
+            let intent = LivePendingIntent.guess(matchID: final.match.id, requestID: requestID, word: "STONE",
+                                                 roundNumber: 1, clientBuild: 2)
+            let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: final.match.id, pendingIntent: intent))
+            let realtime = RealtimeHub(), attempts = LockedCounter(), fetches = LockedCounter()
+            let gate = AsyncGate()
+            let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+                fetches.increment(); return final
+            }, submitTargeted: { matchID, round, id, word, build in
+                XCTAssertEqual(matchID, final.match.id); XCTAssertEqual(round, 1)
+                XCTAssertEqual(id, requestID); XCTAssertEqual(word, "STONE"); XCTAssertEqual(build, 2)
+                if attempts.increment() == 1 { throw LiveMatchServiceError.unavailable }
+                return Self.receipt()
+            }), realtime: realtime, store: store,
+            timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(50), retryBackoff: [.seconds(66)]),
+            sleep: { duration in
+                if duration == .seconds(99) { try await Task.sleep(for: duration) }
+                else { await gate.wait() }
+            })
+            session.changeAccount(to: UUID()); realtime.send(.ready)
+            await eventually { session.snapshot == final && !session.isCommandInFlight }
+            XCTAssertEqual(session.pendingIntent, intent)
+            await gate.open()
+            await eventually { session.pendingIntent == nil && !session.isCommandInFlight }
+            XCTAssertEqual(attempts.value, 2)
+            XCTAssertNil(store.storedState.pendingIntent)
+            let completedFetches = fetches.value
+            try await Task.sleep(for: .milliseconds(10))
+            XCTAssertEqual(fetches.value, completedFetches)
+            session.leaveToHome()
+        }
+    }
+
+    func testCreateDecisionStaysExplicitAfterHomeResumeAndForeground() async throws {
+        for denial in [LiveMatchServerError.requestConflict, .rateLimited] {
+            let calls = LockedValues<LivePendingIntent>()
+            let store = MemoryLiveRecoveryStore()
+            let session = makeSession(service: LiveServiceMock(createConfigured: { id, count, build in
+                calls.append(.create(requestID: id, roundCount: count, clientBuild: build))
+                throw LiveMatchServiceError.server(denial)
+            }), realtime: nil, store: store)
+            session.changeAccount(to: UUID())
+            session.createMatch(roundCount: 5)
+            await eventually { !session.isCommandInFlight }
+            let original = try XCTUnwrap(session.pendingIntent)
+            session.leaveToHome()
+            session.resumeSavedMatch()
+            session.backgrounded()
+            session.foregrounded()
+            await Task.yield()
+            XCTAssertEqual(calls.values, [original])
+            XCTAssertEqual(session.lastError, .server(denial))
+            XCTAssertEqual(session.phase, .unavailable)
+            XCTAssertTrue(session.canRetry)
+            session.retry()
+            await eventually { calls.values.count == 2 && !session.isCommandInFlight }
+            XCTAssertEqual(calls.values, [original, original])
+            session.discardPendingCreate()
+            XCTAssertNil(store.storedState.pendingIntent)
+            XCTAssertFalse(session.hasSavedMatch)
+        }
+    }
+
+    func testHomeResumeRejectsLowerRevisionBeforeRestoringPresentation() async throws {
+        let current = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        var old = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        old.revision = current.revision - 1
+        let stale = old
+        let calls = LockedCounter()
+        let realtime = RealtimeHub()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            calls.increment() == 2 ? stale : current
+        }), realtime: realtime, store: store)
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { session.snapshot == current }
+        session.leaveToHome()
+        session.resumeSavedMatch(); realtime.send(.ready)
+        await eventually { calls.value == 2 }
+        await Task.yield()
+        XCTAssertNil(session.snapshot, "a resumed view must not restore an earlier round")
+        XCTAssertEqual(session.phase, .recovering)
+        realtime.send(.signal)
+        await eventually { session.snapshot == current }
+        session.leaveToHome()
+    }
+
+    func testResumeAtNewRoundClearsDraftFromPreviouslyPresentedRound() async throws {
+        let first = try Phase4LiveFixtures.snapshot("3-round-1-playing")
+        let next = try Phase4LiveFixtures.snapshot("3-round-2-playing")
+        let calls = LockedCounter()
+        let realtime = RealtimeHub()
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: first.match.id))
+        let session = makeSession(service: LiveServiceMock(
+            submit: { _, _, _ in throw LiveMatchServiceError.server(.wordNotAccepted) },
+            snapshot: { _ in calls.increment() <= 2 ? first : next }
+        ), realtime: realtime, store: store)
+        session.changeAccount(to: UUID()); realtime.send(.ready)
+        await eventually { session.phase == .ready }
+        session.submitGuess("XXXXX")
+        await eventually { calls.value == 2 && !session.isCommandInFlight && session.phase == .ready }
+        XCTAssertEqual(session.guessDraft, "XXXXX")
+        session.leaveToHome()
+        session.resumeSavedMatch(); realtime.send(.ready)
+        await eventually { session.snapshot == next }
+        XCTAssertEqual(session.guessDraft, "")
+        XCTAssertNil(session.lastError)
+        session.leaveToHome()
+    }
+
     private func makeSession(
         service: any LiveMatchServicing,
         realtime: (any LiveMatchRealtimeServicing)?,
@@ -1984,11 +2434,23 @@ private struct LiveServiceMock: LiveMatchServicing {
         throw LiveMatchServiceError.unavailable
     }
 
-    func createMatch(requestID: UUID) async throws -> UUID { try await create(requestID) }
+    var createConfigured: (@Sendable (UUID, Int, Int) async throws -> UUID)?
+    var startTargeted: (@Sendable (UUID, Int) async throws -> UUID)?
+    var submitTargeted: (@Sendable (UUID, Int, UUID, String, Int) async throws -> LiveGuessReceipt)?
+
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
+        if let createConfigured { return try await createConfigured(requestID, roundCount, clientBuild) }
+        return try await create(requestID)
+    }
     func joinMatch(code: String) async throws -> UUID { try await join(code) }
-    func startMatch(id: UUID) async throws -> UUID { try await start(id) }
-    func submitGuess(matchID: UUID, requestID: UUID, guess: String) async throws -> LiveGuessReceipt {
-        try await submit(matchID, requestID, guess)
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID {
+        if let startTargeted { return try await startTargeted(id, roundNumber) }
+        return try await start(id)
+    }
+    func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String,
+                     clientBuild: Int) async throws -> LiveGuessReceipt {
+        if let submitTargeted { return try await submitTargeted(matchID, roundNumber, requestID, guess, clientBuild) }
+        return try await submit(matchID, requestID, guess)
     }
     func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { try await snapshot(matchID) }
 }

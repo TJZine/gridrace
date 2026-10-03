@@ -7,7 +7,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
     private let clientBuild: Int
     private let invoke: Invoke
 
-    init(client: SupabaseClient, clientBuild: Int = 1) {
+    init(client: SupabaseClient, clientBuild: Int = 2) {
         self.clientBuild = clientBuild
         invoke = { function, body in
             try await client.functions.invoke(
@@ -18,15 +18,16 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         }
     }
 
-    init(clientBuild: Int = 1, invoke: @escaping Invoke) {
+    init(clientBuild: Int = 2, invoke: @escaping Invoke) {
         self.clientBuild = clientBuild
         self.invoke = invoke
     }
 
-    func createMatch(requestID: UUID) async throws -> UUID {
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
         try await matchID(
             function: "create-match",
-            request: CreateRequest(clientBuild: clientBuild, requestID: requestID)
+            request: CreateRequest(clientBuild: clientBuild, requestID: requestID,
+                                   roundCount: clientBuild == 1 ? nil : roundCount)
         )
     }
 
@@ -37,10 +38,10 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         )
     }
 
-    func startMatch(id: UUID) async throws -> UUID {
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID {
         let returnedID = try await matchID(
             function: "start-match",
-            request: MatchRequest(clientBuild: clientBuild, matchID: id)
+            request: StartRequest(clientBuild: clientBuild, matchID: id, roundNumber: roundNumber)
         )
         guard returnedID == id else { throw LiveMatchServiceError.invalidResponse }
         return returnedID
@@ -48,15 +49,17 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
 
     func submitGuess(
         matchID: UUID,
+        roundNumber: Int,
         requestID: UUID,
-        guess: String
+        guess: String,
+        clientBuild: Int
     ) async throws -> LiveGuessReceipt {
         let response: GuessResponse = try await command(
             function: "submit-guess",
             request: GuessRequest(
                 clientBuild: clientBuild,
                 matchID: matchID,
-                roundNumber: 1,
+                roundNumber: roundNumber,
                 requestID: requestID,
                 guess: guess
             )
@@ -132,11 +135,11 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
 
     private static func valid(status: Int, for code: LiveMatchServerError) -> Bool {
         switch code {
-        case .invalidGuessFormat: status == 400
+        case .invalidGuessFormat, .invalidMatchConfiguration: status == 400
         case .notAuthenticated: status == 401
         case .notAMatchMember, .notHost: status == 403
         case .matchNotJoinable, .roomFull, .notEnoughPlayers, .roundNotActive,
-             .roundAlreadyFinished, .requestConflict: status == 409
+             .roundAlreadyFinished, .requestConflict, .matchIncomplete: status == 409
         case .roomExpired: status == 410
         case .wordNotAccepted: status == 422
         case .clientUpdateRequired: status == 426
@@ -187,10 +190,11 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         let members = value.members
         let memberIDs = Set(members.map(\.id))
         let seats = members.map(\.seat)
-        guard value.version == 1,
+        guard value.version == 2,
               value.match.mode == "classic_live_v1",
-              value.match.roundCount == 1,
-              value.match.currentRound == 1,
+              [1, 3, 5].contains(value.match.roundCount),
+              (1...value.match.roundCount).contains(value.match.currentRound),
+              value.match.revision > 0,
               value.match.minimumClientBuild > 0,
               (1...2).contains(members.count),
               memberIDs.count == members.count,
@@ -199,150 +203,199 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
               members.filter(\.isSelf).count == 1,
               members.allSatisfy({ !$0.isDeleted || !$0.isSelf }),
               members.allSatisfy({
-                  !$0.isDeleted
-                      || ($0.displayName == "Deleted Player" && $0.avatarSeed == "deleted-player")
+                  !$0.isDeleted || ($0.displayName == "Deleted Player" && $0.avatarSeed == "deleted-player")
               }),
+              members.allSatisfy({ !$0.displayName.isEmpty && !$0.avatarSeed.isEmpty }),
               memberIDs.contains(value.match.creatorMemberID),
               value.match.joinCode.utf8.count == 6,
               value.match.joinCode.utf8.allSatisfy({
                   (65...72).contains($0) || (74...78).contains($0)
                       || (80...90).contains($0) || (50...57).contains($0)
               }),
-              value.round.number == 1
+              value.round.number == value.match.currentRound
         else { throw LiveMatchServiceError.invalidResponse }
 
-        let selfID = members.first(where: \.isSelf)!.id
+        let round = try mapRound(value.round, members: members, serverTime: value.serverTime)
+        let history = try value.revealedRounds.map {
+            guard $0.state == .revealed else { throw LiveMatchServiceError.invalidResponse }
+            return try mapRound($0, members: members, serverTime: value.serverTime)
+        }
+        let revealed = round.state == .revealed
+        let final = value.match.currentRound == value.match.roundCount
+        do {
+            let historyCount = value.match.status == .lobby ? 0
+                : value.match.currentRound - (revealed ? 0 : 1)
+            guard history.count == historyCount,
+                  history.map(\.number) == Array(1..<(historyCount + 1)),
+                  !revealed || history.last == round,
+                  Set(history.compactMap { $0.answer?.lowercased() }).count == history.count
+            else { throw LiveMatchServiceError.invalidResponse }
+            if let firstStart = history.first?.startsAt ?? round.startsAt,
+               let matchStart = value.match.startedAt {
+                guard abs(firstStart.timeIntervalSince(matchStart) - 3) < 0.000_002 else {
+                    throw LiveMatchServiceError.invalidResponse
+                }
+            }
+            try validateStandings(value.standings, history: history, members: members,
+                                  isFinal: value.match.status == .completed)
+        }
+        let deleted = members.contains(where: \.isDeleted)
         switch value.match.status {
         case .lobby:
-            guard value.round.state == .pending,
-                  value.round.players.isEmpty,
-                  value.round.startsAt == nil,
-                  value.round.endsAt == nil,
-                  value.round.completedAt == nil,
-                  value.round.answer == nil
+            guard round.state == .pending, value.match.currentRound == 1, !deleted,
+                  value.match.startedAt == nil, value.match.completedAt == nil,
+                  value.match.terminalReason == nil
             else { throw LiveMatchServiceError.invalidResponse }
-        case .inProgress, .completed:
-            guard members.count == 2,
-                  value.round.players.count == 2,
-                  value.round.players.map(\.memberID) == members.map(\.id),
-                  let startsAt = value.round.startsAt,
-                  let endsAt = value.round.endsAt,
-                  abs(endsAt.timeIntervalSince(startsAt) - 180) < 0.000_001
+        case .inProgress:
+            guard round.state != .pending, !revealed || !final,
+                  value.match.startedAt != nil,
+                  value.match.completedAt == nil,
+                  value.match.terminalReason == nil
+                    ? (!deleted || final)
+                    : (deleted && !final && !revealed)
             else { throw LiveMatchServiceError.invalidResponse }
-
-            let revealed = value.round.state == .revealed
-            guard revealed == (value.match.status == .completed),
-                  revealed || value.round.state == .countdown || value.round.state == .playing,
-                  value.round.state != .countdown || value.serverTime < startsAt,
-                  value.round.state != .playing
-                      || (value.serverTime >= startsAt && value.serverTime < endsAt),
-                  revealed == (value.round.completedAt != nil),
-                  revealed == (value.round.answer != nil),
-                  value.round.answer.map(validWord) ?? !revealed
+        case .incomplete:
+            guard revealed, !final, deleted, value.match.startedAt != nil,
+                  value.match.completedAt == nil, value.match.terminalReason == .accountDeleted
             else { throw LiveMatchServiceError.invalidResponse }
-
-            if value.round.state == .countdown,
-               !value.round.players.allSatisfy({ $0.acceptedGuessCount == 0 }) {
-                throw LiveMatchServiceError.invalidResponse
-            }
-
-            for player in value.round.players {
-                let isSelf = player.memberID == selfID
-                if !revealed && !isSelf {
-                    guard player.board == nil,
-                          player.solveDurationMilliseconds == nil,
-                          player.efficiencyPoints == nil,
-                          player.placement == nil,
-                          validHiddenPlayerState(
-                              player.state,
-                              count: player.acceptedGuessCount
-                          )
-                    else { throw LiveMatchServiceError.invalidResponse }
-                    continue
-                }
-                guard let board = player.board,
-                      validPlayerResult(
-                          state: player.state,
-                          count: player.acceptedGuessCount,
-                          duration: player.solveDurationMilliseconds,
-                          efficiency: player.efficiencyPoints,
-                          placement: player.placement,
-                          revealed: revealed
-                      ),
-                      board.count == player.acceptedGuessCount,
-                      board.enumerated().allSatisfy({ offset, guess in
-                          guess.sequence == offset + 1
-                              && validWord(guess.guess)
-                              && guess.feedback.count == 5
-                              && guess.submittedAt >= startsAt
-                              && guess.submittedAt <= endsAt
-                      }),
-                      player.state != .solved || board.last?.feedback.allSatisfy({ $0 == .correct }) == true,
-                      player.state == .solved || !board.contains(where: {
-                          $0.feedback.allSatisfy { $0 == .correct }
-                      }),
-                      player.state != .solved || !board.dropLast().contains(where: {
-                          $0.feedback.allSatisfy { $0 == .correct }
-                      }),
-                      !revealed || player.state != .solved
-                          || board.last?.guess.lowercased() == value.round.answer?.lowercased()
-                else { throw LiveMatchServiceError.invalidResponse }
-            }
-            if revealed && !value.round.players.allSatisfy({ $0.state.isTerminal }) {
-                throw LiveMatchServiceError.invalidResponse
-            }
-            if let completedAt = value.round.completedAt,
-               completedAt < startsAt {
-                throw LiveMatchServiceError.invalidResponse
-            }
+        case .completed:
+            guard revealed, final, value.match.terminalReason == nil,
+                  value.match.startedAt != nil
+                    && value.match.completedAt == round.completedAt
+            else { throw LiveMatchServiceError.invalidResponse }
         }
 
         return LiveMatchSnapshot(
             serverTime: value.serverTime,
-            match: LiveMatch(
-                id: value.match.id,
-                joinCode: value.match.joinCode,
-                creatorMemberID: value.match.creatorMemberID,
-                status: value.match.status,
-                expiresAt: value.match.expiresAt,
-                minimumClientBuild: value.match.minimumClientBuild
-            ),
+            match: LiveMatch(id: value.match.id, joinCode: value.match.joinCode,
+                             creatorMemberID: value.match.creatorMemberID, status: value.match.status,
+                             expiresAt: value.match.expiresAt, minimumClientBuild: value.match.minimumClientBuild,
+                             roundCount: value.match.roundCount, currentRound: value.match.currentRound,
+                             startedAt: value.match.startedAt, completedAt: value.match.completedAt,
+                             terminalReason: value.match.terminalReason),
             members: members.map {
-                LiveMatchMember(
-                    id: $0.id,
-                    seat: $0.seat,
-                    displayName: $0.displayName,
-                    avatarSeed: $0.avatarSeed,
-                    isSelf: $0.isSelf,
-                    isDeleted: $0.isDeleted
-                )
+                LiveMatchMember(id: $0.id, seat: $0.seat, displayName: $0.displayName,
+                                avatarSeed: $0.avatarSeed, isSelf: $0.isSelf, isDeleted: $0.isDeleted)
             },
-            round: LiveRound(
-                state: value.round.state,
-                startsAt: value.round.startsAt,
-                endsAt: value.round.endsAt,
-                completedAt: value.round.completedAt,
-                answer: value.round.answer,
-                players: value.round.players.map {
-                    LiveRoundPlayer(
-                        memberID: $0.memberID,
-                        state: $0.state,
-                        acceptedGuessCount: $0.acceptedGuessCount,
-                        solveDurationMilliseconds: $0.solveDurationMilliseconds,
-                        efficiencyPoints: $0.efficiencyPoints,
-                        placement: $0.placement,
-                        board: $0.board?.map {
-                            LiveGuess(
-                                sequence: $0.sequence,
-                                word: $0.guess,
-                                feedback: $0.feedback,
-                                submittedAt: $0.submittedAt
-                            )
-                        }
-                    )
-                }
-            )
+            round: round, revision: value.match.revision, revealedRounds: history,
+            standings: value.standings.map {
+                LiveMatchStandings(throughRound: $0.throughRound, isFinal: $0.isFinal,
+                                  players: $0.players.map {
+                    LiveMatchStanding(memberID: $0.memberID, roundsSolved: $0.roundsSolved,
+                                      efficiencyPoints: $0.efficiencyPoints,
+                                      totalSolveDurationMilliseconds: $0.totalSolveDurationMilliseconds,
+                                      placement: $0.placement)
+                })
+            }
         )
+    }
+
+    private static func mapRound(
+        _ round: RoundDTO, members: [MemberDTO], serverTime: Date
+    ) throws -> LiveRound {
+        guard (1...5).contains(round.number) else { throw LiveMatchServiceError.invalidResponse }
+        let revealed = round.state == .revealed
+        if round.state == .pending {
+            guard round.players.isEmpty, round.startsAt == nil, round.endsAt == nil,
+                  round.completedAt == nil, round.answer == nil
+            else { throw LiveMatchServiceError.invalidResponse }
+        } else {
+            guard members.count == 2, round.players.map(\.memberID) == members.map(\.id),
+                  let startsAt = round.startsAt, let endsAt = round.endsAt,
+                  abs(endsAt.timeIntervalSince(startsAt) - 180) < 0.000_002,
+                  round.state != .countdown || serverTime < startsAt,
+                  round.state != .playing || (serverTime >= startsAt && serverTime < endsAt),
+                  revealed == (round.completedAt != nil), revealed == (round.answer != nil),
+                  round.answer.map(validWord) ?? !revealed,
+                  round.state != .countdown || round.players.allSatisfy({
+                      $0.acceptedGuessCount == 0 && ($0.state == .playing || $0.state == .forfeited)
+                  }),
+                  !revealed || round.players.compactMap(\.placement).min() == 1
+            else { throw LiveMatchServiceError.invalidResponse }
+            for (player, member) in zip(round.players, members) {
+                if !revealed && !member.isSelf {
+                    guard player.board == nil, player.solveDurationMilliseconds == nil,
+                          player.efficiencyPoints == nil, player.placement == nil,
+                          validHiddenPlayerState(player.state, count: player.acceptedGuessCount)
+                    else { throw LiveMatchServiceError.invalidResponse }
+                    continue
+                }
+                guard let board = player.board,
+                      validPlayerResult(state: player.state, count: player.acceptedGuessCount,
+                                        duration: player.solveDurationMilliseconds,
+                                        efficiency: player.efficiencyPoints, placement: player.placement,
+                                        revealed: revealed),
+                      board.count == player.acceptedGuessCount,
+                      board.enumerated().allSatisfy({ offset, guess in
+                          guess.sequence == offset + 1 && validWord(guess.guess)
+                              && guess.feedback.count == 5 && guess.submittedAt >= startsAt
+                              && guess.submittedAt < endsAt
+                      }),
+                      player.state != .solved || board.last?.feedback.allSatisfy({ $0 == .correct }) == true,
+                      player.state == .solved || !board.contains(where: { $0.feedback.allSatisfy { $0 == .correct } }),
+                      player.state != .solved || !board.dropLast().contains(where: { $0.feedback.allSatisfy { $0 == .correct } }),
+                      !revealed || player.state != .solved
+                        || board.last?.guess.lowercased() == round.answer?.lowercased()
+                else { throw LiveMatchServiceError.invalidResponse }
+                if let duration = player.solveDurationMilliseconds, let last = board.last {
+                    // SQL floors microseconds. Date uses Double, so allow only its sub-ms precision error.
+                    let milliseconds = last.submittedAt.timeIntervalSince(startsAt) * 1_000
+                    guard milliseconds >= Double(duration) - 0.002,
+                          milliseconds < Double(duration) + 1.002
+                    else { throw LiveMatchServiceError.invalidResponse }
+                }
+            }
+            guard !revealed || round.players.allSatisfy({ $0.state.isTerminal }) else {
+                throw LiveMatchServiceError.invalidResponse
+            }
+            // A deletion can forfeit during countdown; transaction time can also precede
+            // a later lock-wait guess. Completion need not follow start or the last row.
+            if let completed = round.completedAt, completed < startsAt {
+                guard round.players.allSatisfy({ $0.state == .forfeited && $0.acceptedGuessCount == 0 }) else {
+                    throw LiveMatchServiceError.invalidResponse
+                }
+            }
+        }
+        return LiveRound(state: round.state, startsAt: round.startsAt, endsAt: round.endsAt,
+                         completedAt: round.completedAt, answer: round.answer,
+                         players: round.players.map {
+            LiveRoundPlayer(memberID: $0.memberID, state: $0.state,
+                            acceptedGuessCount: $0.acceptedGuessCount,
+                            solveDurationMilliseconds: $0.solveDurationMilliseconds,
+                            efficiencyPoints: $0.efficiencyPoints, placement: $0.placement,
+                            board: $0.board?.map {
+                LiveGuess(sequence: $0.sequence, word: $0.guess, feedback: $0.feedback,
+                          submittedAt: $0.submittedAt)
+            })
+        }, number: round.number)
+    }
+
+    private static func validateStandings(
+        _ standings: StandingsDTO?, history: [LiveRound], members: [MemberDTO], isFinal: Bool
+    ) throws {
+        guard !history.isEmpty else {
+            guard standings == nil else { throw LiveMatchServiceError.invalidResponse }
+            return
+        }
+        guard let standings, standings.throughRound == history.count, standings.isFinal == isFinal,
+              standings.players.map(\.memberID) == members.map(\.id),
+              standings.players.map(\.placement).min() == 1,
+              standings.players.allSatisfy({ (1...2).contains($0.placement) })
+        else { throw LiveMatchServiceError.invalidResponse }
+        for player in standings.players {
+            let results = history.flatMap(\.players).filter { $0.memberID == player.memberID }
+            let solved = results.filter { $0.state == .solved }
+            let durations = solved.compactMap(\.solveDurationMilliseconds)
+            // SUM is floored once by SQL; summing the displayed floors loses up to N-1 ms.
+            let floorSum = durations.reduce(Int64(0)) { $0 + Int64($1) }
+            guard player.roundsSolved == solved.count,
+                  player.efficiencyPoints == results.reduce(0, { $0 + ($1.efficiencyPoints ?? 0) }),
+                  player.totalSolveDurationMilliseconds >= 0,
+                  Int64(player.totalSolveDurationMilliseconds) >= floorSum,
+                  Int64(player.totalSolveDurationMilliseconds) <= floorSum + Int64(max(0, solved.count - 1))
+            else { throw LiveMatchServiceError.invalidResponse }
+        }
+        // Placements are SQL truth, including microsecond differences hidden by displayed ms.
     }
 
     private static func validPlayerResult(
@@ -411,11 +464,13 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
 private struct CreateRequest: Encodable, Sendable {
     let clientBuild: Int
     let requestID: String
-    init(clientBuild: Int, requestID: UUID) {
+    let roundCount: Int?
+    init(clientBuild: Int, requestID: UUID, roundCount: Int?) {
         self.clientBuild = clientBuild
         self.requestID = requestID.uuidString.lowercased()
+        self.roundCount = roundCount
     }
-    enum CodingKeys: String, CodingKey { case clientBuild = "client_build", requestID = "request_id" }
+    enum CodingKeys: String, CodingKey { case clientBuild = "client_build", requestID = "request_id", roundCount = "round_count" }
 }
 
 private struct JoinRequest: Encodable, Sendable {
@@ -432,6 +487,20 @@ private struct MatchRequest: Encodable, Sendable {
         self.matchID = matchID.uuidString.lowercased()
     }
     enum CodingKeys: String, CodingKey { case clientBuild = "client_build", matchID = "match_id" }
+}
+
+private struct StartRequest: Encodable, Sendable {
+    let clientBuild: Int
+    let matchID: String
+    let roundNumber: Int
+    init(clientBuild: Int, matchID: UUID, roundNumber: Int) {
+        self.clientBuild = clientBuild
+        self.matchID = matchID.uuidString.lowercased()
+        self.roundNumber = roundNumber
+    }
+    enum CodingKeys: String, CodingKey {
+        case clientBuild = "client_build", matchID = "match_id", roundNumber = "round_number"
+    }
 }
 
 private struct GuessRequest: Encodable, Sendable {
@@ -505,7 +574,23 @@ private struct SnapshotResponse: Decodable, Sendable {
     let match: MatchDTO
     let members: [MemberDTO]
     let round: RoundDTO
-    enum CodingKeys: String, CodingKey { case version, match, members, round; case serverTime = "server_time" }
+    let revealedRounds: [RoundDTO]
+    let standings: StandingsDTO?
+    enum CodingKeys: String, CodingKey {
+        case version, match, members, round, standings
+        case serverTime = "server_time", revealedRounds = "revealed_rounds"
+    }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        version = try values.decode(Int.self, forKey: .version)
+        guard version == 2 else { throw LiveMatchServiceError.invalidResponse }
+        serverTime = try values.decode(Date.self, forKey: .serverTime)
+        match = try values.decode(MatchDTO.self, forKey: .match)
+        members = try values.decode([MemberDTO].self, forKey: .members)
+        round = try values.decode(RoundDTO.self, forKey: .round)
+        revealedRounds = try values.decode([RoundDTO].self, forKey: .revealedRounds)
+        standings = try values.decodeRequiredIfPresent(StandingsDTO.self, forKey: .standings)
+    }
 }
 
 private struct MatchDTO: Decodable, Sendable {
@@ -518,6 +603,10 @@ private struct MatchDTO: Decodable, Sendable {
     let status: LiveMatchStatus
     let expiresAt: Date
     let minimumClientBuild: Int
+    let revision: Int64
+    let startedAt: Date?
+    let completedAt: Date?
+    let terminalReason: LiveMatchTerminalReason?
     enum CodingKeys: String, CodingKey {
         case id, mode, status
         case joinCode = "join_code"
@@ -526,6 +615,43 @@ private struct MatchDTO: Decodable, Sendable {
         case currentRound = "current_round"
         case expiresAt = "expires_at"
         case minimumClientBuild = "minimum_client_build"
+        case revision, startedAt = "started_at", completedAt = "completed_at", terminalReason = "terminal_reason"
+    }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        joinCode = try values.decode(String.self, forKey: .joinCode)
+        creatorMemberID = try values.decode(UUID.self, forKey: .creatorMemberID)
+        mode = try values.decode(String.self, forKey: .mode)
+        roundCount = try values.decode(Int.self, forKey: .roundCount)
+        currentRound = try values.decode(Int.self, forKey: .currentRound)
+        status = try values.decode(LiveMatchStatus.self, forKey: .status)
+        expiresAt = try values.decode(Date.self, forKey: .expiresAt)
+        minimumClientBuild = try values.decode(Int.self, forKey: .minimumClientBuild)
+        revision = try values.decode(Int64.self, forKey: .revision)
+        startedAt = try values.decodeRequiredIfPresent(Date.self, forKey: .startedAt)
+        completedAt = try values.decodeRequiredIfPresent(Date.self, forKey: .completedAt)
+        terminalReason = try values.decodeRequiredIfPresent(LiveMatchTerminalReason.self, forKey: .terminalReason)
+    }
+}
+
+private struct StandingsDTO: Decodable, Sendable {
+    let throughRound: Int
+    let isFinal: Bool
+    let players: [StandingDTO]
+    enum CodingKeys: String, CodingKey {
+        case players, throughRound = "through_round", isFinal = "is_final"
+    }
+}
+private struct StandingDTO: Decodable, Sendable {
+    let memberID: UUID
+    let roundsSolved: Int
+    let efficiencyPoints: Int
+    let totalSolveDurationMilliseconds: Int
+    let placement: Int
+    enum CodingKeys: String, CodingKey {
+        case placement, memberID = "member_id", roundsSolved = "rounds_solved"
+        case efficiencyPoints = "efficiency_points", totalSolveDurationMilliseconds = "total_solve_duration_ms"
     }
 }
 
@@ -623,3 +749,5 @@ private extension KeyedDecodingContainer {
 extension LiveMatchStatus: Decodable {}
 extension LiveRoundState: Decodable {}
 extension LivePlayerState: Decodable {}
+
+extension LiveMatchTerminalReason: Decodable {}

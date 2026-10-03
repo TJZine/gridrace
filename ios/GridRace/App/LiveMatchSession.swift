@@ -49,6 +49,9 @@ final class LiveMatchSession {
     private var recovery = LiveRecoveryState()
     private var generation = 0
     private var commandEpoch = 0
+    private var presentationGeneration = 0
+    private var pendingStart: (matchID: UUID, roundNumber: Int)?
+    private(set) var selectedRevealNumber: Int?
     private var isForeground = true
     private var isOpen = false
     // A durable pointer is resumable, but is not necessarily the current Join target.
@@ -56,6 +59,7 @@ final class LiveMatchSession {
     private var trailingRefresh = false
     private var failureCount = 0
     private var snapshotUptime: TimeInterval?
+    private var acceptedRevision: (matchID: UUID, revision: Int64, roundNumber: Int)?
     private var commandTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
     private var realtimeTask: Task<Void, Never>?
@@ -74,7 +78,12 @@ final class LiveMatchSession {
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
     var canRetry: Bool {
         guard canBeginCommand, phase != .needsSignIn, isForeground, isOpen else { return false }
-        return recovery.pendingIntent != nil || (recovery.matchID != nil && shouldRecover)
+        return recovery.pendingIntent != nil || pendingStart != nil
+            || (recovery.matchID != nil && shouldRecover)
+    }
+    private var hasPendingDecision: Bool {
+        recovery.pendingIntent != nil
+            && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
     }
     var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
     var canDiscardRecovery: Bool { canRetryRecoveryStorage }
@@ -177,9 +186,9 @@ final class LiveMatchSession {
         }
     }
 
-    func createMatch() {
+    func createMatch(roundCount: Int = 3) {
         guard canBeginCommand, recovery.pendingIntent == nil else { return }
-        let intent = LivePendingIntent.create(requestID: makeUUID())
+        let intent = LivePendingIntent.create(requestID: makeUUID(), roundCount: roundCount, clientBuild: 2)
         let previous = recovery
         recovery = LiveRecoveryState(pendingIntent: intent)
         guard saveRecovery() else {
@@ -188,6 +197,12 @@ final class LiveMatchSession {
         }
         isOpen = true
         isRecoverySelected = false
+        snapshot = nil
+        snapshotUptime = nil
+        guessDraft = ""
+        selectedRevealNumber = nil
+        pendingStart = nil
+        presentationGeneration += 1
         cancelMatchTasks()
         startCommand { [weak self] in await self?.recoverPendingIntent() }
     }
@@ -199,6 +214,10 @@ final class LiveMatchSession {
         isRecoverySelected = false
         snapshot = nil
         snapshotUptime = nil
+        guessDraft = ""
+        selectedRevealNumber = nil
+        pendingStart = nil
+        presentationGeneration += 1
         cancelMatchTasks()
         beginCommand()
         commandTask = Task { [weak self] in
@@ -217,21 +236,58 @@ final class LiveMatchSession {
     }
 
     func startMatch() {
-        guard canBeginCommand, let matchID = recovery.matchID, let service else { return }
+        guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil,
+              isOpen, isForeground, let snapshot,
+              snapshot.match.status == .lobby || (snapshot.match.status == .inProgress
+                && snapshot.round.state == .revealed && snapshot.match.currentRound < snapshot.match.roundCount),
+              snapshot.match.terminalReason == nil
+        else { return }
+        let target = snapshot.round.state == .pending ? 1 : snapshot.match.currentRound + 1
+        pendingStart = (snapshot.match.id, target)
+        performStart()
+    }
+
+    private func performStart() {
+        guard let target = pendingStart, let service else { return }
         let accountGeneration = generation
+        let presentation = presentationGeneration
         beginCommand()
         commandTask = Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await request { try await service.startMatch(id: matchID) }
+                _ = try await request {
+                    try await service.startMatch(id: target.matchID, roundNumber: target.roundNumber)
+                }
+                guard isCurrent(accountGeneration) else { return }
+                pendingStart = nil
             } catch {
                 guard isCurrent(accountGeneration) else { return }
-                handleCommandError(error, uncertainIntent: false)
+                let mapped = map(error)
+                if mapped != .unavailable && mapped != .invalidResponse
+                    && mapped != .server(.internalError) && mapped != .server(.notAuthenticated) {
+                    pendingStart = nil
+                }
+                if presentation == presentationGeneration {
+                    handleCommandError(error, uncertainIntent: true)
+                }
             }
             guard isCurrent(accountGeneration) else { return }
             finishCommand(accountGeneration)
             requestRefresh()
         }
+    }
+
+    var displayedReveal: LiveRound? {
+        guard let snapshot else { return nil }
+        if let selectedRevealNumber {
+            return snapshot.revealedRounds.first { $0.number == selectedRevealNumber }
+        }
+        return snapshot.round.state == .revealed ? snapshot.round : nil
+    }
+
+    func selectReveal(number: Int?) {
+        guard number == nil || snapshot?.revealedRounds.contains(where: { $0.number == number }) == true else { return }
+        selectedRevealNumber = number
     }
 
     func submitGuess(_ word: String) {
@@ -243,7 +299,9 @@ final class LiveMatchSession {
         let intent = LivePendingIntent.guess(
             matchID: matchID,
             requestID: makeUUID(),
-            word: word
+            word: word,
+            roundNumber: snapshot!.match.currentRound,
+            clientBuild: 2
         )
         guessDraft = word
         guard persistPending(intent) else { return }
@@ -264,6 +322,8 @@ final class LiveMatchSession {
         lastError = nil
         if recovery.pendingIntent != nil {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
+        } else if pendingStart != nil {
+            performStart()
         } else if let matchID = recovery.matchID {
             phase = .recovering
             startRealtime(matchID: matchID)
@@ -302,6 +362,8 @@ final class LiveMatchSession {
     }
 
     func leaveToHome() {
+        presentationGeneration += 1
+        selectedRevealNumber = nil
         isOpen = false
         isRecoverySelected = false
         snapshot = nil
@@ -312,6 +374,7 @@ final class LiveMatchSession {
 
     func resumeSavedMatch() {
         guard phase != .storageUnavailable, hasSavedMatch else { return }
+        presentationGeneration += 1
         isOpen = true
         // While Join is unresolved, Resume opens its eventual result, not the old pointer.
         if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
@@ -322,6 +385,7 @@ final class LiveMatchSession {
     func foregrounded() {
         guard !isForeground else { return }
         isForeground = true
+        presentationGeneration += 1
         guard isOpen else { return }
         beginRecovery()
     }
@@ -329,6 +393,7 @@ final class LiveMatchSession {
     func backgrounded() {
         guard isForeground else { return }
         isForeground = false
+        presentationGeneration += 1
         fetchTask?.cancel()
         fetchTask = nil
         trailingRefresh = false
@@ -353,16 +418,19 @@ final class LiveMatchSession {
         if recovery.pendingIntent != nil {
             if let matchID = recovery.matchID {
                 startRealtime(matchID: matchID)
+            } else if hasPendingDecision {
+                phase = .unavailable
             } else if !isCommandInFlight {
                 startCommand { [weak self] in await self?.recoverPendingIntent() }
             }
         } else if let matchID = recovery.matchID {
-            startRealtime(matchID: matchID)
+            if shouldRecover { startRealtime(matchID: matchID) } else { requestRefresh() }
         }
     }
 
     private func open(matchID: UUID) {
         guard isOpen else { return }
+        presentationGeneration += 1
         cancelMatchTasks()
         isRecoverySelected = true
         snapshot = nil
@@ -380,8 +448,11 @@ final class LiveMatchSession {
         realtimeTask?.cancel()
         realtimeTask = nil
         let accountGeneration = generation
+        let presentation = presentationGeneration
         guard let realtime else {
-            requestRefresh()
+            if recovery.pendingIntent != nil, !hasPendingDecision, !isCommandInFlight {
+                startCommand { [weak self] in await self?.recoverPendingIntent() }
+            } else { requestRefresh() }
             return
         }
         let events = realtime.events(matchID: matchID)
@@ -389,13 +460,14 @@ final class LiveMatchSession {
             guard let self else { return }
             do {
                 for try await event in events {
-                    guard isCurrent(accountGeneration), recovery.matchID == matchID else { return }
+                    guard isCurrent(accountGeneration), presentation == presentationGeneration,
+                          isForeground, isOpen, recovery.matchID == matchID else { return }
                     guard phase != .storageUnavailable else { continue }
                     switch event {
                     case .ready:
                         realtimeFailureCount = 0
                         phase = .recovering
-                        if recovery.pendingIntent != nil, !isCommandInFlight {
+                        if recovery.pendingIntent != nil, !hasPendingDecision, !isCommandInFlight {
                             startCommand { [weak self] in await self?.recoverPendingIntent() }
                         } else {
                             requestRefresh()
@@ -406,11 +478,11 @@ final class LiveMatchSession {
                         if phase == .ready { phase = .recovering }
                     }
                 }
-                guard isCurrent(accountGeneration) else { return }
+                guard isCurrent(accountGeneration), presentation == presentationGeneration else { return }
                 requestRefresh()
                 scheduleRealtimeRestart(matchID: matchID, accountGeneration: accountGeneration)
             } catch {
-                guard isCurrent(accountGeneration) else { return }
+                guard isCurrent(accountGeneration), presentation == presentationGeneration else { return }
                 requestRefresh()
                 scheduleRealtimeRestart(matchID: matchID, accountGeneration: accountGeneration)
             }
@@ -419,6 +491,7 @@ final class LiveMatchSession {
 
     private func scheduleRealtimeRestart(matchID: UUID, accountGeneration: Int) {
         guard shouldRecover else { return }
+        let presentation = presentationGeneration
         realtimeFailureCount += 1
         let index = min(realtimeFailureCount - 1, timing.retryBackoff.count - 1)
         let delay = timing.retryBackoff[index]
@@ -426,7 +499,8 @@ final class LiveMatchSession {
         realtimeRetryTask = Task { [weak self] in
             guard let self else { return }
             do { try await sleep(delay) } catch { return }
-            guard isCurrent(accountGeneration), recovery.matchID == matchID, shouldRecover else {
+            guard isCurrent(accountGeneration), presentation == presentationGeneration,
+                  recovery.matchID == matchID, shouldRecover else {
                 return
             }
             startRealtime(matchID: matchID)
@@ -461,21 +535,24 @@ final class LiveMatchSession {
     private func recoverPendingIntent() async {
         guard let intent = recovery.pendingIntent, let service else { return }
         let accountGeneration = generation
+        let presentation = presentationGeneration
         do {
             switch intent {
-            case .create(let requestID):
+            case .create(let requestID, let count, let build):
                 let matchID = try await request {
-                    try await service.createMatch(requestID: requestID)
+                    try await service.createMatch(requestID: requestID, roundCount: count, clientBuild: build)
                 }
                 guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
                 try saveResolvedMatch(matchID)
                 open(matchID: matchID)
-            case .guess(let matchID, let requestID, let word):
+            case .guess(let matchID, let requestID, let word, let round, let build):
                 _ = try await request {
                     try await service.submitGuess(
                         matchID: matchID,
+                        roundNumber: round,
                         requestID: requestID,
-                        guess: word
+                        guess: word,
+                        clientBuild: build
                     )
                 }
                 guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
@@ -485,12 +562,13 @@ final class LiveMatchSession {
                     recovery = previous
                     return
                 }
-                guessDraft = ""
+                if presentation == presentationGeneration,
+                   snapshot?.round.number == round { guessDraft = "" }
                 requestRefresh()
             }
         } catch {
             guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
-            handlePendingError(error, intent: intent)
+            handlePendingError(error, intent: intent, presentation: presentation)
         }
     }
 
@@ -502,42 +580,59 @@ final class LiveMatchSession {
             return
         }
         let accountGeneration = generation
+        let presentation = presentationGeneration
         fetchTask = Task { [weak self] in
             guard let self else { return }
             repeat {
                 trailingRefresh = false
-                await fetchSnapshot(accountGeneration: accountGeneration)
+                await fetchSnapshot(accountGeneration: accountGeneration, presentation: presentation)
             } while isCurrent(accountGeneration)
+                && presentation == presentationGeneration
+                && isOpen
                 && phase != .storageUnavailable
                 && trailingRefresh
                 && !isCommandInFlight
                 && isForeground
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, presentation == presentationGeneration else { return }
             fetchTask = nil
         }
     }
 
-    private func fetchSnapshot(accountGeneration: Int) async {
+    private func fetchSnapshot(accountGeneration: Int, presentation: Int) async {
         guard let matchID = recovery.matchID, let service else { return }
         let responseEpoch = commandEpoch
         do {
             let received = try await request { try await service.snapshot(matchID: matchID) }
-            guard isCurrent(accountGeneration),
+            guard isCurrent(accountGeneration), presentation == presentationGeneration, isForeground, isOpen,
                   phase != .storageUnavailable,
                   responseEpoch == commandEpoch,
                   recovery.matchID == matchID
             else { return }
+            if let acceptedRevision, acceptedRevision.matchID == received.match.id,
+               received.revision < acceptedRevision.revision {
+                if snapshot == nil { scheduleRetry(recoverPending: false) }
+                else { scheduleNextRefresh() }
+                return
+            }
+            if let acceptedRevision, acceptedRevision.matchID != received.match.id
+                || acceptedRevision.roundNumber != received.round.number {
+                guessDraft = ""
+                selectedRevealNumber = nil
+                if !hasPendingDecision { lastError = nil }
+            }
             snapshot = received
+            acceptedRevision = (received.match.id, received.revision, received.round.number)
             snapshotUptime = uptime()
-            let preservesPendingDecision = recovery.pendingIntent != nil
-                && (lastError == .server(.requestConflict)
-                    || lastError == .server(.rateLimited))
+            if let target = pendingStart, received.match.currentRound >= target.roundNumber,
+               received.round.state != .pending { pendingStart = nil }
+            let preservesPendingDecision = hasPendingDecision
             phase = preservesPendingDecision ? .unavailable : .ready
             if !preservesPendingDecision { lastError = nil }
             failureCount = 0
             scheduleNextRefresh()
         } catch {
-            guard isCurrent(accountGeneration), responseEpoch == commandEpoch else { return }
+            guard isCurrent(accountGeneration), presentation == presentationGeneration,
+                  isForeground, isOpen, responseEpoch == commandEpoch else { return }
             handleSnapshotError(error)
         }
     }
@@ -575,20 +670,27 @@ final class LiveMatchSession {
         }
     }
 
-    private func handlePendingError(_ error: Error, intent: LivePendingIntent) {
+    private func handlePendingError(_ error: Error, intent: LivePendingIntent, presentation: Int) {
         guard phase != .storageUnavailable else { return }
         let mapped = map(error)
-        lastError = mapped
+        let isCurrentRound: Bool
+        if case .guess(_, _, _, let round, _) = intent {
+            isCurrentRound = snapshot == nil || snapshot?.round.number == round
+        } else { isCurrentRound = true }
+        let canPresent = presentation == presentationGeneration && isOpen && isCurrentRound
+        if canPresent { lastError = mapped }
         switch mapped {
         case .unavailable, .invalidResponse, .server(.internalError):
             phase = .unavailable
             scheduleRetry(recoverPending: true)
         case .server(.rateLimited), .server(.requestConflict):
+            // This decision belongs to the original durable intent, even after round advance.
+            lastError = mapped
             phase = .unavailable
         case .server(.notAuthenticated):
             phase = .needsSignIn
         default:
-            if case .guess(_, _, let word) = intent { guessDraft = word }
+            if canPresent, case .guess(_, _, let word, _, _) = intent { guessDraft = word }
             let previous = recovery
             recovery.pendingIntent = nil
             guard saveRecovery() else {
@@ -598,6 +700,7 @@ final class LiveMatchSession {
             phase = .unavailable
             if recovery.matchID != nil { requestRefresh() }
         }
+        if !isOpen { phase = .inactive }
     }
 
     private func handleCommandError(_ error: Error, uncertainIntent: Bool) {
@@ -617,8 +720,7 @@ final class LiveMatchSession {
     private func handleSnapshotError(_ error: Error) {
         guard phase != .storageUnavailable else { return }
         let mapped = map(error)
-        let preservesPendingDecision = recovery.pendingIntent != nil
-            && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
+        let preservesPendingDecision = hasPendingDecision
         if !preservesPendingDecision { lastError = mapped }
         switch mapped {
         case .server(.notAMatchMember), .server(.roomExpired):
@@ -657,7 +759,7 @@ final class LiveMatchSession {
             let seconds = max(0, deadline.timeIntervalSince(displayedServerTime))
             delay = min(delay, .seconds(seconds))
         }
-        scheduleTimer(delay: delay, recoverPending: false)
+        scheduleTimer(delay: delay, recoverPending: recovery.pendingIntent != nil && !hasPendingDecision)
     }
 
     private func scheduleRetry(recoverPending: Bool) {
@@ -670,11 +772,12 @@ final class LiveMatchSession {
     private func scheduleTimer(delay: Duration, recoverPending: Bool) {
         recoveryTimer?.cancel()
         let accountGeneration = generation
+        let presentation = presentationGeneration
         recoveryTimer = Task { [weak self] in
             guard let self else { return }
             do { try await sleep(delay) } catch { return }
-            guard isCurrent(accountGeneration), shouldRecover else { return }
-            if recoverPending, recovery.pendingIntent != nil, !isCommandInFlight {
+            guard isCurrent(accountGeneration), presentation == presentationGeneration, shouldRecover else { return }
+            if recoverPending, recovery.pendingIntent != nil, !hasPendingDecision, !isCommandInFlight {
                 startCommand { [weak self] in await self?.recoverPendingIntent() }
             } else {
                 requestRefresh()
@@ -686,7 +789,8 @@ final class LiveMatchSession {
         guard isForeground, isOpen, accountID != nil, phase != .storageUnavailable,
               isRecoverySelected || recovery.pendingIntent != nil else { return false }
         guard let snapshot else { return true }
-        if snapshot.match.status == .completed || snapshot.round.state == .revealed { return false }
+        if recovery.pendingIntent != nil { return true }
+        if snapshot.match.status == .completed || snapshot.match.status == .incomplete { return false }
         return true
     }
 
@@ -730,6 +834,7 @@ final class LiveMatchSession {
             return
         }
         recovery = LiveRecoveryState()
+        acceptedRevision = nil
         snapshot = nil
         snapshotUptime = nil
         isOpen = false
@@ -761,6 +866,10 @@ final class LiveMatchSession {
             let store = try storeFactory(accountID)
             self.store = store
             recovery = try store.load()
+            if recovery.formatVersion == 1 {
+                recovery.formatVersion = 2
+                try store.save(recovery)
+            }
             phase = .inactive
             guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
             isOpen = true
@@ -774,6 +883,9 @@ final class LiveMatchSession {
 
     private func resetRuntime() {
         generation += 1
+        presentationGeneration += 1
+        pendingStart = nil
+        selectedRevealNumber = nil
         commandEpoch += 1
         cancelTasks()
         store = nil
@@ -781,6 +893,7 @@ final class LiveMatchSession {
         snapshot = nil
         snapshotUptime = nil
         guessDraft = ""
+        acceptedRevision = nil
         lastError = nil
         phase = .inactive
         isCommandInFlight = false

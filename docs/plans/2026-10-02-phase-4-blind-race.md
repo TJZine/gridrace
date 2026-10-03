@@ -2,7 +2,7 @@ Status: Active
 Scope: GridRace Phase 4 private two-player multi-round Blind Race
 Owner: GridRace Phase 4 kickoff controller, 01a0fc7c-88b3-7f80-9631-504b4baffc45
 Started: 2026-10-02
-Last updated: 2026-10-02
+Last updated: 2026-10-03
 
 # Phase 4 Blind Race
 
@@ -20,10 +20,19 @@ controller traced both, accepted them and corrected the contract matrix and acco
 test lease below. Targeted planning closure is complete; there is no unresolved
 material product or contract choice. The accepted-plan checkpoint is
 `3a01d9ab7772dbfa158d7ffcba2df13b7958694c`, committed before product writes.
-P4-B returned its completed backend/Edge unit and released all writes/processes.
-Controller source/preservation audit and independent backend verification passed.
-Swift C/I, UI, independent-client product proof and final review remain
-required. This plan stays Active.
+P4-B backend checkpoint is `ba65af9c41c1a940758010a39d7038ef81a3225e`. Worker
+leases/processes are released, controller audit and independent backend proof
+passed, and all 21 owned files were committed with six unrelated files preserved.
+Controller prepared build-2 account/live composition defaults and Debug/Staging/
+Release app build settings for the integrated P4-C/I checkpoint. First P4-C
+returned BLOCKED_PARTIAL after an automatic missing-transitive-pin lockfile change.
+Controller adjudicated that concrete requirement and proved frozen native package
+resolution. After the human resumed on 2026-10-03, fresh P4-C3 finished the
+preserved client seam, proved latest focused/full/build gates and released all
+leases. Controller source audit, exact fixture/preservation inspection and independent
+87/87 focused proof passed. P4-C/I is accepted for checkpoint; substantive UI,
+real independent-client product proof and final review remain required. This plan
+stays Active.
 
 ## Repository snapshot and authority
 
@@ -92,6 +101,7 @@ Database canonical: match configuration/current/status/block reason/revision, im
 
 Use existing POST/data/error envelopes, 2048-byte exact-key validation, authentication and safe typed errors.
 
+- Current Swift Join/Start/snapshot use the current build (2 by default) and require snapshot version 2, including legacy floor-1 rooms. Legacy create/guess intent replay uses explicit original build1 arguments; that does not authorize accepting v1 snapshots in the current client. No parallel Swift v1 mapper is needed.
 - New current app build 2; CURRENT_PROJECT_VERSION = 2 in Debug/Staging/Release, with SupabaseAccountService/SupabaseLiveMatchService request values synchronized. Existing matches remain floor 1; new build-2 creations have floor 2, including one-round. Keep mode classic_live_v1; snapshot version changes independently to 2.
 - build >= 2 create-match: {client_build, request_id, round_count}, round_count exactly integer 1/3/5; no implicit API default (UI defaults 3). Return {match_id}. Receipt compares actor+UUID and original build+count; duplicate resolves before quota, including started/completed/expired room. Changed payload is request_conflict. Reuse account advisory serialization.
 - build >= 2 start-match: {client_build, match_id, round_number}, integer 1...5. Return existing {match_id}; receipt truth is the target's persisted start, so no extra request UUID/table. Authorize active profile, build, membership and creator before any success. Lock match, target/prior round as applicable. If target has already started, success without writes even if it is revealed, a later round is current, or match is final. If not started: target 1 requires full unexpired lobby; target current_round+1 requires current revealed, within configured count and accepted D4 guard. All other targets -> round_not_active; blocked not-yet-started target -> match_incomplete. A captured target is never replaced by current+1 during retry. Concurrent target N starts once and shares timestamps/answer. New first-start timestamps use one transaction time; only first Start sets match.started_at.
@@ -224,7 +234,7 @@ Product writes require independent plan review/adjudication and controller accep
 | P4-PR / controller acceptance | Reviewer repository READ ONLY. Controller writes docs/plans/2026-10-02-phase-4-blind-race.md, docs/live-api-contract.md, docs/DECISIONS.md, docs/TODO.md, docs/NOW.md | D3/D4 recorded; freeze full contract/matrix, adjudicate one independent plan review, commit accepted plan before product writes. Authority owner cannot be delegated. |
 | P4-B backend/Edge | supabase/migrations/202610020001_blind_race_multiround.sql; supabase/tests/database/blind_race_multiround.sql; supabase/functions/_shared/command.ts and command_test.ts; create-match/index.ts and index_test.ts; start-match/index.ts and index_test.ts; submit-guess/index.ts and index_test.ts; match-snapshot/index_test.ts; supabase/tests/integration/live_slice_test.ts (all function paths under supabase/functions/) | Accepted-plan commit and sole database/process lease. Existing legacy tests retained. Deliver forward/reset/RLS/secrecy/scoring/Start/receipt/deletion/lock proof and captured real v2 fixtures. Edge unchanged Join/delete handlers reused; stop before expanding lease if their behavior needs code changes. Controller integrates backend before Swift. |
 | P4-C Swift contract/session/storage | ios/GridRace/App/LiveMatch.swift, SupabaseLiveMatchService.swift, LiveMatchRecoveryStore.swift, LiveMatchSession.swift; ios/GridRace/App/LiveMatchViews.swift (only new error-case exhaustiveness/compatibility needed to keep this package buildable); ios/GridRaceTests/LiveMatchTests.swift, LiveMatchSessionTests.swift, LiveMatchViewTests.swift, LiveMatchIntegrationTests.swift; ios/GridRaceTests/AccountTests.swift (only recovery fixture/buildability adaptation and v1/v2 sign-out/deletion/account-isolation cleanup proof) | Backend contract/security checkpoint, captured fixtures. LiveMatchViewTests/LiveMatchIntegrationTests and the view error mapping are only protocol/fixture/exhaustiveness adaptation for buildability in this package; substantive UI/integration behavior gets later leases. Session createMatch retains a default-3 entry until P4-U supplies the explicit selector value; transport protocol callers are adapted inside this lease. Prove v1 migration, v2 validation, every transition/pending/delayed/lifecycle/storage/account boundary and existing repairs. |
-| P4-I controller composition | ios/GridRace/App/SupabaseAccountService.swift; ios/GridRace/App/DailyAccountCoordinator.swift only if necessary; ios/GridRace.xcodeproj/project.pbxproj | Serialized with P4-C integration: build2 composition and target settings; adjust project only if required. No new file registration/dependency expected. Controller owns shared assembly, workers return necessary changes as evidence. |
+| P4-I controller composition | ios/GridRace/App/SupabaseAccountService.swift; ios/GridRace/App/DailyAccountCoordinator.swift only if necessary; ios/GridRace.xcodeproj/project.pbxproj; ios/GridRace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved (only adjudicated missing swift-issue-reporting pin) | Serialized with P4-C integration: build2 composition and target settings; adjust project only if required. No new file registration/dependency expected. Controller owns shared assembly, workers return necessary changes as evidence. |
 | P4-U UI | ios/GridRace/App/DailyViews.swift (only live Create selector/action and related live entry presentation); ios/GridRace/App/LiveMatchViews.swift; ios/GridRaceTests/LiveMatchViewTests.swift | Agreed D3/D4 plus integrated client contracts. Reuse existing UI/reveal; add picker, labels, standings, Start next, prior reveals and incomplete/final routes. Focused tests and accessibility inspection; no Daily redesign. |
 | P4-V integration/proof | scripts/run_live_match_integration.sh; ios/GridRaceTests/LiveMatchIntegrationTests.swift; supabase/tests/integration/live_slice_test.ts | Integrated B/C/I/U, released earlier leases. Extend existing independent two-client product/Cron/relaunch harness for all counts, nonfinal boundaries, secrecy and pending retries. Controller sole database/simulator process coordinator runs full gates; mocks supplement. Controller adds proved host/candidate command to runbook only after success. |
 | P4-R final review | Repository READ ONLY | One fresh independent reviewer over integrated owned diff/contracts/proof/risk. Findings require reproduction or concrete invariant trace; controller records disposition. |
@@ -338,7 +348,16 @@ Planner and P4-PR read-only leases released; neither started owned processes. P4
 worker `01a0fdd9-3876-7cf3-8c85-bef9083a6745` returned its single callback and released
 all file/database/gateway leases, with no later writes. Controller independent local backend proof is complete and its database/gateway
 processes are stopped. P4-C next receives the exact client/simulator lease after
-the backend checkpoint and controller P4-I preparation. Worker and
+backend checkpoint `ba65af9` and controller P4-I preparation. Controller prepared
+SupabaseAccountService defaults and project app build numbers. P4-C worker
+`01a0fdff-16ca-74e1-9c2b-d9edf00813ed` returned one BLOCKED_PARTIAL callback and
+released all file/process leases. Controller now retains its partial work, the
+adjudicated missing transitive lock pin and tracking changes for C/I integration.
+P4-C2 released its ten-file/process lease on the human pause. Fresh P4-C3
+`01a1005b-19f3-7133-8101-ca18dcf11590` returned its single completion callback
+and released all ten file and Swift/simulator leases. Controller independent
+focused verification exited successfully; no process remains. P4-U next receives
+only the agreed three-file UI lease. Composition/contracts stay protected. Worker and
 reviewer packets explicitly authorize exactly one callback to this controller after
 finishing all owned processes and releasing leases; no later writes. Callback must
 include RESULT, FILES, PROOF, ASSUMPTIONS, BLOCKERS and HEAD/status even when blocked
@@ -436,16 +455,129 @@ Docker29.8. No pins/dependencies changed. Swift/Xcode proof is still pending.
 Controller verified all six unrelated byte baselines and empty index at transfer;
 worker leases/processes were released before callback. No remote or release action.
 
+## P4-C partial handoff and controller adjudication
+
+First P4-C worker `01a0fdff-16ca-74e1-9c2b-d9edf00813ed` stopped with
+BLOCKED_PARTIAL and released all 10 file and simulator-process leases. Eight
+leased files changed (1,077 added/201 removed lines), no Git/tracking write.
+AccountTests and LiveMatchViewTests are untouched. Xcode27/iOS26.5 focused run
+compiled, executed65/passed64/failed1: requestConflict was cleared by the initial
+snapshot. A correction and 23 actual v2 fixture literals plus tests were added
+AFTER the run and are uncompiled/unexecuted. Full suite/clean Debug are NOT RUN;
+none of this client seam is accepted yet. Result and exact hashes/commands are
+`/tmp/gridrace-phase4-client-result.json`, copied to automation
+`client-partial-result.json`; focused log is
+`/tmp/gridrace-phase4-client-focused.log`. Controller independently verified
+all returned/previous protected inputs, HEAD/index and six unrelated hashes.
+No owned test/build process remains; no database/remote operation occurred.
+
+Native Xcode resolution automatically added outside-lease Package.resolved pin
+swift-issue-reporting2.1.1 at75b000cea2ca6d7527a57e1b9cc0bdf21a9abe9f. Controller
+ACCEPTS retaining only that missing transitive pin, a present dependency requirement:
+clean exact locked swift-clocks82440fa and xctest-dynamic-overlayd9308ad manifests
+both require/use IssueReporting from2.1.0. Original pins, originHash, project root
+Supabase declaration and package manifests are unchanged. The added checkout is
+clean/exact75b000c, MIT, iOS13 minimum within app18; no root dependency or existing
+pin upgrade is introduced. This is controller-owned P4-I lockfile repair, not a
+worker-expanded lease. Scope excludes dependencies without a concrete need; this
+trace supplies the need. No material human product/UX decision is reopened.
+Controller proved `xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace
+-derivedDataPath /tmp/gridrace-phase4-client-derived-test
+-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
+-skipPackageUpdates -resolvePackageDependencies`: exit0, exact accepted lock bytes
+unchanged. Log `/tmp/gridrace-phase4-controller-client-resolve.log`; durable exact
+adjudication in automation `client-lock-adjudication.json`. Further verification
+uses these frozen native flags and preserves all pins; any new lock delta must
+return to controller before affected work. Resolve is not full-suite/build proof.
+
+Controller preliminary trace also finds an unnecessary Swift v1 fallback:
+SupabaseLiveMatchService currently sends snapshot build2 but accepts version1 and
+synthesizes revision1 while omitting canonical history/standings. The frozen current
+client requires snapshot2 even for legacy floor1 rooms. P4-C2 removes that fallback,
+adapts old meaningful fixture scenarios to valid v2, and proves a downgraded response
+is rejected. Original durable build1 intents and backend legacy RPC/snapshot support
+remain preserved; no new runtime compatibility surface is needed for old test JSON.
+This is an integration correction, not the final independent implementation review.
+
+Fresh P4-C2 finishes the entire original seam, AccountTests v1/v2 same-file cleanup/
+isolation, all new fixture tests and generation/revision/old-pending/uncertain-Start/
+equal-revision/coalescing/lifecycle/storage verification, full suite and Debug build.
+Do not retain a failing expectation by weakening validation or automatic retries.
+Any local UI draft/animation identity seam beyond compatibility returns to P4-U;
+this package still excludes substantive layout. No final Phase4 proof is claimed.
+
+## Human pause and resumed client handoff
+
+P4-C2 `01a0fe0d-1e5d-7f43-86f0-e8dfdab2c121` released all ten file and
+Swift/simulator process leases on the human pause. Its focused run passed 79/79,
+but preceded further service/session/account tests and the terminal-pending receipt
+watchdog correction. Those latest edits remain uncompiled/unexecuted; full iOS
+and clean Debug were not run. The immutable handoff is
+`/tmp/gridrace-phase4-client-continuation-result.json`. No client completion is
+claimed from the earlier run.
+
+The human explicitly resumed on 2026-10-03. Controller compared all ten source
+hashes, fourteen protected inputs and six original unrelated byte baselines to
+the paused callback: every file matched, HEAD remained `ba65af9`, index was empty,
+and no owned verification process remained. Missing external automation notes
+were reconstructed from this plan and retained callback artifacts; no schedule
+or configuration was recreated. This recovery does not change repository scope.
+
+Fresh P4-C3 receives the same exact ten-file lease and sole Swift/simulator proof
+lease, preserving current partial work. Current build-2 snapshot decoding requires
+v2 even for legacy floor-1 rooms; original durable build-1 retries stay unchanged.
+Finish the full original client acceptance and affected focused/full/build gates
+with frozen native package flags. Substantive UI and real two-client integration
+remain P4-U/P4-V. Do not restart either released client worker.
+
+## P4-C/I completion and controller acceptance
+
+Fresh P4-C3 `01a1005b-19f3-7133-8101-ca18dcf11590` completed the original
+client owner seam and released all leases/processes before its single callback.
+Latest-source focused proof passed **87/87**, full iOS executed **205**, passed
+**203**, with two expected opt-in integration skips and zero failures; clean Debug
+passed. The skips are DailySyncTests/testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured
+and LiveMatchIntegrationTests/testTwoClientProcess; neither proves P4-V.
+
+Controller audited the complete owned source diff and meaningful test additions,
+verified ten returned source hashes, fourteen protected inputs, original six
+unrelated hashes, unchanged HEAD/empty index, final log/result success markers and
+**23/23 exact gateway fixture JSON comparisons**. Independently repeated latest
+focused proof **87/87, zero failures**. Exact commands/logs/xcresults and hashes:
+`/tmp/gridrace-phase4-client-resume-result.json` and
+`/tmp/gridrace-phase4-controller-client-result.json`; controller log/result:
+`/tmp/gridrace-phase4-controller-client-focused.log` and
+`/tmp/gridrace-phase4-controller-client-focused.xcresult`.
+
+The seam keeps count/round/build/UUID durable, requires strict snapshot v2 even in
+legacy floor1 rooms, atomically migrates the existing account-private v1 filename,
+preserves SQL standings and original build1 retries, retains explicit pending
+conflict/rate-limit decisions across lifecycle, rejects lower revisions including
+Home/Resume, and resolves terminal pending receipts before ending ordinary polling.
+C3 fixed resumed-round draft clearing, create decisions across Home/foreground,
+legacy-format/v2-payload mismatch rejection and invalid countdown timeout/rank shapes.
+Controller finds no remaining package blocker; this is integration inspection,
+not the required final independent implementation review.
+
+All Xcode calls used frozen package flags and retained the exact accepted lock
+hash. Actual Xcode27.0(27A266a), Swift6.4, iOS26.5(23F77), iPhone17Pro destination
+1BCA3F5A-3228-4888-909E-ED86AE627221. No hosted/physical-device equivalence.
+No DB/gateway/reset or remote operation in C3/controller client proof.
+
+P4-U owns local draft/error/animation/focus identity by match+round, only hydrates
+saved guesses belonging to the current round, and wires picker, canonical standings,
+creator advancement, final/incomplete presentation and prior reveal selection.
+Selection must never retarget commands. C/I build2 composition and the concretely
+required missing transitive pin are accepted with this client checkpoint.
+
 ## Blockers, stop conditions and next action
 
 D3/D4 resolved; P4-PR-01/02 accepted and repaired; no outstanding planning blocker.
-P4-B worker and controller backend gates passed; complete diff/preservation audit
-and authority reconciliation are complete. This backend content checkpoint is
-committed before P4-C. Controller then prepares build-2 composition and dispatches
-fresh Sol/medium P4-C with real v2 snapshots and corrected exact leases. Swift
-contracts/storage/session and composition share one integrated next checkpoint;
-UI P4-U and real independent-client P4-V follow before one final review. No material
-decision is pending and no overlapping database/simulator owner is permitted.
+P4-B is committed/proved at `ba65af9`. P4-C/I is accepted after latest-source
+focused/full/clean Debug and controller audit/independent focused proof. Checkpoint
+C/I, then dispatch fresh Sol/medium P4-U within the agreed three-file UI lease.
+No product/UX decision is missing. Real independent-client V, one fresh final
+independent R, bounded accepted repairs and Historical closeout remain.
 
 Stop for multiple Active plans, unexpected overlap, material authority/contract gaps,
 unknown fixture ownership/disposability, unavailable required proof or any remote,
