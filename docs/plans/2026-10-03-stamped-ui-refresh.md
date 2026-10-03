@@ -294,7 +294,10 @@ resolve first. Provision missing simulators before S4.
 
 ## Orchestration
 
-Controller runs the activation checkpoint, then S0a and S0b serially (each to one
+The controller kickoff packet is
+[`2026-10-03-stamped-ui-refresh-kickoff.md`](2026-10-03-stamped-ui-refresh-kickoff.md);
+volatile run state (leases, baselines, callback results) lives in the gitignored
+`.codex/runs/stamped-ui-refresh/`. Controller runs the activation checkpoint, then S0a and S0b serially (each to one
 worker or locally), auditing, proving, and committing each. It then creates the
 D9 worktrees and dispatches S1, S2, and S3 in parallel with the runbook's compact
 worker packet and a lease per unit. It integrates in order S2, S1, S3, proving
@@ -366,4 +369,6 @@ Controller performs the rescope activation checkpoint above, then starts S0a.
 - [ ] `screen-flow.md` describes the shipped presentation (updated per unit)
 - [ ] Design doc status set to Implemented; AGENTS.md pointer no longer says
       "not yet implemented"
+- [ ] Kickoff packet deleted in the closeout commit; `.codex/runs/stamped-ui-refresh/`
+      removed
 - [ ] Status set to Historical
