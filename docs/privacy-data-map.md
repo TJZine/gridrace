@@ -4,8 +4,11 @@ Guest Daily Classic and tutorial play collect no account or analytics data. Opti
 accounts synchronize the owner-private data below. Device registration, report,
 block, analytics, remote deployment, and broader live multiplayer remain later work;
 the fixed two-player local live client is implemented and Phase 4 multi-round
-backend/client contracts and native UI are locally verified; real multi-round
-independent-client proof and final review remain pending. Recovery stores only the
+backend/client contracts and native UI are locally verified, including real
+multi-round independent-client proof and an independent implementation review.
+Evidence and review closure are recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof remains pending. Recovery stores only the
 account-private match pointer and original count/round/build/UUID/word intent, never
 authoritative boards, answers, opponent data, standings or credentials.
 

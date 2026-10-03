@@ -448,14 +448,16 @@ logged. The local slice has no verified trusted-address provenance, so per-user
 limits and the keyed-IP database path are tested while live IP extraction remains
 documented-only.
 
-## Phase 4 accepted contract — backend implemented locally
+## Phase 4 accepted contract — implemented and verified locally
 
 The preceding v1 contract remains the supported legacy local contract. The backend
 implements this accepted Phase 4 extension in migration
 `202610020001_blind_race_multiround.sql` and the existing Edge commands. Local
 forward/reset, grants/RLS, scoring, concurrency and real gateway proof are recorded
-in the active plan. Swift transport, recovery, UI and independent-client product
-integration remain pending; this is not a complete Phase 4 or hosted rollout.
+in the active plan. Swift transport, recovery and UI are implemented; real
+independent-client product integration and the independent implementation review
+are complete. Required OS-assisted accessibility proof remains pending; this is
+not a complete Phase 4 or hosted rollout.
 The human approved the UI and freeze-on-either-account-deletion policy on
 2026-10-02. Independent plan review and targeted corrections were checkpointed
 at `3a01d9a` before product writes. The sole
@@ -579,7 +581,7 @@ Accepted D4 policy: lobby host/guest deletion stays unchanged. After start, deta
 The new block reason is snapshot-only/service-readable, while existing status
 reads/publication remain clue-free; keep aggregate fields out of authenticated base-table column grants/Realtime. Keep matches.updated_at/member auth/selected_at/private schemas hidden. Direct revealed round/guess access remains roster-authorized; future pending rows carry no answer/players. No new public result table is needed.
 
-Forward proof must precede any destructive reset: inventory actual local data/linked refs and prove fixture disposability. If current rooms are user data, stop reset and preserve them; obtain a controller-selected disposable local target. On a confirmed disposable baseline fixture, retain legacy lobby/active/revealed rooms, create receipts and accepted-guess receipts, apply the migration forward and assert exact old identities/results/grants plus new contracts. Candidate invocation npx --no-install supabase migration up --local is NOT runbook canon yet; prove it against the installed pinned CLI, record output before promotion. Do not substitute a clean reset for forward proof. Then clean reset/test/lint on confirmed disposable local state. A migration failure rolls back its transaction; after applied product changes use a reviewed forward repair, not destructive reset of retained rooms or down-migration guesswork.
+Forward proof must precede any destructive reset: inventory actual local data/linked refs and prove fixture disposability. If current rooms are user data, stop reset and preserve them; obtain a controller-selected disposable local target. On a confirmed disposable baseline fixture, retain legacy lobby/active/revealed rooms, create receipts and accepted-guess receipts, apply the migration forward and assert exact old identities/results/grants plus new contracts. P4-B proved `npx --no-install supabase migration up --local` against the pinned local CLI and recorded its output before promotion to the engineering runbook. Every later use still requires the documented inventory and disposability checks. Do not substitute a clean reset for forward proof. Then clean reset/test/lint on confirmed disposable local state. A migration failure rolls back its transaction; after applied product changes use a reviewed forward repair, not destructive reset of retained rooms or down-migration guesswork.
 
 ### Recovery-file and session boundaries
 

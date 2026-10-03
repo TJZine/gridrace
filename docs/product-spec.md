@@ -93,9 +93,11 @@ Phase 4 extends the anytime private Blind Race to exactly two players and 1/3/5
 rounds, default 3, with explicit creator countdowns, nonrepeating server-selected
 answers, preserved reveals and canonical cumulative/final standings. Its backend,
 Edge, Swift transport/recovery and agreed native selector/results UI are implemented
-and locally verified. Real independent-client multi-round proof and final review
-remain pending. After either account
-deletes, finish the started round and freeze unstarted remaining rounds as
+and locally verified, including real independent-client multi-round proof and an
+independent implementation review. Evidence and review closure are recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof remains pending. After either account deletes, finish the
+started round and freeze unstarted remaining rounds as
 incomplete. Ordinary creator absence waits; no transfer or automatic advance.
 This mode uses independent random private answers, never the shared Daily answer.
 

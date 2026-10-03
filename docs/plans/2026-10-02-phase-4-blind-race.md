@@ -30,9 +30,14 @@ Controller adjudicated that concrete requirement and proved frozen native packag
 resolution. After the human resumed on 2026-10-03, fresh P4-C3 finished the
 preserved client seam, proved latest focused/full/build gates and released all
 leases. Controller source audit, exact fixture/preservation inspection and independent
-87/87 focused proof passed. P4-C/I is checkpointed at `335f210a5a287ada4994657e8f574ceeff4dcb7b`; substantive UI,
-real independent-client product proof and final review remain required. This plan
-stays Active.
+87/87 focused proof passed. P4-C/I is checkpointed at
+`335f210a5a287ada4994657e8f574ceeff4dcb7b`; native UI followed at `b2ad798`,
+the real-client Resume race repair at `ebdcc71`, and complete real multi-round
+software proof at `81d14d4`. One fresh configured independent final review is
+complete; its sole P3 documentation finding is repaired with targeted controller
+closure in this content checkpoint. No concrete runtime defect was found.
+Required A9 OS-assisted accessibility proof remains unavailable through enabled
+local tooling, so this plan stays Active. See the final review ledger below.
 
 ## Repository snapshot and authority
 
@@ -247,7 +252,7 @@ All paths are exact leases, not directory-wide permission. Shared DTOs/API/error
 
 ## Verification matrix and exact command families
 
-P4-B/C/I/U and real P4-V evidence are recorded below. A9 OS-assisted checks and final independent review remain pending. Record named scenario/output/fixture/toolchain, not counts alone.
+P4-B/C/I/U, real P4-V evidence and final independent review/targeted closure are recorded below. A9 OS-assisted checks remain pending. Record named scenario/output/fixture/toolchain, not counts alone.
 
 | Acceptance | Existing harness and required scenarios |
 | --- | --- |
@@ -675,11 +680,13 @@ focused/full/clean Debug and controller audit/independent focused proof. P4-U
 returned a traced presentation seam before writes; P4-C4 closed at `3f8adc5`.
 P4-U2 is committed at `b2ad7985f05e52e797dd5d2f5fe37f6579f90945` after local UI
 gates and controller inspection.
-The three-file P4-V harness is authored. C5 closes the traced Resume race with
-targeted proof; next rerun the whole actual independent-client/database/simulator
-matrix, full iOS/clean Debug and available native checks.
-No product/UX decision is missing. Real independent-client V, one fresh final
-independent R, bounded accepted repairs and Historical closeout remain.
+P4-C5 closed the traced Resume race at `ebdcc71`. P4-V completed the whole real
+independent-client matrix, full iOS and clean Debug at `81d14d4`. The one fresh
+final independent review is complete; its sole authority-freshness finding is
+repaired with targeted controller inspection below. No product/UX decision is
+missing. Next obtain the required A9 OS-assisted proof through enabled Simulator
+access or human manual checks. Do not replace it with source tests or screenshots.
+Historical closeout remains gated on that proof; no further agent is dispatched.
 
 Stop for multiple Active plans, unexpected overlap, material authority/contract gaps,
 unknown fixture ownership/disposability, unavailable required proof or any remote,
@@ -694,8 +701,8 @@ complete implementation, proof, review and required repairs.
 - [x] Independent plan review adjudicated; corrected contract/leases frozen for this accepted-plan commit.
 - [ ] Bounded packages integrated, all counts/recovery/deletion/UI acceptance proved.
 - [x] Real independent-client multi-round proof and full affected software gates complete; A9 OS-assisted gap is explicit below.
-- [ ] Fresh independent final review complete; accepted fixes/targeted closure proved.
-- [ ] Authorities current; unrelated hashes preserved; owned changes committed.
+- [x] Fresh independent final review complete; accepted fixes/targeted closure proved.
+- [x] Authorities current; unrelated hashes preserved; owned changes committed in this content checkpoint.
 - [ ] Only then Historical closeout, commit report and explicit external release gates.
 
 ## P4-V authoring and controller runtime in progress
@@ -798,7 +805,7 @@ Exact accepted package lock remained unchanged with frozen native flags.
 P4-V-RESUME-FETCH-GENERATION is closed at this bounded checkpoint; actual whole
 matrix rerun, full iOS/clean Debug and final independent review remain required.
 
-## P4-V complete software proof and remaining A9/R gates
+## P4-V complete software proof and remaining A9 gate
 
 After C5 checkpoint `ebdcc71bca82dd81292d6ade9e1bf9a47c7b16eb`, controller restored
 the existing local backup without reset and verified the original complete captured
@@ -849,11 +856,50 @@ and all owned processes finished. Actual Xcode27.0/Swift6.4/iOS26.5 remains a
 forward-toolchain deviation from hosted CI configuration.
 
 P4-V software proof is complete and its owned harness/commands/evidence are
-checkpointed with this content commit. The required one fresh configured final
-implementation review is next; no clean-review or beta/production claim yet.
+checkpointed at `81d14d4f5b827e9998da1a8ccaf9cded184ba2c6`. The required one fresh
+configured final implementation review and targeted closure are recorded below;
+no beta/production readiness claim follows.
 A9 still lacks OS-assisted VoiceOver focus/announcements, Reduce Motion toggle,
 hardware input/haptic feel and measured hit regions through enabled local tooling.
 Native semantic/source tests and actual normal/AX5+Bold/contrast layout renders
 passed, including latest full-suite fixtures; they do not replace those OS checks.
-Keep this plan Active until required review/repairs and that agreed proof are
-resolved. Physical-device and hosted/distribution gates remain external.
+Keep this plan Active until that agreed proof is resolved. Physical-device and
+hosted/distribution gates remain external.
+
+## P4-R independent final review and P4-X targeted closure
+
+Fresh configured read-only reviewer `01a10108-74d4-7e50-aad0-4d2a422daa50`
+(`gpt-daybreak-blue-latest/high`) inspected the complete 38-path Phase 4 diff
+from `7e413ac` through `81d14d4`, current authorities, server/client contracts,
+migration/Edge/Swift/UI/harness source, and retained proof. It found no concrete
+runtime correctness, secrecy, privacy, scoring, idempotency, concurrency, recovery,
+deletion or architecture defect. This is a qualified source/evidence review, not
+a new execution of the gates or proof of readiness. Its single authorized callback
+went to this controller after releasing its read-only lease; no later writes.
+
+| ID | Verdict / priority / confidence | Observed evidence | Repair and closure |
+| --- | --- | --- | --- |
+| P4-R-01 | Accept; 3/10 — Low (P3); high confidence; Documentation; repair before this local tracking checkpoint | Six current authorities still said real multi-round proof was pending; live API also said Swift integration was pending. That directly contradicted implemented source and the retained 60/60 real-client result, 215 executed/213 passed/two expected skips, clean Debug, and runbook documentation-freshness rule. | Controller P4-X changes only proof-status clauses in product/rules/architecture/privacy/flow/API, updates current NOW/plan, and corrects the adjacent API migration-command promotion status against the runbook. Product/wire/deletion/privacy contracts are unchanged. Complete owned diff, proof counts/paths, local links and structural checks inspected; no new automated test needed for this prose-only repair. Targeted closure is complete in this content checkpoint; no recursive final review. |
+
+Reviewer and controller confirmed all 131 protected tracked hashes, all six
+original unrelated hashes, unchanged `81d14d4` HEAD and empty index at lease
+release. The reviewer created no files/commits, refreshed no caches and ran no
+tests/builds/database/device operations. No owned processes remained. Controller
+preserved every file outside the eight explicitly owned authority/tracking paths
+and verified the six unrelated hashes again before staging. Only those eight
+documentation files are staged and committed in this content checkpoint.
+
+Observed retained result: `/tmp/gridrace-phase4-controller-v-c5-result.json`,
+`/tmp/gridrace-live-integration.Vg6tlZ`, full/Debug logs above. Earlier unchanged
+backend proof (739 pgTAP, 107 Edge, forward/reset/grants/lint/shared vectors) was
+reused, not described as rerun during this documentation repair. The runtime
+result JSON's `independent_final_review: pending` records its earlier capture
+time; this ledger records the subsequent review without rewriting that artifact.
+
+Unknown/unverified: A9 OS-assisted focus/order/announcements, Reduce Motion,
+hardware input, touch/haptic feel and measured hit regions. Native rendering and
+semantic tests remain supporting evidence. Tool access or human manual proof is
+required before agreed local closeout; no new whole-scope approval is requested.
+Phase 2/3 stays Historical and this Phase 4 plan stays Active. Hosted CI/provider/
+Cron/backup/retention, physical-device, production word/IP provenance and
+distribution remain external release gates; no push or deployment is authorized.

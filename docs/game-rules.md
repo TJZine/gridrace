@@ -29,8 +29,12 @@ state is server-owned. Phase 1 executes the same pure rules against local tutori
 fixtures; Phase 2 establishes the backend authority; Phase 3 locally proves it with
 exactly two players and one round. Phase 4 keeps exactly two players and implements
 1/3/5 server rounds with nonrepeating random private answers and revealed-only
-canonical match standings. Backend and native client are locally verified; real independent-client
-multi-round proof and final implementation review remain pending. After either account deletes, finish the already-started round under the
+canonical match standings. Backend and native client are locally verified,
+including real independent-client multi-round proof and an independent
+implementation review, recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
+accessibility proof remains pending. After either account deletes, finish the
+already-started round under the
 existing forfeit/deadline rules, anonymize retained reveals, and freeze remaining
 unstarted rounds. An incomplete match has partial standings, never final results.
 A creator who is merely unavailable leaves a nonfinal reveal waiting indefinitely.

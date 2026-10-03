@@ -113,8 +113,10 @@ reveals and partial standings. Ordinary creator absence keeps the reveal waiting
 Backend and native presentation implement these boundaries. Saved Start Retry
 uses the original session-owned target even after Home/Resume; pending old-round
 guesses cannot populate a later-round draft. Prior reveal selection leaves current
-commands and SQL standings unchanged. Real independent-client and OS-assisted
-accessibility verification remain pending. No presence, transfer or auto advance.
+commands and SQL standings unchanged. Real independent-client verification and
+the independent implementation review are complete, recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). OS-assisted
+accessibility verification remains pending. No presence, transfer or auto advance.
 
 ### Countdown and round
 
