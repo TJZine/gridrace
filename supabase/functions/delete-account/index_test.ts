@@ -11,7 +11,8 @@ const TOKEN = "signed-bearer-token";
 
 interface RpcStep {
   name: string;
-  data: JsonObject;
+  data: unknown;
+  error?: unknown;
 }
 
 interface Harness {
@@ -37,7 +38,10 @@ function harness(
       const step = steps.shift();
       assert(step !== undefined, `unexpected RPC ${name}`);
       assertEquals(name, step.name);
-      return await Promise.resolve({ data: step.data, error: null });
+      return await Promise.resolve({
+        data: step.data,
+        error: step.error ?? null,
+      });
     },
     async deleteUser(userId) {
       deletedUsers.push(userId);
@@ -65,13 +69,29 @@ function harness(
 }
 
 function request(): Request {
+  return requestWith({ client_build: 1 }, TOKEN);
+}
+
+function requestWith(body: unknown, token: string | null): Request {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (token !== null) headers.authorization = `Bearer ${token}`;
+  return new Request("http://localhost/delete-account", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+function requestRaw(raw: string): Request {
   return new Request("http://localhost/delete-account", {
     method: "POST",
     headers: {
       authorization: `Bearer ${TOKEN}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ client_build: 1 }),
+    body: raw,
   });
 }
 
@@ -189,6 +209,159 @@ Deno.test("requires current authentication when no receipt exists", async () => 
   assertEquals(response.status, 401);
   assertEquals(test.authenticateCalls, 1);
   assertEquals(test.deletedUsers, []);
+});
+
+interface InputFailure {
+  name: string;
+  request: () => Request;
+  status: number;
+  code: string;
+}
+
+const inputFailures: InputFailure[] = [
+  {
+    name: "rejects a non-JSON deletion body",
+    request: () => requestRaw("{invalid"),
+    status: 400,
+    code: "internal_error",
+  },
+  {
+    name: "rejects a deletion body with the wrong keys",
+    request: () => requestWith({}, TOKEN),
+    status: 400,
+    code: "internal_error",
+  },
+  {
+    name: "rejects an outdated deletion build",
+    request: () => requestWith({ client_build: 0 }, TOKEN),
+    status: 426,
+    code: "client_update_required",
+  },
+  {
+    name: "rejects a deletion request without a bearer",
+    request: () => requestWith({ client_build: 1 }, null),
+    status: 401,
+    code: "not_authenticated",
+  },
+];
+
+for (const failure of inputFailures) {
+  Deno.test(failure.name, async () => {
+    const test = harness([]);
+
+    const response = await makeHandler(test.dependencies)(failure.request());
+
+    assertEquals(response.status, failure.status);
+    assertEquals(
+      ((await body(response)).error as JsonObject)?.code,
+      failure.code,
+    );
+    assertEquals(test.rpcCalls.length, 0);
+    assertEquals(test.authenticateCalls, 0);
+  });
+}
+
+Deno.test("maps a typed begin_account_deletion error without touching Auth", async () => {
+  const test = harness([
+    { name: "account_deletion_status", data: { data: { status: "missing" } } },
+    {
+      name: "begin_account_deletion",
+      data: { error: { code: "rate_limited" } },
+    },
+  ]);
+
+  const response = await makeHandler(test.dependencies)(request());
+
+  assertEquals(response.status, 429);
+  assertEquals(await body(response), {
+    error: {
+      code: "rate_limited",
+      message: "Too many attempts. Try again shortly.",
+    },
+  });
+  assertEquals(test.authenticateCalls, 1);
+  assertEquals(test.deletedUsers, []);
+});
+
+Deno.test("surfaces a PostgREST status failure as internal_error", async () => {
+  const test = harness([
+    {
+      name: "account_deletion_status",
+      data: null,
+      error: { code: "PGRST301", message: "row-level security" },
+    },
+  ], { authenticatedUser: null });
+
+  const response = await makeHandler(test.dependencies)(request());
+
+  assertEquals(response.status, 500);
+  assertEquals(test.authenticateCalls, 0);
+  assertEquals(test.deletedUsers, []);
+});
+
+Deno.test("rejects an unknown deletion receipt status", async () => {
+  const test = harness([
+    {
+      name: "account_deletion_status",
+      data: { data: { status: "archived" } },
+    },
+  ], { authenticatedUser: null });
+
+  const response = await makeHandler(test.dependencies)(request());
+
+  assertEquals(response.status, 500);
+  assertEquals(test.authenticateCalls, 0);
+  assertEquals(test.deletedUsers, []);
+});
+
+Deno.test("rejects a begin receipt issued for a different user", async () => {
+  const test = harness([
+    { name: "account_deletion_status", data: { data: { status: "missing" } } },
+    {
+      name: "begin_account_deletion",
+      data: {
+        data: {
+          status: "pending",
+          user_id: "40000000-0000-0000-0000-000000000002",
+        },
+      },
+    },
+  ]);
+
+  const response = await makeHandler(test.dependencies)(request());
+
+  assertEquals(response.status, 500);
+  assertEquals(test.authenticateCalls, 1);
+  assertEquals(test.deletedUsers, []);
+});
+
+Deno.test("maps a typed complete_account_deletion error after Auth removal", async () => {
+  const test = harness([
+    {
+      name: "account_deletion_status",
+      data: { data: { status: "pending", user_id: USER_ID } },
+    },
+    {
+      name: "complete_account_deletion",
+      data: { error: { code: "request_conflict" } },
+    },
+  ], { authenticatedUser: null });
+
+  const response = await makeHandler(test.dependencies)(request());
+
+  assertEquals(response.status, 409);
+  assertEquals(await body(response), {
+    error: {
+      code: "request_conflict",
+      message: "This request conflicts with an earlier attempt.",
+    },
+  });
+  assertEquals(test.authenticateCalls, 0);
+  assertEquals(test.deletedUsers, [USER_ID]);
+  assertEquals(test.rpcCalls.map((call) => call.name), [
+    "account_deletion_status",
+    "complete_account_deletion",
+  ]);
 });
 
 function assert(

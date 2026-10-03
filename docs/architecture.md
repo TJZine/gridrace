@@ -1,8 +1,12 @@
 # GridRace Architecture
 
 This document is the current architecture authority. It separates the permanent
-local Daily Classic mode, the Phase 1 tutorial, and the preserved Phase 2/3 backend
-and live-race foundation.
+local Daily Classic mode, the Phase 1 tutorial, the implemented Phase 2/3 client,
+and locally verified Phase 4 multi-round backend/client. Real independent-client
+multi-round verification and the independent implementation review are complete,
+with evidence and review closure in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
+accessibility proof remains pending; no hosted rollout is claimed.
 
 ## Daily Classic architecture
 
@@ -32,10 +36,18 @@ enter Daily Classic files or `UserDefaults`.
 After sign-in, a small sync coordinator pulls owner-private state and continues using
 the account's local files for gameplay. It marks the current compact snapshot pending
 after an accepted row or completion and retries on sign-in, foreground, and explicit
-retry. Draft letters remain device-local. Exact records deduplicate; completion
-dominates compatible progress; a longer exact-prefix attempt advances; divergence is
-shown as a choice rather than silently combined. Statistics are always recalculated
-from the merged immutable results.
+retry. Draft letters remain device-local. Exact records deduplicate; an immutable
+completion always dominates active progress; a longer exact-prefix active attempt
+advances; divergent active attempts and distinct terminal results are shown as choices
+rather than silently combined. Statistics are always recalculated from the merged
+immutable results.
+
+Hard Mode is attempt configuration, separate from immutable puzzle identity. A
+started attempt (accepted guesses) takes precedence over an empty board with a
+different mode. The progress RPC adopts mode and guesses atomically only while
+the stored board is empty and any supplied expected revision still matches.
+Both-empty boards may change mode under the same revision rule; two started
+attempts with different modes remain explicit conflicts.
 
 `public.daily_progress` is mutable only through `sync_daily_progress` and carries a
 monotonic revision. `public.daily_imported_results` is an immutable client-originated
@@ -93,12 +105,13 @@ Type behavior; domain rules do not depend on those presentation choices.
 
 ## Phase 2 backend and Phase 3 live boundary
 
-The production design is a native SwiftUI client backed by authoritative Supabase.
-Phase 2 implements the local backend/authentication trust boundary. Phase 3 connects
-the fixed two-player, one-round client slice to it. The complete 2–8 player,
-multi-round MVP remains later work.
+The implemented local slice is a native SwiftUI client backed by authoritative
+Supabase. Phase 2 owns the backend/authentication trust boundary. Phase 3 connects
+the fixed two-player, one-round client slice to it. Phase 4 extends the backend
+to exactly two players and 1/3/5 rounds with implemented native transport/recovery/UI.
+The complete 2–8-player MVP and its other excluded features remain later work.
 
-The client eventually displays server-owned state and submits authenticated intents.
+The client displays server-owned state and submits authenticated intents.
 The backend selects answers, validates accepted words, computes feedback and scores,
 timestamps actions, and advances matches, rounds, and players. A normal authenticated
 client cannot read a round answer before reveal or directly mutate authoritative game
@@ -110,14 +123,15 @@ Phase 2/3 responsibilities are intentionally narrow:
 | Component | Phase 2/3 responsibility |
 | --- | --- |
 | Supabase Auth | Establish identity and sessions, including Sign in with Apple. Auth identity is not a public profile and email is never shown to other players. |
-| PostgreSQL | Own canonical profiles, rosters, rounds, guesses, timestamps, scores, reports, blocks, and state transitions. Constraints and transactional functions enforce valid, idempotent changes. Private schemas own answers and other server-only data. |
+| PostgreSQL | Own canonical profiles, rosters, rounds, guesses, timestamps, scores, and state transitions. Reports/blocks are later responsibilities. Constraints and transactional functions enforce valid, idempotent changes. Private schemas own answers and other server-only data. |
 | Grants and RLS | Give each exposed table the least privilege needed for the authenticated player and game phase. They deny private-answer reads and direct authoritative mutations. |
 | Edge Functions | Authenticate callers, validate build and input, invoke explicit transactional commands, and map stable typed results. Service credentials stay here and never ship in the app. |
 | Realtime | Signal that relevant state may have changed. It does not carry secret clues or replace a canonical snapshot. |
 | Cron | Ask server-owned finalization commands to resolve elapsed deadlines and other scheduled game transitions. It does not introduce a second clock or transition implementation. |
-| APNs | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
+| APNs (later) | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
 
-Phase 2/3 implements every row above except APNs. The exact six-command and
+The local Phase 2 backend and Phase 3 client integration above are implemented.
+APNs, reports/blocks and opponent presence remain later. The exact six-command and
 versioned snapshot shapes live in [`live-api-contract.md`](live-api-contract.md).
 The client uses only create, join, creator start, guess submission, snapshot, and
 account deletion commands; profile updates remain owner-scoped RLS writes.
@@ -126,11 +140,14 @@ Public rows contain no answer. The secret-bearing `private` schema has no grant 
 anonymous or authenticated roles. A separate narrowly executable RLS-helper schema
 may answer membership predicates without granting access to private words or round
 secrets. Normal clients receive safe column grants: opponent timing, efficiency,
-placement, and member auth identifiers are available only through the conditional
-snapshot after reveal.
+and placement are not available through the base match row and are returned only
+by the conditional snapshot after reveal; member auth identifiers and the
+exact-action `matches.updated_at` timestamp remain unavailable to authenticated
+clients.
 
-Every canonical change touches the safe public match revision. Phase 3 Realtime
-subscribes only to that roster-authorized row and emits a refresh signal, avoiding
+Every canonical change transactionally increments the timestamp-free monotonic
+`matches.revision`. Phase 3 Realtime publishes only that roster-authorized row's
+timing-free column projection and emits a refresh signal, avoiding
 secret or timing-bearing change payloads. A snapshot remains mandatory after the
 signal.
 
@@ -158,19 +175,76 @@ choice.
 
 The canonical snapshot is recovery truth. The client refreshes it on session entry,
 reconnect, foreground return, a relevant Realtime signal, uncertain command outcome,
-local inconsistency, and countdown or round deadline. A validated newer snapshot
-replaces the feature's derived match state as one main-actor update.
+local inconsistency, and countdown or round deadline. A validated snapshot fetched
+under the current account/match generation replaces the feature's derived match state as one main-actor update.
 
 Realtime events may be delayed, duplicated, dropped, or reordered without changing
-the result. If a command response is lost, the client refreshes rather than guessing
-whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
+the result. If a command response is lost, the client follows the command-specific
+retry/snapshot rules rather than guessing whether a transition succeeded. Pre-reveal snapshots omit answers, opponent words,
 opponent feedback, keyboard evidence, starting words, and exact solve times.
+
+The implemented Phase 3 session serializes/coalesces refreshes with commands, rejects
+late results from another account/match, and requests a trailing fetch for signals
+received during a fetch. Snapshot v1 has no state revision; neither delivery order
+nor its transaction timestamp is a revision. An open foreground unfinished match
+also refreshes after five seconds without a successful snapshot, with bounded
+failure backoff. Stop on background/exit/reveal/expiry or loss of authorization.
+This covers silent event loss; subscriptions alone do not prove convergence.
+
+The client owns no offline live guess queue. Creation receipts and implemented
+account-scoped recovery storage preserve request IDs across lost
+responses and relaunch; the client resolves uncertainty before accepting another intent.
+Failed recovery reads retain a controllable store for explicit discard; failed durable
+deletion remains storage-unavailable rather than claiming success. Recovery saves no
+authoritative board, answer, opponent payload or credential. Exact retry,
+nullability, timing, error and recovery rules live in the live API contract.
+
+Use the existing authenticated SDK client through service composition. One live
+session owns live state; the Daily coordinator continues to own Daily/account
+synchronization. Reuse passive presentation and pure keyboard evidence from accepted
+rows, but never use a bundled evaluator/dictionary to decide live acceptance.
+
+Opponent presence is deferred in this slice. Only local transport status is known;
+opponent inactivity or local socket connectivity is not an opponent online signal.
 
 Snapshot version 1 uses stable member-seat order. A lobby has a pending public round
 with no timestamps or players. A started round includes the requester's full board
 and only coarse opponent state/count until reveal; reveal adds the answer, both
 boards, server timing, efficiency, and competition placement. Mapping rejects
 impossible combinations before they become feature state.
+
+## Phase 4 backend ownership
+
+The existing PostgreSQL/Edge owners now accept immutable round configuration and
+explicit Start targets. Persisted target start is the retry truth; a delayed or
+duplicate Start never advances another round. Guess receipts retain their original
+round, word, UUID and response across subsequent rounds and final results. Pending
+rounds have no selected private answer or player rows; selection under the match
+lock excludes all prior answers. No generalized engine or totals table is added.
+
+Snapshot v2 includes the current round, contiguous revealed history, match revision
+and timestamps, and SQL standings over revealed rounds only. SQL ranks exact total
+solve microseconds and floors the sum once for displayed milliseconds. Build-1
+legacy rooms/RPCs/snapshot remain bounded to one round; new rooms have floor 2.
+The existing timing-free Realtime projection remains a refresh signal. The new
+account-deletion terminal reason is service-only and disclosed only in a rostered
+v2 snapshot, without new authenticated column grants or Realtime fields.
+
+Ordinary nonfinal reveal awaits an explicit creator Start. After either account
+deletes, a started round finishes under existing forfeit/deadline rules and
+retained roster identities are anonymized. If configured rounds remain, status is
+incomplete with null match completion and partial standings; final-round deletion
+still yields completed/final results. Cron finalizes deadlines but never advances.
+Swift transport requires v2 even in legacy floor-1 rooms. Durable format-1 intents
+migrate atomically to format 2 in the existing account-private recovery filename,
+retaining original build/count/round/UUID. The session keeps pending guesses across
+round/final boundaries and an observable read-only pending-Start signal for original
+round Retry. Canonical revisions and presentation generations reject stale responses;
+nonfinal reveal keeps recovery active and final/incomplete stops after pending receipt
+resolution. Native views own round-keyed draft/error/focus/animation and prior reveal
+selection, rendering supplied SQL standings without ranking or aggregating them.
+Real independent-client proof and the independent final review are complete,
+recorded in the active plan; required OS-assisted accessibility proof remains pending.
 
 ## Phase 2/3 account deletion
 
@@ -195,9 +269,11 @@ database or logs. Real Apple provider-token revocation remains a production-hard
 proof when provider credentials are unavailable locally.
 
 Daily progress and imported personal results are deleted in the same authenticated
-database preparation transaction. The iOS client removes only that UUID's local
-account cache after the Edge Function reports successful server deletion, then drops
-the active session and returns to the untouched guest store.
+database preparation transaction. After the Edge Function reports successful server
+deletion, the iOS client returns to the untouched guest store and attempts to clear
+only that UUID's Daily cache and live-recovery file. If durable live cleanup fails,
+former-account Daily and account presentation remain hidden while signed-out Home
+exposes retry/discard remediation; the already-confirmed remote deletion is not retried.
 
 ## Secrets, privacy, and logs
 
@@ -219,9 +295,10 @@ pre-production decisions rather than defaults inferred by the client.
 
 ## Phase boundary
 
-Phase 2 proves the local backend, authentication/profile boundary, private storage,
-RLS, commands, deletion, seed, and database/Edge tests before the client relies on
-them. Phase 3 proves the smallest two-player, one-round live race, including server
+Phase 2 locally proves the backend, authentication/profile boundary, private storage,
+RLS, commands, deletion, seed, and database/Edge tests used by the client. Phase 3
+locally proves the smallest two-player, one-round live race, including server
 authority, idempotency, deadline finalization, snapshot recovery, Realtime
-convergence, and answer secrecy. Later phases must not generalize the implementation
-until that proof is complete.
+convergence, and answer secrecy. Hosted and physical-device gates remain separate;
+later phases must not generalize the implementation beyond this proved slice without
+their own accepted scope and evidence.

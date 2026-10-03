@@ -22,11 +22,31 @@ final class PlayerProfileTests: XCTestCase {
     func testDisplayNameNormalizationMatchesDatabaseBoundary() {
         XCTAssertEqual(PlayerProfile.normalizedDisplayName("  Alex-7  "), "Alex-7")
         XCTAssertEqual(PlayerProfile.normalizedDisplayName("O'Brien"), "O'Brien")
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("Anne-Marie"), "Anne-Marie")
         XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("A  B"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("-Alex"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex_7"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
+    }
+
+    func testDisplayNameNormalizationBoundaryLengthsAndBlankAndUnicode() {
+        // Empty and blank-only inputs normalize to nothing.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName(""))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("   "))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName(" \t\n "))
+        // Length boundaries: 1 rejects, 2 accepts, 16 accepts, 17 rejects.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
+        XCTAssertEqual(PlayerProfile.normalizedDisplayName("Al"), "Al")
+        XCTAssertEqual(
+            PlayerProfile.normalizedDisplayName("abcdefghijklmnop"),
+            "abcdefghijklmnop"
+        )
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
+        // Non-ASCII letters are rejected even at valid lengths.
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Stöne"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Renée"))
+        XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex😀"))
     }
 
     func testGeneratedProfileNeedsInitialSetup() {
@@ -46,6 +66,7 @@ final class PlayerProfileTests: XCTestCase {
     }
 }
 
+@MainActor
 final class PlayerAvatarPaletteTests: XCTestCase {
     func testSeedToSymbolMappingIsStable() {
         // Snapshot of the frozen mapping: order and hash must not change,
@@ -139,12 +160,302 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
         XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
         XCTAssertEqual(coordinator.syncStatus, .failed(.invalidData))
+        XCTAssertFalse(coordinator.isDailyPlayable)
+        coordinator.daily.typeLetter("A")
+        XCTAssertEqual(coordinator.daily.errorMessage, "Your puzzle could not be saved. Try again.")
 
         coordinator.retrySync()
 
         XCTAssertEqual(attempts, 2)
         XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+        XCTAssertTrue(coordinator.isDailyPlayable)
     }
+
+    func testCorruptAccountMetadataBlocksGameplayUntilSignOutRestoresGuest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceCorruptAccountTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+            urlString: "http://127.0.0.1:54321",
+            publishableKey: "local-test-key"
+        ))
+        let coordinator = try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main),
+            tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore,
+            accountService: SupabaseAccountService(configuration: configuration),
+            accountStoreFactory: { userID in
+                let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+                try FileManager.default.createDirectory(
+                    at: store.directory,
+                    withIntermediateDirectories: true
+                )
+                try Data("{".utf8).write(
+                    to: store.directory.appending(path: "daily-sync-metadata-v1.json")
+                )
+                return store
+            }
+        )
+        coordinator.daily.typeLetter("G")
+
+        coordinator.sessionChanged(to: UUID())
+
+        XCTAssertFalse(coordinator.isDailyPlayable)
+        XCTAssertEqual(coordinator.daily.homeStatus, .unplayed)
+
+        coordinator.sessionChanged(to: nil)
+
+        XCTAssertTrue(coordinator.isDailyPlayable)
+        XCTAssertEqual(coordinator.daily.game.draft, "G")
+    }
+
+    func testNilSessionKeepsFirstCleanupFailureReachableAndRetriesOnLaterNotification() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.coordinator.daily.typeLetter("G")
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        fixture.liveStore.clearFailuresRemaining = 1
+
+        fixture.coordinator.sessionChanged(to: nil)
+
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertNotEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        fixture.coordinator.sessionChanged(to: nil)
+
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+        XCTAssertFalse(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+    }
+
+    func testSignOutHidesAccountDataAndKeepsFailedLiveCleanupReachable() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.liveStore.rejectsLoads = true
+        fixture.liveStore.rejectsClears = true
+        fixture.coordinator.daily.typeLetter("G")
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "A")
+
+        await fixture.coordinator.account.signOut()
+
+        XCTAssertEqual(fixture.accountService.signOutCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertEqual(
+            fixture.coordinator.account.errorMessage,
+            "You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it."
+        )
+
+        fixture.liveStore.rejectsLoads = false
+        fixture.liveStore.rejectsClears = false
+        fixture.coordinator.live.discardRecovery()
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        let relaunchedService = AccountServiceMock()
+        relaunchedService.appleSession = AccountSession(
+            userID: fixture.userID,
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        relaunchedService.loadedProfile = fixture.profile
+        let relaunched = try makeCoordinator(
+            root: fixture.root,
+            guestStore: DailyClassicStore(directory: fixture.root.appending(path: "Guest")),
+            accountModelService: relaunchedService,
+            liveStore: fixture.liveStore
+        )
+        await relaunched.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+
+        XCTAssertEqual(relaunched.live.phase, .inactive)
+        XCTAssertNil(relaunched.live.pendingIntent)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+    }
+
+    func testDeletionClearsDailyCacheOnceAndKeepsFailedLiveCleanupReachable() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.liveStore.rejectsLoads = true
+        fixture.liveStore.rejectsClears = true
+        fixture.coordinator.daily.typeLetter("G")
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        fixture.coordinator.daily.typeLetter("A")
+        let accountDirectory = AccountDailyClassicStore(
+            rootDirectory: fixture.root,
+            userID: fixture.userID
+        ).directory
+        XCTAssertTrue(FileManager.default.fileExists(atPath: accountDirectory.path))
+
+        await fixture.coordinator.account.deleteAccount()
+
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: accountDirectory.path))
+        XCTAssertEqual(fixture.coordinator.live.phase, .storageUnavailable)
+        XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+        XCTAssertTrue(fixture.coordinator.account.errorMessage?.contains("account was deleted") == true)
+
+        fixture.liveStore.rejectsLoads = false
+        fixture.liveStore.rejectsClears = false
+        fixture.coordinator.live.discardRecovery()
+
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+    }
+
+    func testSuccessfulAccountLifecycleCleanupRemainsSilent() async throws {
+        let fixture = try makeLifecycleFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await fixture.coordinator.account.signOut()
+
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+        XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
+
+        await fixture.coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await fixture.coordinator.account.deleteAccount()
+
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
+        XCTAssertEqual(fixture.accountService.deleteCount, 1)
+        XCTAssertFalse(fixture.coordinator.account.isSignedIn)
+        XCTAssertEqual(fixture.coordinator.live.phase, .inactive)
+    }
+
+    func testBothRecoveryFormatsUseSameFileAndCleanupOnlyTheSignedOutOrDeletedAccount() async throws {
+        for format in [1, 2] {
+            for deletesAccount in [false, true] {
+                let root = FileManager.default.temporaryDirectory
+                    .appending(path: "GridRaceLiveCleanup-\(UUID().uuidString)")
+                defer { try? FileManager.default.removeItem(at: root) }
+                let userID = UUID(), otherID = UUID(), matchID = UUID(), requestID = UUID()
+                let owner = LiveMatchRecoveryStore(rootDirectory: root, userID: userID)
+                let other = LiveMatchRecoveryStore(rootDirectory: root, userID: otherID)
+                let otherState = LiveRecoveryState(matchID: UUID())
+                try other.save(otherState)
+                let otherFile = other.directory.appending(path: "live-recovery-v1.json")
+                let otherBytes = try Data(contentsOf: otherFile)
+                let ownerFile = owner.directory.appending(path: "live-recovery-v1.json")
+                try FileManager.default.createDirectory(at: owner.directory, withIntermediateDirectories: true)
+                if format == 1 {
+                    try Data(#"{"formatVersion":1,"matchID":"\#(matchID)","pendingIntent":{"kind":"guess","matchID":"\#(matchID)","requestID":"\#(requestID)","word":"STONE"}}"#.utf8)
+                        .write(to: ownerFile)
+                } else {
+                    try owner.save(LiveRecoveryState(matchID: matchID, pendingIntent:
+                        .guess(matchID: matchID, requestID: requestID, word: "STONE", roundNumber: 3, clientBuild: 2)))
+                }
+                let account = AccountServiceMock()
+                account.appleSession = AccountSession(userID: userID, expiresAt: Date().addingTimeInterval(3_600))
+                account.loadedProfile = PlayerProfile(userID: userID, displayName: "Alex", avatarSeed: "seed",
+                                                     createdAt: .distantPast, updatedAt: .distantPast)
+                let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+                    urlString: "http://127.0.0.1:54321", publishableKey: "local-test-key"))
+                let coordinator = try DailyAccountCoordinator(
+                    dailyPack: DailyWordPack.load(bundle: .main), tutorialPack: WordPack.load(bundle: .main),
+                    guestStore: DailyClassicStore(directory: root.appending(path: "Guest")),
+                    accountService: SupabaseAccountService(configuration: configuration), accountModelService: account,
+                    accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+                    liveStoreFactory: { LiveMatchRecoveryStore(rootDirectory: root, userID: $0) })
+                coordinator.live.backgrounded()
+                await coordinator.account.signInWithApple(idToken: "token", rawNonce: "nonce")
+                XCTAssertEqual(coordinator.live.savedMatchID, matchID)
+                XCTAssertEqual(try owner.load().formatVersion, 2, "legacy migration saves in the original path")
+                XCTAssertEqual(coordinator.live.pendingIntent,
+                    .guess(matchID: matchID, requestID: requestID, word: "STONE",
+                           roundNumber: format == 1 ? 1 : 3, clientBuild: format == 1 ? 1 : 2))
+                if deletesAccount { await coordinator.account.deleteAccount() }
+                else { await coordinator.account.signOut() }
+                XCTAssertFalse(FileManager.default.fileExists(atPath: ownerFile.path))
+                XCTAssertEqual(try Data(contentsOf: otherFile), otherBytes)
+                XCTAssertEqual(try other.load(), otherState)
+                XCTAssertNil(coordinator.live.pendingIntent)
+                XCTAssertNil(coordinator.live.savedMatchID)
+                XCTAssertEqual(coordinator.live.phase, .inactive)
+                XCTAssertNil(coordinator.account.errorMessage)
+                XCTAssertEqual(account.deleteCount, deletesAccount ? 1 : 0)
+                XCTAssertEqual(account.signOutCount, deletesAccount ? 0 : 1)
+            }
+        }
+    }
+
+    private func makeLifecycleFixture() throws -> LifecycleFixture {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceAccountLifecycleTests-\(UUID().uuidString)")
+        let userID = UUID()
+        let accountService = AccountServiceMock()
+        accountService.appleSession = AccountSession(
+            userID: userID,
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        let profile = PlayerProfile(
+            userID: userID,
+            displayName: "Alex",
+            avatarSeed: "seed",
+            createdAt: .distantPast,
+            updatedAt: .distantPast
+        )
+        accountService.loadedProfile = profile
+        let liveStore = AccountLifecycleLiveStore(
+            LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
+        )
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let coordinator = try makeCoordinator(
+            root: root,
+            guestStore: guestStore,
+            accountModelService: accountService,
+            liveStore: liveStore
+        )
+        return LifecycleFixture(
+            root: root,
+            userID: userID,
+            profile: profile,
+            accountService: accountService,
+            liveStore: liveStore,
+            coordinator: coordinator
+        )
+    }
+
+    private func makeCoordinator(
+        root: URL,
+        guestStore: DailyClassicStore,
+        accountModelService: any AccountServicing,
+        liveStore: AccountLifecycleLiveStore
+    ) throws -> DailyAccountCoordinator {
+        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
+            urlString: "http://127.0.0.1:54321",
+            publishableKey: "local-test-key"
+        ))
+        return try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main),
+            tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore,
+            accountService: SupabaseAccountService(configuration: configuration),
+            accountModelService: accountModelService,
+            accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+            liveStoreFactory: { _ in liveStore }
+        )
+    }
+}
+
+@MainActor
+private struct LifecycleFixture {
+    let root: URL
+    let userID: UUID
+    let profile: PlayerProfile
+    let accountService: AccountServiceMock
+    let liveStore: AccountLifecycleLiveStore
+    let coordinator: DailyAccountCoordinator
 }
 
 @MainActor
@@ -246,10 +557,8 @@ final class AccountModelTests: XCTestCase {
         let service = AccountServiceMock()
         service.appleSession = session(userID)
         service.loadedProfile = profile(userID: userID, name: "Alex")
-        var isolatedSession = false
         let model = AccountModel(
             service: service,
-            didChangeSession: { if $0 == nil { isolatedSession = true } },
             didDeleteAccount: { _ in throw TestError.failed }
         )
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
@@ -257,7 +566,6 @@ final class AccountModelTests: XCTestCase {
         await model.deleteAccount()
 
         XCTAssertNil(model.session)
-        XCTAssertTrue(isolatedSession)
         XCTAssertTrue(model.errorMessage?.contains("local data") == true)
     }
 
@@ -267,7 +575,10 @@ final class AccountModelTests: XCTestCase {
         service.appleSession = session(userID)
         service.loadedProfile = profile(userID: userID, name: "Alex")
         var signedOutUserID: UUID?
-        let model = AccountModel(service: service, didSignOut: { signedOutUserID = $0 })
+        let model = AccountModel(service: service, didSignOut: {
+            signedOutUserID = $0
+            return true
+        })
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
 
         await model.signOut()
@@ -290,6 +601,22 @@ final class AccountModelTests: XCTestCase {
         XCTAssertFalse(model.isWorking)
         XCTAssertNil(model.errorMessage)
         XCTAssertNil(model.session)
+    }
+
+    func testRepeatedProfileLoadFailureEmitsErrorEventAgain() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.appleSession = session(userID)
+        let model = AccountModel(service: service)
+
+        await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
+        let firstEvent = model.errorEvent
+
+        await model.retryProfile()
+
+        XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
+        XCTAssertEqual(model.errorEvent, firstEvent + 1)
     }
 
     private func session(_ userID: UUID) -> AccountSession {
@@ -326,6 +653,8 @@ private final class AccountServiceMock: AccountServicing {
     var appleCredentials: (idToken: String, nonce: String)?
     var loadedUserIDs: [UUID] = []
     var profileUpdateCount = 0
+    var signOutCount = 0
+    var deleteCount = 0
     var lastProfileUpdate: (name: String, seed: String)?
 
     init() {
@@ -368,9 +697,10 @@ private final class AccountServiceMock: AccountServicing {
         return updatedProfile
     }
 
-    func signOut() async throws {}
+    func signOut() async throws { signOutCount += 1 }
 
     func deleteAccount() async throws {
+        deleteCount += 1
         if let deleteError { throw deleteError }
     }
 
@@ -379,6 +709,229 @@ private final class AccountServiceMock: AccountServicing {
     }
 }
 
+private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: LiveRecoveryState
+    var rejectsLoads = false
+    var rejectsClears = false
+    var clearFailuresRemaining = 0
+
+    var storedState: LiveRecoveryState {
+        lock.withLock { state }
+    }
+
+    init(_ state: LiveRecoveryState) {
+        self.state = state
+    }
+
+    func load() throws -> LiveRecoveryState {
+        try lock.withLock {
+            if rejectsLoads { throw TestError.failed }
+            return state
+        }
+    }
+
+    func save(_ state: LiveRecoveryState) throws {
+        lock.withLock { self.state = state }
+    }
+
+    func clear() throws {
+        try lock.withLock {
+            if clearFailuresRemaining > 0 {
+                clearFailuresRemaining -= 1
+                throw TestError.failed
+            }
+            if rejectsClears { throw TestError.failed }
+            state = LiveRecoveryState()
+            rejectsLoads = false
+        }
+    }
+}
+
 private enum TestError: Error {
     case failed
+}
+
+final class DailySyncLifecycleTests: XCTestCase {
+    func testFreshLifecyclePermitsPendingMarks() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let engine = DailySyncEngine(
+            userID: userID,
+            store: store,
+            remote: UnavailableDailyRemote(),
+            lifecycle: DailySyncLifecycle()
+        )
+        try store.save(DailyClassicProgress(
+            puzzleID: "daily-classic-2026-08-31",
+            puzzleNumber: 1,
+            puzzleDay: 20_696,
+            wordPackID: "daily-classic-en-US-v1",
+            scheduleVersion: 1,
+            hardModeEnabled: false,
+            acceptedGuesses: [],
+            draft: "",
+            completion: nil
+        ))
+
+        try await engine.markProgressPending()
+        try await engine.markResultPending("daily-classic-2026-08-31")
+
+        let metadata = try store.loadSyncMetadata()
+        XCTAssertTrue(metadata.pendingProgress)
+        XCTAssertEqual(metadata.pendingResultPuzzleIDs, ["daily-classic-2026-08-31"])
+    }
+
+    func testInvalidatedLifecycleBlocksMarksWithoutRecreatingCache() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        let lifecycle = DailySyncLifecycle()
+        let engine = DailySyncEngine(
+            userID: userID,
+            store: store,
+            remote: UnavailableDailyRemote(),
+            lifecycle: lifecycle
+        )
+        lifecycle.invalidate()
+        XCTAssertTrue(lifecycle.isInvalidated)
+        lifecycle.invalidate()
+
+        await XCTAssertThrowsCancellation(try await engine.markProgressPending())
+        await XCTAssertThrowsCancellation(try await engine.markResultPending("puzzle"))
+        await XCTAssertThrowsCancellation(try await engine.markAllLocalDataPending())
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory.path))
+    }
+
+    func testPerformRunsWorkExactlyOnceWhileValid() throws {
+        let lifecycle = DailySyncLifecycle()
+        var runs = 0
+        try lifecycle.performThrowingIfValid { runs += 1 }
+        XCTAssertEqual(runs, 1)
+        XCTAssertFalse(lifecycle.isInvalidated)
+    }
+
+    func testPerformNeverRunsWorkAfterInvalidation() throws {
+        let lifecycle = DailySyncLifecycle()
+        lifecycle.invalidate()
+        var runs = 0
+        XCTAssertThrowsError(try lifecycle.performThrowingIfValid { runs += 1 }) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(runs, 0)
+    }
+
+    func testPerformPropagatesWorkErrorsAndReleasesTheLock() throws {
+        struct Boom: Error {}
+        let lifecycle = DailySyncLifecycle()
+        XCTAssertThrowsError(try lifecycle.performThrowingIfValid { throw Boom() }) { error in
+            XCTAssertTrue(error is Boom)
+        }
+        var runs = 0
+        try lifecycle.performThrowingIfValid { runs += 1 }
+        XCTAssertEqual(runs, 1)
+        XCTAssertFalse(lifecycle.isInvalidated)
+    }
+
+    func testConcurrentMutationsAndInvalidationLoseNothing() async {
+        let lifecycle = DailySyncLifecycle()
+        let completed = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for _ in 0..<64 {
+                group.addTask {
+                    do {
+                        try lifecycle.performThrowingIfValid {}
+                        return true
+                    } catch is CancellationError {
+                        return false
+                    } catch {
+                        XCTFail("Unexpected error \(error)")
+                        return false
+                    }
+                }
+            }
+            lifecycle.invalidate()
+            var count = 0
+            for await ran in group {
+                if ran { count += 1 }
+            }
+            return count
+        }
+        XCTAssertGreaterThanOrEqual(completed, 0)
+        XCTAssertLessThanOrEqual(completed, 64)
+        var lateRuns = 0
+        do {
+            try lifecycle.performThrowingIfValid { lateRuns += 1 }
+            XCTFail("Expected CancellationError")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        XCTAssertEqual(lateRuns, 0)
+    }
+
+    func testDeletedCacheReadsAsEmptyWithoutRecreation() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceLifecycleTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userID = UUID()
+        let store = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+        var history = DailyClassicHistory()
+        XCTAssertTrue(history.record(DailyCompletedResult(
+            puzzleID: "daily-classic-2026-08-31",
+            puzzleNumber: 1,
+            puzzleDay: 20_696,
+            wordPackID: "daily-classic-en-US-v1",
+            scheduleVersion: 1,
+            guesses: [DailyGuess(
+                word: "stone",
+                feedback: Array(repeating: .correct, count: 5),
+                acceptedAt: Date(timeIntervalSince1970: 1_788_134_401)
+            )],
+            outcome: .solved,
+            guessCount: 1,
+            completedAt: Date(timeIntervalSince1970: 1_788_134_500)
+        )))
+        try store.save(history)
+
+        try store.deleteAccountCache()
+
+        XCTAssertTrue(try store.loadHistory().completedResults.isEmpty)
+        XCTAssertNil(try store.loadProgress())
+        XCTAssertEqual(try store.loadSyncMetadata(), DailySyncMetadata())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory.path))
+    }
+
+    private func XCTAssertThrowsCancellation(
+        _ expression: @autoclosure () async throws -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            try await expression()
+            XCTFail("Expected CancellationError", file: file, line: line)
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error \(error)", file: file, line: line)
+        }
+    }
+}
+
+private actor UnavailableDailyRemote: DailySyncRemote {
+    func pull() async throws -> DailyCloudSnapshot {
+        throw DailySyncRemoteError.unavailable
+    }
+
+    func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {
+        throw DailySyncRemoteError.unavailable
+    }
+
+    func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {
+        throw DailySyncRemoteError.unavailable
+    }
 }

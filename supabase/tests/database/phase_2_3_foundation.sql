@@ -56,6 +56,102 @@ select ok(
   (select bool_and(display_name ~ '^[A-Za-z0-9][A-Za-z0-9 ''-]*[A-Za-z0-9]$') from public.profiles),
   'generated profile names satisfy the frozen character contract'
 );
+select is(
+  (
+    select pronargdefaults
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  1::smallint,
+  'join-match keeps only the IP hash argument optional'
+);
+select ok(
+  not (
+    select prosecdef
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  'join-match remains security invoker'
+);
+select is(
+  (
+    select proconfig
+    from pg_proc
+    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+  ),
+  array['search_path=""']::text[],
+  'join-match keeps an empty search path'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.join_match(uuid,integer,text,text)',
+    'execute'
+  ),
+  'service role keeps join-match execution'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.join_match(uuid,integer,text,text)',
+    'execute'
+  ),
+  'authenticated clients still cannot execute join-match directly'
+);
+select is(
+  pg_get_function_result('private.finalize_expired_rounds()'::regprocedure),
+  'integer',
+  'scheduled finalizer keeps its integer return contract'
+);
+select ok(
+  not (
+    select prosecdef
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  'scheduled finalizer remains security invoker'
+);
+select is(
+  (
+    select provolatile
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  'v'::"char",
+  'scheduled finalizer remains volatile'
+);
+select is(
+  (
+    select proconfig
+    from pg_proc
+    where oid = 'private.finalize_expired_rounds()'::regprocedure
+  ),
+  array['search_path=""']::text[],
+  'scheduled finalizer keeps an empty search path'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'private.finalize_expired_rounds()',
+    'execute'
+  ),
+  'service role keeps scheduled-finalizer execution'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'private.finalize_expired_rounds()',
+    'execute'
+  ),
+  'authenticated clients cannot execute the scheduled finalizer'
+);
+select ok(
+  position(
+    'order by round.match_id, round.id'
+    in lower(pg_get_functiondef('private.finalize_expired_rounds()'::regprocedure))
+  ) > 0,
+  'scheduled finalizer uses stable match lock order'
+);
 
 select is(private.normalize_guess('STONE'), 'stone', 'ASCII uppercase normalization is deterministic');
 select is(private.normalize_guess('st0ne'), null, 'invalid character is rejected');
@@ -81,7 +177,8 @@ with created as (
   select public.create_match(
     '10000000-0000-0000-0000-000000000001',
     1,
-    repeat('a', 64)
+    repeat('a', 64),
+    '11000000-0000-0000-0000-000000000001'
   ) as response
 )
 insert into test_context (match_id, request_id, first_response)
@@ -258,6 +355,114 @@ select is(
   'pre-reveal snapshot omits the answer'
 );
 
+do $$
+declare
+  v_request_ids uuid[] := array[
+    '30000000-0000-0000-0000-000000000001'::uuid,
+    '30000000-0000-0000-0000-000000000002'::uuid,
+    '30000000-0000-0000-0000-000000000003'::uuid,
+    '30000000-0000-0000-0000-000000000004'::uuid,
+    '30000000-0000-0000-0000-000000000005'::uuid
+  ];
+  v_request_id uuid;
+begin
+  foreach v_request_id in array v_request_ids loop
+    if not public.submit_guess(
+      '10000000-0000-0000-0000-000000000002',
+      1,
+      (select match_id from test_context),
+      1::smallint,
+      v_request_id,
+      'crane',
+      null
+    ) ? 'data' then
+      raise exception 'failed-guess fixture submission was rejected';
+    end if;
+  end loop;
+end;
+$$;
+
+create temporary table failed_guess_receipt as
+select
+  '30000000-0000-0000-0000-000000000006'::uuid as request_id,
+  public.submit_guess(
+    '10000000-0000-0000-0000-000000000002',
+    1,
+    (select match_id from test_context),
+    1::smallint,
+    '30000000-0000-0000-0000-000000000006',
+    'crane',
+    null
+  ) as response;
+
+select is((select response #>> '{data,player_state}' from failed_guess_receipt), 'failed', 'sixth wrong guess returns failed state');
+select is((select response #>> '{data,accepted_guess_count}' from failed_guess_receipt), '6', 'failed receipt returns count six');
+select is((select response #> '{data,solve_duration_ms}' from failed_guess_receipt), 'null'::jsonb, 'failed receipt returns null solve duration');
+select is((select response #> '{data,efficiency_points}' from failed_guess_receipt), 'null'::jsonb, 'failed receipt returns null efficiency');
+select is(
+  (select efficiency_points from public.player_rounds where round_id = (select round_id from test_context) and member_id = (select member_member_id from test_context)),
+  0::smallint,
+  'failed player storage retains zero efficiency'
+);
+select is(
+  (
+    select player ->> 'efficiency_points'
+    from jsonb_array_elements(
+      public.match_snapshot(
+        '10000000-0000-0000-0000-000000000002',
+        1,
+        (select match_id from test_context)
+      ) #> '{data,round,players}'
+    ) as player
+    where player ->> 'member_id' = (select member_member_id::text from test_context)
+  ),
+  '0',
+  'failed player snapshot reports zero efficiency'
+);
+select is(
+  (
+    select response_data
+    from private.guess_requests
+    where actor_user_id = '10000000-0000-0000-0000-000000000002'
+      and request_id = (select request_id from failed_guess_receipt)
+  ),
+  (select response -> 'data' from failed_guess_receipt),
+  'failed receipt stores the corrected response'
+);
+create temporary table failed_submit_rate_before_retry as
+select attempt_count
+from private.user_rate_limits
+where actor_user_id = '10000000-0000-0000-0000-000000000002'
+  and action = 'submit_guess';
+select is(
+  public.submit_guess(
+    '10000000-0000-0000-0000-000000000002',
+    1,
+    (select match_id from test_context),
+    1::smallint,
+    (select request_id from failed_guess_receipt),
+    'CRANE',
+    null
+  ),
+  (select response from failed_guess_receipt),
+  'failed receipt replay returns the identical accepted result'
+);
+select is(
+  (select count(*) from public.guesses where round_id = (select round_id from test_context) and member_id = (select member_member_id from test_context)),
+  6::bigint,
+  'failed receipt replay creates no duplicate guess'
+);
+select is(
+  (
+    select attempt_count
+    from private.user_rate_limits
+    where actor_user_id = '10000000-0000-0000-0000-000000000002'
+      and action = 'submit_guess'
+  ),
+  (select attempt_count from failed_submit_rate_before_retry),
+  'failed receipt replay does not consume another rate attempt'
+);
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -295,7 +500,7 @@ select throws_ok(
   'normal client cannot read private words'
 );
 select throws_ok(
-  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 1, null)',
+  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 1, null, ''11000000-0000-0000-0000-000000000002'')',
   '42501',
   'permission denied for function create_match',
   'normal client cannot execute service-only RPCs'
@@ -311,7 +516,7 @@ select set_config(
 select is((select count(*) from public.matches), 1::bigint, 'second rostered player reads match');
 select is((select count(*) from public.rounds), 1::bigint, 'second rostered player reads round');
 select is((select count(*) from public.player_rounds), 2::bigint, 'second rostered player reads both player round summaries');
-select is((select count(*) from public.guesses), 0::bigint, 'opponent board is hidden before reveal');
+select is((select count(*) from public.guesses), 6::bigint, 'player reads only their own board before reveal');
 reset role;
 
 set local role authenticated;
@@ -346,14 +551,16 @@ select throws_ok(
 );
 reset role;
 
+select is(private.finalize_expired_rounds(), 0, 'scheduled finalizer ignores an unexpired round');
 update public.rounds
 set starts_at = transaction_timestamp() - interval '181 seconds',
     ends_at = transaction_timestamp() - interval '1 second'
 where id = (select round_id from test_context);
 
-select ok(private.finalize_round((select round_id from test_context)), 'elapsed round finalizes');
+select is(private.finalize_expired_rounds(), 1, 'scheduled finalizer returns one elapsed round');
 update test_context
 set completed_at = (select completed_at from public.rounds where id = test_context.round_id);
+select is(private.finalize_expired_rounds(), 0, 'repeated scheduled finalizer is idempotent');
 select ok(private.finalize_round((select round_id from test_context)), 'repeated finalizer succeeds');
 select is(
   (select completed_at from public.rounds where id = (select round_id from test_context)),
@@ -390,7 +597,7 @@ select set_config(
   '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
   true
 );
-select is((select count(*) from public.guesses), 1::bigint, 'opponent board becomes visible after reveal');
+select is((select count(*) from public.guesses), 7::bigint, 'opponent board becomes visible after reveal');
 reset role;
 
 select ok(
@@ -410,7 +617,7 @@ select is(
   null,
   'retained result has no auth identity'
 );
-select is((select count(*) from public.guesses), 1::bigint, 'survivor-required accepted board remains');
+select is((select count(*) from public.guesses), 7::bigint, 'survivor-required accepted boards remain');
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',

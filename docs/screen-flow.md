@@ -7,7 +7,7 @@ broader production MVP.
 
 ## Flow map
 
-The current app flow is:
+The Daily and account routes are:
 
 ```text
 Home
@@ -28,14 +28,16 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-The paused Phase 3 plan later adds this fixed live slice:
+The implemented Phase 3 slice adds these routes alongside Daily Classic:
 
 ```text
-Tutorial or Sign in with Apple / Debug local sign-in
-  -> Home
-     -> Create -> Lobby -> Countdown -> Round -> Reveal
-     -> Join   -> Lobby -> Countdown -> Round -> Reveal
-     -> Profile -> identity, sign out, account deletion
+Home (Daily remains primary)
+  -> Live create/join -> existing account flow if signed out
+     -> Create -> Lobby -> Countdown -> Round -> Reveal -> Home
+     -> Join   -> Lobby -> Countdown -> Round -> Reveal -> Home
+  -> Resume saved live recovery -> resolve pending request -> canonical snapshot
+                               -> current live state
+  -> Account -> identity, sign out, account deletion
 ```
 
 The match creator starts the first and later countdowns. There is no readiness
@@ -72,7 +74,10 @@ The account screen shows the generated avatar, 2–16 character player-name edit
 simple synced/pending/error status, retry, sign out, and confirmed deletion. A
 divergent attempt explains that devices differ and offers “Use synced attempt” or
 “Keep this device.” It never presents either imported attempt as verified. Network
-failure leaves the local game available.
+failure leaves the local game available. If sign-out or confirmed deletion cannot
+durably clear live recovery, former-account Daily/account data stays hidden and Home
+replaces Create/Join/Resume with “Resolve saved live data,” which opens Live Race for
+retry or discard.
 
 ### Onboarding and tutorial
 
@@ -84,11 +89,34 @@ authority demonstration.
 
 ### Home, create/join, and lobby
 
-The Phase 3 Home routes to fixed Create, manual-code Join, tutorial, and Profile.
+Phase 3 provides fixed Create, manual-code Join and Resume alongside the existing Daily,
+tutorial and Account routes; authentication never gates Daily.
 Create always makes exactly two seats and one round; configuration and invite links
-remain later. Lobby shows the private roster, room code, advisory connection state,
+remain later. Starting a new create durably replaces the previous selected match
+pointer before dispatch; a failed save retains that pointer and blocks the request.
+An uncertain create remains resumable from Home using its original request identity.
+Join keeps the previously saved pointer until its result is saved. A failed Join preserves
+its error and does not automatically reopen the old room; generic Retry does not select
+that old pointer or erase the denial, and the UI does not offer that wrong action.
+Explicit Resume can recover that saved room. If resolution cannot be saved, storage
+Retry/Discard remains required before ordinary commands or automatic recovery resume.
+Lobby shows the private roster, room code, this client's connection/
+recovery status,
 and creator-only Start. It does not add readiness, public discovery, chat, or late
 joining.
+
+The accepted Phase 4 direction adds a native 1/3/5 Create selector (3 selected),
+Round N of M, the existing reveal followed by canonical standings, creator-only
+Start next, and final standings/Home/prior reveals. If either account deletes,
+finish the started round then show incomplete/Home with preserved anonymized
+reveals and partial standings. Ordinary creator absence keeps the reveal waiting.
+Backend and native presentation implement these boundaries. Saved Start Retry
+uses the original session-owned target even after Home/Resume; pending old-round
+guesses cannot populate a later-round draft. Prior reveal selection leaves current
+commands and SQL standings unchanged. Real independent-client verification and
+the independent implementation review are complete, recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). OS-assisted
+accessibility verification remains pending. No presence, transfer or auto advance.
 
 ### Countdown and round
 
@@ -105,18 +133,32 @@ The opponent strip shows, for each opponent:
 
 - generated avatar and display name;
 - accepted guess count;
-- connected or disconnected presentation;
+- connected or disconnected presentation in the later MVP (deferred in this slice);
 - playing, solved, failed, timed-out, or forfeited state;
 - a small progress response when the accepted count increases.
 
 Phase 1 ghosts remain connected and use only playing, solved, or failed. The live
-slice uses the full connection and terminal presentations while preserving those
-local tutorial ghosts.
+slice shows all canonical terminal states and this client's own connection/recovery
+status; it makes no claim about opponent connectivity. Preserve tutorial ghosts.
 
 During play it never shows opponent letters or submitted words, feedback,
 keyboard state, starting words, or exact solve time. An accessible summary is
 equivalent to “Opponent Alex, three guesses submitted, still playing.” Reduced
 Motion replaces progress movement with an immediate count/state update.
+
+A solved/failed player waits for the canonical shared reveal; show their accepted
+board and opponent count/state without exposing the answer. Invalid input preserves
+the draft. A pending uncertain submission locks resubmission as a new intent and
+explains recovery. Local deadline expiry locks input while fetching authoritative
+state; network failure never manufactures a result. Provide explicit retry and Home.
+
+Leaving for Home or signing out does not forfeit/cancel the match. Foreground Resume
+first resolves any persisted create or guess using its original request identity,
+then restores the accepted board through a snapshot. A create/join response arriving
+after Home saves the resolved match pointer without restarting hidden recovery;
+explicit Resume restarts subscriptions and canonical refresh. An expired lobby disables Start;
+host deletion makes a guest's room unavailable, and guest deletion returns the host
+to a one-seat lobby. Show those outcomes without an endless loading state.
 
 ### Reveal
 
@@ -145,13 +187,14 @@ Nothing is omitted, delayed behind animation, or communicated by color alone.
 
 ### Results, rematch, history, and profile
 
-Full results are future work and show round placements followed by match
-placement using the exact comparators in `game-rules.md`. If another configured
-round remains, reveal stays available until the creator starts its countdown.
-After the final reveal, Results offers Rematch or Home. Rematch creates a new
-match; it does not reopen or mutate the completed one.
+Phase 4 shows round placements followed by canonical match standings using the
+exact comparators in `game-rules.md`. A nonfinal reveal waits for creator Start
+next; final and incomplete results offer Home and preserved prior reveals.
+Incomplete standings remain partial. Rematch is later work: it will create a new
+match rather than reopen or mutate the completed one.
 
-History remains later. Phase 2/3 Profile manages display name, generated avatar,
+Competitive history remains later; Daily statistics/history stay available. Phase 2/3
+Profile manages display name, generated avatar,
 sign out, and complete in-app deletion; blocked-player controls remain later.
 Contacts, photos, chat, and visible email are outside the product.
 

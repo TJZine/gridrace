@@ -10,6 +10,9 @@ struct AccountView: View {
     var skipGuestHistory: (() -> Void)?
     var useCloudAttempt: (() -> Void)?
     var keepDeviceAttempt: (() -> Void)?
+    // Number of unresolved merge conflicts. Drives one conflict-heading focus
+    // per successive conflict even while the resolve callbacks stay nonnil.
+    var conflictCount = 0
 
     @State private var rawAppleNonce: String?
     @State private var editingProfile = false
@@ -17,7 +20,15 @@ struct AccountView: View {
     @State private var showingImportConfirmation = false
     @State private var actionTask: Task<Void, Never>?
     // U-06: conflict choice -> focus conflict heading (no duplicate announce).
-    @AccessibilityFocusState private var conflictFocused: Bool
+    // A per-conflict generation refires focus for successive conflicts, where
+    // a plain Bool same-value assignment would coalesce and never move focus.
+    @AccessibilityFocusState private var conflictFocus: Int?
+    @State private var conflictGeneration = 0
+    // Account/profile errors: the model mints `errorEvent` per error (even for
+    // a repeated identical string), so focus follows the event, not the
+    // message value. The banner itself never announces: focus is the sole
+    // speech owner.
+    @AccessibilityFocusState private var errorFocus: Int?
     #if DEBUG
     @State private var localEmail = ""
     @State private var localPassword = ""
@@ -46,6 +57,29 @@ struct AccountView: View {
                 .frame(maxWidth: 560)
                 .padding(20)
                 .frame(maxWidth: .infinity)
+            }
+            .onAppear {
+                // Initial-entry path: an error already present when the
+                // screen appears (e.g. a failed restore before navigation)
+                // never triggers `onChange`, so focus it here exactly once.
+                if model.errorMessage != nil {
+                    errorFocus = model.errorEvent
+                }
+            }
+            .onChange(of: model.errorEvent) { _, event in
+                // Sole error-focus owner: every model error mints a fresh
+                // event, including a repeated identical string that leaves
+                // `errorMessage` unchanged (retryProfile → loadProfile).
+                if model.errorMessage != nil {
+                    errorFocus = event
+                }
+            }
+            .onChange(of: model.errorMessage) { _, message in
+                // Clearing resolves to nil so no stale target survives the
+                // next error; setting focus to nil never announces.
+                if message == nil {
+                    errorFocus = nil
+                }
             }
         }
         .navigationTitle("Account")
@@ -112,13 +146,15 @@ struct AccountView: View {
                         .textContentType(.username)
                     SecureField("Test user password", text: $localPassword)
                         .textContentType(.password)
-                    Button("Sign in to local Supabase") {
+                    Button {
                         let email = localEmail
                         let password = localPassword
                         run { await model.signInForLocalTesting(email: email, password: password) }
+                    } label: {
+                        Text("Sign in to local Supabase")
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, minHeight: 44)
                     .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking)
                 }
                 .textFieldStyle(.roundedBorder)
@@ -146,13 +182,12 @@ struct AccountView: View {
                         .font(.title2.bold())
                     Label("Signed in", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.secondary)
-                    Text("Your email is never shown to other players.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Edit profile") { editingProfile = true }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                    privacyReassurance
+                    Button { editingProfile = true } label: {
+                        Text("Edit profile")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             .padding(24)
@@ -178,13 +213,17 @@ struct AccountView: View {
             }
 
             VStack(spacing: 12) {
-                Button("Sign out") { run { await model.signOut() } }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .disabled(model.isWorking)
-                Button("Delete account", role: .destructive) {
-                    showingDeleteConfirmation = true
+                Button { run { await model.signOut() } } label: {
+                    Text("Sign out")
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(model.isWorking)
+                Button(role: .destructive) {
+                    showingDeleteConfirmation = true
+                } label: {
+                    Text("Delete account")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
                 .disabled(model.isWorking)
             }
             .frame(maxWidth: .infinity)
@@ -192,19 +231,32 @@ struct AccountView: View {
             VStack(spacing: 14) {
                 ProgressView()
                 Text("Loading your profile")
-                Button("Try again") { run { await model.retryProfile() } }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .disabled(model.isWorking)
+                Button { run { await model.retryProfile() } } label: {
+                    Text("Try again")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.isWorking)
             }
             .frame(maxWidth: .infinity, minHeight: 180)
         }
+    }
+
+    // Exact signed-in reassurance, shared by the viewing, initial-setup,
+    // and editing states (only one state is visible at a time, so the single
+    // definition never duplicates on screen).
+    private var privacyReassurance: some View {
+        Text("Your email is never shown to other players.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
     }
 
     private func profileEditor(isInitialSetup: Bool) -> some View {
         VStack(spacing: 14) {
             Text(isInitialSetup ? "Choose your player name" : "Edit profile")
                 .font(.title3.bold())
+            privacyReassurance
             TextField("Player name", text: $model.displayNameDraft)
                 .textInputAutocapitalization(.words)
                 .textContentType(.nickname)
@@ -218,27 +270,33 @@ struct AccountView: View {
                     .foregroundStyle(Color.raceDanger)
                     .multilineTextAlignment(.center)
             }
-            Button("Try another avatar") { model.randomizeAvatar() }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(model.isWorking)
+            Button { model.randomizeAvatar() } label: {
+                Text("Try another avatar")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isWorking)
             HStack {
                 if !isInitialSetup {
-                    Button("Cancel") {
+                    Button {
                         model.displayNameDraft = model.profile?.displayName ?? ""
                         model.avatarSeedDraft = model.profile?.avatarSeed ?? model.avatarSeedDraft
                         editingProfile = false
+                    } label: {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                Button("Save") {
+                Button {
                     run {
                         await model.saveProfile()
                         if model.errorMessage == nil { editingProfile = false }
                     }
+                } label: {
+                    Text("Save")
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(
                     model.isWorking
                         || PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil
@@ -255,40 +313,56 @@ struct AccountView: View {
                     .accessibilityHidden(true)
                 Text(message)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityFocused($conflictFocused)
+                    .accessibilityFocused($conflictFocus, equals: conflictGeneration)
                 if let retrySync {
-                    Button("Retry", action: retrySync)
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 44)
+                    Button(action: retrySync) {
+                        Text("Retry")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             if let useCloudAttempt, let keepDeviceAttempt {
                 VStack(spacing: 8) {
-                    Button("Use synced attempt", action: useCloudAttempt)
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                    Button("Keep this device", action: keepDeviceAttempt)
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                    Button(action: useCloudAttempt) {
+                        Text("Use synced attempt")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button(action: keepDeviceAttempt) {
+                        Text("Keep this device")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
         .padding(16)
         .background(Color.raceInset, in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
-            if useCloudAttempt != nil { conflictFocused = true }
+            if useCloudAttempt != nil { conflictFocus = conflictGeneration }
         }
-        .onChange(of: useCloudAttempt == nil) { _, isNil in
-            // Assign (not only set) so a reappearing conflict refires focus.
-            conflictFocused = !isNil
+        .onChange(of: conflictCount) { _, count in
+            // Each successive conflict refocuses once: resolving one conflict
+            // changes the count while the callbacks stay nonnil, so watching
+            // callback nil-ness alone would miss every conflict after the first.
+            if count > 0 {
+                conflictGeneration += 1
+                conflictFocus = conflictGeneration
+            }
         }
     }
 
     private func errorCard(_ message: String) -> some View {
         VStack(spacing: 10) {
+            // Focus target is the model-owned `errorEvent` (set once per
+            // error by the body-level handlers above, never here).
             RaceErrorBanner(message: message)
-            Button("Dismiss") { model.clearError() }
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .accessibilityFocused($errorFocus, equals: model.errorEvent)
+            Button { model.clearError() } label: {
+                Text("Dismiss")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
         }
     }
 

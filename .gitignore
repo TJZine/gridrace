@@ -11,3 +11,9 @@ supabase/.temp/
 supabase/functions/.env
 supabase/functions/.env.*
 !supabase/functions/.env.example
+
+# Claude Code personal settings
+.claude/settings.local.json
+
+# Orchestration run state (leases, baselines, callbacks); deleted at plan closeout
+.codex/runs/

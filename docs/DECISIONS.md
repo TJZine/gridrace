@@ -3,8 +3,110 @@
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
 tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
-[Phase 2 and Phase 3 Live Slice Plan](plans/2026-08-30-phase-2-3-live-slice.md)
-is paused and preserved for later adaptation.
+[Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
+tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
+
+## 2026-10-03 — Converge Started Daily Attempts Over Empty Boards
+
+**Decision:** For the same immutable Daily puzzle, an attempt containing accepted
+guesses takes precedence over an empty board's different Hard Mode choice. The
+progress RPC adopts incoming mode and guesses atomically only while stored
+progress is empty, checking any supplied expected revision. Two started attempts with
+differing modes still conflict; immutable completions retain precedence.
+
+**Rationale:** Hard Mode locks at the first accepted guess. An empty board has no
+locked attempt to preserve. This aligns server convergence with the accepted Swift
+reconciliation behavior rather than silently changing a started attempt's mode.
+
+**Consequences/revisit:** Use the existing sync owners and regression coverage.
+Preserve published migration history with a forward replacement; whether the
+original migration reached a preserved hosted database remains unknown. Imported
+Daily results remain owner-private personal history, never verified competition.
+
+## 2026-10-03 — Adopt the Stamped Scorecard Visual Direction
+
+**Decision:** Replace the indigo/coral/teal lane-edge presentation with the
+stamped scorecard direction in [`design-direction.md`](design-direction.md):
+warm paper and ink, claret round-seal tiles (filled correct, double-ring present,
+unfilled dimmed absent), serif plus monospaced system type, a program-schedule
+Home, Live Create/Join off Home, and gameplay limited to header, board, and
+keyboard.
+
+**Rationale:** A simulator audit showed absent feedback dominating the board,
+indigo overloaded across action and feedback, a meaningless lane-edge bar, a
+form-like Home, and the sixth row clipped in the tutorial race.
+
+**Consequences/revisit:** Accessibility, secrecy, and original-identity invariants
+are unchanged. Passport-stamp tiles are the designated fallback only if testing
+shows round tiles hurt legibility. All surfaces were designed on 2026-10-03;
+[`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md)
+implements them after the human-approved rescope moves Phase 4's OS-assisted
+accessibility proof into that plan.
+
+## 2026-10-02 — Expand Private Blind Race to Two-Player Multi-Round Matches
+
+**Decision:** Keep exactly two authenticated players and manual room codes. Offer
+1, 3, or 5 rounds, default 3, with private randomly server-selected nonrepeating
+answers. The creator starts every countdown after the preceding reveal. Preserve
+canonical reveals and show server-owned round, cumulative and final standings using
+the existing exact scoring and tie rules. This anytime live mode stays separate
+from Daily Classic and is not solo practice.
+
+**Rationale:** The two-player authoritative slice is proved locally. Multi-round
+racing expands the existing loop without wider rosters, a generalized engine or
+new social/distribution surfaces.
+
+**Consequences/revisit:** Reuse current UI: native rounds selection at Create,
+Round N of M, existing reveal followed by standings and creator-only Start next,
+final standings with Home and access to prior reveals. Ordinary creator absence
+leaves a reveal waiting. After either account deletes, finish any started round
+under existing forfeit/deadline rules, anonymize survivor-required reveals and
+freeze unstarted rounds with an explicit incomplete-match presentation. Do not
+transfer host, cancel, automatically advance or finish the match against a deleted
+guest. The human accepted both presentation and deletion recommendations with
+“use both recs.” Independent plan review and the accepted-plan checkpoint precede
+implementation; this decision does not claim shipped behavior. Broader rosters,
+rematch, competitive history, links, notifications, presence, moderation, hosting,
+retention and distribution remain later requirements. Revisit the deletion policy
+only under a new explicit product decision.
+
+## 2026-09-22 — Keep the Focused Native/Supabase Slice With Bounded Recovery
+
+**Decision:** Retain SwiftUI and the PostgreSQL/RLS, authenticated Edge, Realtime
+signal and canonical-snapshot ownership split. Before the live client, make creation
+retry-safe with a persisted request ID. Use account-bound pending intents and bounded
+foreground snapshot refresh to recover silent event loss. Defer opponent presence
+labels for this slice; show only this client's transport status and opponent game
+progress. Presence remains a later MVP responsibility.
+
+**Rationale:** The existing stack fits low-frequency private races. Replacing it would
+repeat authentication, transaction, privacy and recovery verification without a
+current product benefit. Lost create responses and silently missed events are real
+holes the client must resolve. A local socket does not establish opponent presence.
+
+**Consequences/revisit:** The retry-safe create API change is implemented locally and
+the backend security/integration checkpoint must precede Swift integration. No generic
+command framework, polling of completed rooms or presence channel is introduced.
+Revisit transport after measured contention/fan-out,
+and platform choice only for a concrete additional-platform requirement. The
+maintainer owns the later presence decision after the local slice is proved.
+
+## 2026-09-22 — Validate With No Initial Spend
+
+**Decision:** Use local development and free services while validating with the owner
+and friends. Traction outside that group is a reason to reconsider spending, not
+permission to upgrade automatically. Every paid commitment requires maintainer approval.
+
+**Rationale:** The product needs evidence of use before recurring infrastructure cost.
+Free-tier capacity/availability and native distribution must be checked explicitly;
+security, deletion, retention and recovery are not traded away to fit a quota.
+
+**Consequences/revisit:** This plan authorizes no hosted deployment or purchase.
+Before friend distribution the maintainer resolves Apple membership/distribution and
+hosted retention, backups and provider setup. Native TestFlight may require a paid
+membership even when hosting is free; do not promise zero-cost distribution or change
+the client stack silently. Revisit that boundary at distribution planning or evidence
+of external users, with a concrete cost proposal.
 
 ## 2026-08-31 — Separate Imported Daily History From Verified Competition
 

@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const ERROR_MESSAGES = {
+  invalid_match_configuration: "Choose 1, 3, or 5 rounds.",
+  match_incomplete:
+    "This match cannot continue because a player account was deleted.",
   not_authenticated: "Sign in and try again.",
   not_a_match_member: "You are not part of this match.",
   match_not_joinable: "This match cannot be joined.",
@@ -22,6 +25,8 @@ export type ErrorCode = keyof typeof ERROR_MESSAGES;
 export type JsonObject = Record<string, unknown>;
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
+  invalid_match_configuration: 400,
+  match_incomplete: 409,
   not_authenticated: 401,
   not_a_match_member: 403,
   match_not_joinable: 409,
@@ -43,6 +48,7 @@ const JSON_HEADERS = {
   "cache-control": "no-store",
   "content-type": "application/json; charset=utf-8",
 };
+const MAX_REQUEST_BYTES = 2048;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CLIENT_OPTIONS = {
   auth: {
@@ -140,13 +146,13 @@ export async function readRequest(
   const declaredLength = request.headers.get("content-length");
   if (declaredLength !== null) {
     const length = Number(declaredLength);
-    if (!Number.isInteger(length) || length < 0 || length > 2048) {
+    if (!Number.isInteger(length) || length < 0 || length > MAX_REQUEST_BYTES) {
       return { ok: false, response: errorResponse("internal_error", 400) };
     }
   }
 
-  const text = await request.text();
-  if (text.length === 0 || text.length > 2048) {
+  const text = await readBoundedText(request, MAX_REQUEST_BYTES);
+  if (text === null || text.length === 0) {
     return { ok: false, response: errorResponse("internal_error", 400) };
   }
 
@@ -160,6 +166,47 @@ export async function readRequest(
     return { ok: false, response: errorResponse("internal_error", 400) };
   }
   return { ok: true, value: { body, token: bearer[1] } };
+}
+
+async function readBoundedText(
+  request: Request,
+  maximumBytes: number,
+): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > maximumBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size violation owns the stable client response even if cancellation fails.
+        }
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 export async function authorize(

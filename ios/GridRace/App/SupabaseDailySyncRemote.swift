@@ -1,30 +1,80 @@
 import Foundation
 import Supabase
 
-actor SupabaseDailySyncRemote: DailySyncRemote {
-    private let client: SupabaseClient
+struct DailyImportedResultsCursor: Equatable, Sendable {
+    let puzzleDay: Int
+    let puzzleID: String
 
-    init(client: SupabaseClient) {
-        self.client = client
+    init(_ result: DailyImportedResultDTO) {
+        puzzleDay = result.puzzleDay
+        puzzleID = result.puzzleID
     }
 
-    func pull() async throws -> DailyCloudSnapshot {
-        do {
-            async let progressRequest: [DailyProgressDTO] = client
+    func precedes(_ other: Self) -> Bool {
+        puzzleDay < other.puzzleDay || (puzzleDay == other.puzzleDay && puzzleID < other.puzzleID)
+    }
+}
+
+actor SupabaseDailySyncRemote: DailySyncRemote {
+    private let client: SupabaseClient
+    private let pageSize: Int
+    private let fetchProgress: @Sendable () async throws -> [DailyProgressDTO]
+    private let fetchResultsPage: @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
+
+    init(client: SupabaseClient, pageSize: Int = 1000) {
+        precondition(pageSize > 0, "Imported-results page size must be positive")
+        self.client = client
+        self.pageSize = pageSize
+        fetchProgress = {
+            let rows: [DailyProgressDTO] = try await client
                 .from("daily_progress")
                 .select()
                 .order("puzzle_day", ascending: false)
                 .limit(1)
                 .execute()
                 .value
-            async let resultRequest: [DailyImportedResultDTO] = client
+            return rows
+        }
+        fetchResultsPage = { cursor, limit in
+            var request = client
                 .from("daily_imported_results")
                 .select()
+            if let cursor {
+                request = request.or(
+                    "puzzle_day.gt.\(cursor.puzzleDay),and(puzzle_day.eq.\(cursor.puzzleDay),puzzle_id.gt.\(cursor.puzzleID))"
+                )
+            }
+            let rows: [DailyImportedResultDTO] = try await request
                 .order("puzzle_day", ascending: true)
+                .order("puzzle_id", ascending: true)
+                .limit(limit)
                 .execute()
                 .value
-            let (progress, results) = try await (progressRequest, resultRequest)
-            return DailyCloudSnapshot(progress: progress.first, importedResults: results)
+            return rows
+        }
+    }
+
+    init(
+        client: SupabaseClient,
+        pageSize: Int = 1000,
+        fetchProgress: @escaping @Sendable () async throws -> [DailyProgressDTO],
+        fetchResultsPage: @escaping @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
+    ) {
+        precondition(pageSize > 0, "Imported-results page size must be positive")
+        self.client = client
+        self.pageSize = pageSize
+        self.fetchProgress = fetchProgress
+        self.fetchResultsPage = fetchResultsPage
+    }
+
+    func pull() async throws -> DailyCloudSnapshot {
+        do {
+            async let progressRequest = fetchProgress()
+            let importedResults = try await fetchAllImportedResults()
+            let progress = try await progressRequest
+            return DailyCloudSnapshot(progress: progress.first, importedResults: importedResults)
+        } catch let error as DailySyncRemoteError {
+            throw error
         } catch is DecodingError {
             throw DailySyncRemoteError.invalidData
         } catch is CancellationError {
@@ -32,6 +82,27 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
         } catch {
             throw DailySyncRemoteError.unavailable
         }
+    }
+
+    private func fetchAllImportedResults() async throws -> [DailyImportedResultDTO] {
+        var all: [DailyImportedResultDTO] = []
+        var cursor: DailyImportedResultsCursor?
+        while true {
+            try Task.checkCancellation()
+            let page = try await fetchResultsPage(cursor, pageSize)
+            for result in page {
+                let next = DailyImportedResultsCursor(result)
+                guard cursor?.precedes(next) ?? true else {
+                    throw DailySyncRemoteError.invalidData
+                }
+                cursor = next
+            }
+            all.append(contentsOf: page)
+            if page.count < pageSize {
+                break
+            }
+        }
+        return all
     }
 
     func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {

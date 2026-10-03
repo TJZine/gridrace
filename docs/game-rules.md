@@ -17,6 +17,13 @@ keep correct letters in place, move present letters away from their revealed wro
 positions, and include at least the highest duplicate count previously proved by
 correct or present evidence.
 
+For account synchronization, immutable puzzle identity excludes Hard Mode. A
+started attempt takes precedence over an empty board with a different mode. The
+cloud progress RPC may adopt that attempt's mode and accepted guesses only while
+the stored board is empty, preserving expected-revision protection. Both-empty
+boards can change mode; two started attempts with differing modes conflict.
+An immutable completed result still takes precedence over active progress.
+
 Progress includes the puzzle and schedule identity, draft, accepted words, feedback,
 timestamps, Hard Mode choice, and completion. Completion is immutable. One structured
 result per puzzle updates statistics idempotently. Solved consecutive puzzle days
@@ -26,8 +33,19 @@ the answer or guessed letters.
 
 This is the authority for Blind Race rules and cross-runtime behavior. Production
 state is server-owned. Phase 1 executes the same pure rules against local tutorial
-fixtures; Phase 2 establishes the backend authority; Phase 3 proves it with exactly
-two players and one round.
+fixtures; Phase 2 establishes the backend authority; Phase 3 locally proves it with
+exactly two players and one round. Phase 4 keeps exactly two players and implements
+1/3/5 server rounds with nonrepeating random private answers and revealed-only
+canonical match standings. Backend and native client are locally verified,
+including real independent-client multi-round proof and an independent
+implementation review, recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
+accessibility proof remains pending. After either account deletes, finish the
+already-started round under the
+existing forfeit/deadline rules, anonymize retained reveals, and freeze remaining
+unstarted rounds. An incomplete match has partial standings, never final results.
+A creator who is merely unavailable leaves a nonfinal reveal waiting indefinitely.
+The 2–8-player rules below describe later expansion, not Phase 4 capacity.
 
 ## Match and round contract
 
@@ -85,7 +103,7 @@ pending -> countdown -> playing -> revealed
 | --- | --- | --- |
 | `pending -> countdown` | Authorized creator command selects a nonrepeating private answer and records absolute `startsAt` and `endsAt`. | Transactional PostgreSQL command; private answer storage has no client grant. |
 | `countdown -> playing` | Effective server time reaches `startsAt`; countdown never pauses for a client lifecycle event. | Canonical PostgreSQL snapshot interpretation of server timestamps. |
-| `playing -> revealed` | All round players are terminal, or `serverNow >= endsAt`; active players become `timedOut`, scoring and placement finalize, and reveal data becomes readable atomically. | Idempotent PostgreSQL finalizer, reached from command paths and the later Cron safety path. |
+| `playing -> revealed` | All round players are terminal, or `serverNow >= endsAt`; active players become `timedOut`, scoring and placement finalize, and reveal data becomes readable atomically. | Idempotent PostgreSQL finalizer, reached from command paths and the local Cron safety path. |
 
 Supabase Realtime only signals that clients should refresh. Canonical snapshots
 own recovery on entry, reconnect, foregrounding, timeout, inconsistency, and an

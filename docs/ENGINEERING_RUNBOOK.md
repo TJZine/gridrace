@@ -46,13 +46,23 @@ When sources disagree:
 6. Treat historical plans, stale prose, caches, and external examples as context
    only.
 
-Correct clearly stale active documentation in the same change. If the mismatch
-could alter game rules, privacy, security, data retention, deployment, a public API,
-or an accepted architecture decision, stop and ask instead of guessing.
+Apply relevant skills within the user's authorized scope and repository requirements.
+Skill defaults do not authorize reduced scope, replace repository test tools, impose
+response-length caps, or require renewed approval for settled decisions. Preserve
+configured model assignments, reasoning settings, and cost-conscious routing.
+
+Correct clearly stale active documentation in the same change. If resolving a
+mismatch requires an unsettled decision about game rules, privacy, security, data
+retention, deployment, a public API, or accepted architecture, ask instead of guessing.
 
 ## Product and engineering invariants
 
 These constraints survive refactors, scheduling pressure, and “simplification”:
+
+Server-authoritative gameplay and pre-reveal answer secrecy apply to live racing and
+future verified competition. Daily Classic and the tutorial follow their documented
+local behavior; imported Daily results remain owner-private personal history and
+cannot become verified competitive results.
 
 - The backend selects answers, validates guesses, computes feedback and scoring,
   timestamps accepted actions, and owns match and round transitions.
@@ -75,9 +85,10 @@ These constraints survive refactors, scheduling pressure, and “simplification�
 - Production secrets stay out of the repository and app bundle. Development,
   staging, and production remain separate environments when those environments
   are introduced.
-- The initial product remains the focused private live race. Do not introduce a
-  generalized game framework, friend graph, chat, public matchmaking, rankings,
-  monetization, or speculative compatibility layers without a new decision.
+- Follow the accepted Daily Classic scope. For live racing, prove the focused
+  vertical slice before broader match flow or generalized architecture. Do not
+  introduce a generalized game framework, friend graph, chat, public matchmaking,
+  rankings, monetization, or speculative compatibility layers without a new decision.
 
 ## Ownership and boundaries
 
@@ -129,34 +140,155 @@ git diff --stat
 git diff --cached --check
 git diff --cached --stat
 git log -1 --oneline
+python3 scripts/check_word_pack.py --checked-in-only
 python3 scripts/check_word_pack.py
+bash scripts/test_client_credential_scan.sh
+npm ci
+npm run check:seed
 deno fmt --check rules/typescript
 deno lint rules/typescript
 deno check rules/typescript/evaluator.ts rules/typescript/evaluator_test.ts
 deno test --allow-read rules/typescript/evaluator_test.ts
-supabase db reset
-supabase test db
-supabase db lint --local --schema public,private --level warning --fail-on error
-xcodebuild -project ios/GridRace.xcodeproj -list
-xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -showdestinations
+deno fmt --check supabase/functions
+deno lint supabase/functions
+deno check --config supabase/functions/deno.json \
+  supabase/functions/_shared/command.ts \
+  supabase/functions/_shared/command_test.ts \
+  supabase/functions/create-match/index.ts \
+  supabase/functions/create-match/index_test.ts \
+  supabase/functions/join-match/index.ts \
+  supabase/functions/join-match/index_test.ts \
+  supabase/functions/start-match/index.ts \
+  supabase/functions/start-match/index_test.ts \
+  supabase/functions/submit-guess/index.ts \
+  supabase/functions/submit-guess/index_test.ts \
+  supabase/functions/match-snapshot/index.ts \
+  supabase/functions/match-snapshot/index_test.ts \
+  supabase/functions/delete-account/index.ts \
+  supabase/functions/delete-account/index_test.ts
+deno test --config supabase/functions/deno.json supabase/functions/
+npx --no-install supabase --version
+npx --no-install supabase start
+npx --no-install supabase db reset
+# Only confirmed disposable local fixtures: legacy forward-path setup, then upgrade.
+npx --no-install supabase db reset --version 202609260004
+npx --no-install supabase migration up --local
+npx --no-install supabase test db
+npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error
+# In a separate terminal while the integration command below runs:
+npx --no-install supabase functions serve --log-level error
+set -a
+eval "$(npx --no-install supabase status -o env 2>/dev/null)"
+set +a
+GRIDRACE_LOCAL_INTEGRATION=1 deno run \
+  --config supabase/functions/deno.json \
+  --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL \
+  --allow-net=127.0.0.1,localhost \
+  --allow-run=/opt/homebrew/opt/libpq/bin/psql \
+  supabase/tests/integration/live_slice_test.ts
+# P4-C controller proved this frozen resolve on the accepted complete local lock.
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
+  -derivedDataPath /tmp/gridrace-phase4-client-derived-test \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -resolvePackageDependencies
+xcodebuild -project ios/GridRace.xcodeproj \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -list
+xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates -showdestinations
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace \
   -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
-  -derivedDataPath /tmp/GridRaceDerivedData-test test
+  -derivedDataPath /tmp/GridRaceDerivedData-test \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates test
 xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug \
   -destination 'platform=iOS Simulator,id=1BCA3F5A-3228-4888-909E-ED86AE627221' \
-  -derivedDataPath /tmp/GridRaceDerivedData-build clean build
+  -derivedDataPath /tmp/GridRaceDerivedData-build \
+  -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+  -skipPackageUpdates clean build
 ```
+
+Phase 4 P4-B proved the local version-targeted reset and forward migration above
+with disposable legacy lobby/active/revealed fixtures. Reset is destructive and
+always requires current fixture-ownership/disposability proof; never use these
+commands against remote/hosted data. The active plan records identities, receipts,
+grants/RLS and Realtime projection comparisons across the upgrade.
+
+Phase 4 also proved the independent-client host command:
+
+```bash
+PATH=/opt/homebrew/opt/libpq/bin:$PATH GRIDRACE_LOCAL_INTEGRATION=1 \
+  bash scripts/run_live_match_integration.sh
+```
+
+First inventory the current unlinked loopback GridRace stack: ownership of existing
+accounts, Daily rows and live rooms cannot be inferred from its name or an earlier
+run. The controller starts the existing local stack and separate Edge gateway,
+checks applied migrations and active scheduled finalizer, and owns the sole runtime
+verification lease. This harness does not reset, start or stop the shared backend.
+It uses unique owned Auth/match/non-answer fixtures and creates/deletes only its own
+two simulators, preserving unrelated containers and data. It requires the installed
+iPhone17Pro/iOS26.5 type/runtime and retained frozen SourcePackages cache at
+`/tmp/gridrace-phase4-client-derived-test/SourcePackages`; keep the accepted lock
+SHA256 `d6b069e121418166c3b844eb1c1b66fc2f0ccb715f0b9808405a14a9a68d0691` exact.
+All Xcode checks, including discovery, use the frozen flags shown above.
+The sourced credential scan searches hidden/ignored container files, supplies
+fixed-string patterns on stdin and suppresses raw diagnostics. Only scanner status
+1 establishes no match; matches, scanner errors and unavailable inputs fail.
+`bash scripts/test_client_credential_scan.sh` proves these paths with dummy values.
+A full integration PASS before this repair does not establish credential absence.
+
+The command prints and retains a private `/tmp/gridrace-live-integration.*` proof
+directory with logs, per-process xcresults, owned-fixture inventory and cleanup
+status. Require exit0, no real-client skip/failure, all scenario markers and owned
+cleanup success; inspect baseline preservation afterward. Budget about 40 minutes
+for cold simulator/build setup, independent launches, original 180-second deadlines
+and backend barriers; do not translate timestamps in the client deadline cases.
+The current proof is 60 real client invocations plus 429 backend requests/142
+snapshots, all passing. This is local Xcode27/iOS26.5 proof, separate from hosted CI,
+OS-assisted/physical-device accessibility and distribution gates. Ordinary full
+suite opt-in skips cannot substitute for this command.
 
 Use `rg --files` and `rg` for discovery when available, but do not treat search
 output as product verification. Scope every diff review by appending `--` and
 concrete task-owned paths to `git diff` or `git diff --cached`; do not copy a
 placeholder path into the shell. Also inspect overall status for unexpected edits.
 
+The portable word-pack gate `python3 scripts/check_word_pack.py --checked-in-only`
+validates canonical encoding, structure, policy constraints, and the complete
+checked-in evidence chain (frozen baseline, ordered answers, provenance rules and
+revision references, and pack/provenance/baseline/sidecar hash agreement) without
+reading the Wiktionary intermediates. The source gate `python3 scripts/check_word_pack.py`
+revalidates that chain, then regenerates the pack and provenance from the pinned
+Wiktionary intermediates into a temporary directory and compares hashes; it is
+fail-closed, so builder, execution, and comparison failures are errors, and
+absent intermediates report UNAVAILABLE with a nonzero exit (never a pass).
+`--probe-intermediates` is the separate informational probe.
+The Daily Classic accepted-guess corpus is maintained by
+`scripts/build_accepted_guesses.py` from pinned Wiktionary intermediates (see
+`shared/word-packs/daily-classic-en-US-v1-SOURCES.md`); the historical web2 generator
+`scripts/generate_daily_word_pack.py` is retained as history, not a gate. Ordinary
+builds and CI must not download or extract Wiktionary.
+
 The checked-in project currently proves these Deno, local Supabase, and Xcode commands
-with Deno 2.9.5, Supabase CLI 2.115.0, Xcode 26.6, the installed iOS 26.5 runtime,
+with Deno 2.9.5, the lockfile-pinned Supabase CLI 2.116.0, Xcode 26.6, the
+installed iOS 26.5 runtime,
 and the named iPhone 17 Pro simulator. The simulator UUID is local toolchain state:
 rediscover it with the proved destination commands before reusing the build or test
-command on another machine. No remote deployment or CI command is canonical yet.
+command on another machine.
+
+The checked-in [CI workflow](../.github/workflows/ci.yml) runs the same
+generated-data, shared-rule, Edge Function, local-database, iOS test, and Debug-build
+gates on pushes to `dev/classic-mode` and pull requests targeting `main` or
+`dev/classic-mode`, with an explicit manual trigger. Both checkouts disable
+persisted credentials; subsequent checks require no authenticated Git operations.
+It pins Node 20.20.2, Deno 2.9.5, the Supabase CLI lockfile, and every action
+to a full commit SHA. The iOS job selects Xcode 26.6 and the iOS 26.5 iPhone 17 Pro
+simulator by name rather than copying a machine-local UUID. Checking in the workflow
+proves only its configuration: a passing hosted run remains unverified until GitHub
+executes it. Requiring that run through branch protection is an external
+repository-administration follow-up, not part of this code change.
 
 ### Candidate gates to prove and promote
 
@@ -171,14 +303,13 @@ Expected gate families are:
 | --- | --- | --- |
 | iOS build and tests | Proved above for the checked-in `GridRace` project and scheme | Rediscover the destination UUID when the supported local simulator changes. |
 | Swift format/lint | Repository-selected Swift formatter/linter invocation | Checked-in config, pinned installation policy, and a clean run. Do not add a tool only to satisfy this row. |
-| Supabase local stack | Pinned local CLI start, reset-from-zero, database lint, and database tests | Migrations and seed rebuild a clean local database; pgTAP/RLS tests pass, including negative users. |
-| Edge Functions | Supabase function-specific Deno gates | Phase 1 proves only the pure TypeScript evaluator commands above; no Edge Function exists. |
-| Word pack | `python3 scripts/check_word_pack.py` | Proved locally against the curated source and deterministic manifest. |
+| Edge Functions | Proved above for the six checked-in command handlers and their tests | Run from the repository root with the explicit `--config supabase/functions/deno.json` shown above; `fmt` and `lint` need no config. |
+| Word pack | Portable `python3 scripts/check_word_pack.py --checked-in-only`; source gate `python3 scripts/check_word_pack.py` | The portable gate validates the checked-in evidence chain on every runner (CI runs this). The source gate is fail-closed: it regenerates from the pinned Wiktionary intermediates and compares hashes, erroring on any builder/execution/comparison failure and reporting UNAVAILABLE with a nonzero exit when intermediates are absent. |
 | Full vertical slice | Coordinated client/backend smoke procedure | Two independent clients converge, cannot read the answer early, reconnect exactly, and deduplicate a retried guess. |
 
-Exact Supabase, database, Edge Function, and CI command spellings remain undefined
-until those surfaces exist. Never invent them in a plan or CI workflow. Record a
-missing gate as “not available” or “documented only,” not passed.
+Remote deployment commands remain undefined until that surface exists. Never invent
+them in a plan or workflow. Record a missing gate as “not available” or “documented
+only,” not passed.
 
 ## Risk tiers and verification
 
@@ -210,12 +341,29 @@ evidence, not the whole definition of done.
 | CI/deployment | Local equivalent gates first; configuration parse; least-privilege secrets; failure-path inspection; remote execution evidence before calling it verified. |
 | Workflow/docs only | `git diff --check`; inspect every referenced path/command; confirm future commands are labeled; read the full changed authority set. |
 
+Apply checks to the behavior and surfaces actually changed. Workflow-only changes
+use the Workflow/docs row; their Medium classification does not require unrelated
+application builds or tests. Reuse meaningful existing coverage; add tests when
+needed to demonstrate changed behavior or prevent regression. Once required checks
+pass, broaden or repeat them only for new changes, failures, integration effects,
+or unresolved concerns.
+
 For security or privacy boundaries, prove denial as well as success. For distributed
 state, prove recovery and convergence, not only the happy event stream. If a required
 environment is unavailable, state exactly what was not run, what substitute evidence
 exists, the resulting confidence, and who must complete the remaining proof.
 
 ## Planning and progress tracking
+
+Carry the authorized task through implementation, applicable verification,
+remediation, and handoff. A status question, correction, or compaction does not cancel
+the task; retain accepted decisions, completed work, constraints, and remaining steps
+unless the user changes the objective. Read-only and proposal-only requests end at
+their requested deliverable.
+
+Give brief progress updates for meaningful findings, decisions, and blockers. Lead
+the final response with the outcome and proportionate evidence; omit empty checklist
+sections and routine command narration.
 
 Use one active plan for the repository. Create a durable dated file under `docs/plans/`
 when the maintainer asks for tracking, the work spans sessions, or the risk/seams are
@@ -260,6 +408,11 @@ The primary controller owns the goal, plan, decisions, integration, verification
 review adjudication, progress updates, staging, commits, and final handoff. Keep the
 agent tree shallow; delegation is a means to isolate bounded work, not a target.
 
+Scale this flow to the task. Work locally when delegation adds no useful independence
+or parallel progress. When authorized, delegate bounded independent work with
+disjoint write paths while the controller continues useful work. Preserve existing
+role, model, reasoning, and cost-routing policies.
+
 Default flow:
 
 1. **Frame:** inspect authorities and current state; state goal, exclusions,
@@ -272,14 +425,16 @@ Default flow:
    update the plan, and resolve dependencies before the next wave.
 5. **Integrate:** reconcile contracts and shared surfaces serially. No worker stages or
    commits.
-6. **Review:** give a fresh read-only reviewer the final task/diff/proof/risk packet,
+6. **Review:** use the review required by the risk tier. When independent review is
+   required, give a fresh read-only reviewer the final task/diff/proof/risk packet,
    not the implementation transcript.
 7. **Adjudicate and verify:** reproduce valid findings, fix accepted ones, rerun the
    affected gates, audit the net diff and status, update tracking, then commit.
 
-One implementation wave plus one final review is the default even for high-risk work.
-Add another wave only for a material dependency or accepted finding. Do not create
-recursive reviewer loops or parallelize tightly coupled changes.
+When independent review is required, one implementation wave plus one final review
+is the default even for high-risk work. Add another wave only for a material
+dependency or accepted finding. Do not create recursive reviewer loops or parallelize
+tightly coupled changes.
 
 ### Compact worker packet
 
@@ -381,7 +536,12 @@ provenance with word-list artifacts when that surface is introduced.
 
 ## Stop and ask
 
-Stop and obtain maintainer direction before:
+Ask for direction only when a listed decision remains unresolved by the user's
+instructions or accepted decisions. Existing authorization persists across turns.
+Complete authorized investigation and preparation before requesting a decision, and
+continue independent safe work while it is pending.
+
+Decisions requiring direction include:
 
 - changing an exact game rule, ranking tie-breaker, visible/hidden information rule,
   or MVP scope boundary;
@@ -394,8 +554,14 @@ Stop and obtain maintainer direction before:
   compatibility layer, or CI/release system without a present requirement;
 - resolving a destructive or irreversible data operation whose target or recovery
   path is unclear;
-- proceeding through overlapping writes, unexpected worktree changes, an authority
-  conflict, a failed high-risk gate, or an unowned required verification gap.
+- overlapping writes or unexpected changes that cannot be safely preserved, an
+  unresolved authority conflict, a high-risk failure that cannot be repaired within
+  scope, or a required verification gap with no available resolution.
+
+Diagnose failures, fix defects caused by the requested change, and rerun affected
+checks without renewed approval. Do not bypass a failed gate or treat unavailable
+evidence as passing. If an instruction causes a pause, link its source, quote the
+relevant rule, and state the exact unresolved decision.
 
 When stopping, preserve the active plan, state the evidence and exact decision
 needed, and identify any safe work that can continue independently.

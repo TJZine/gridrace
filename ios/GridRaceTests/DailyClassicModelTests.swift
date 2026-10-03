@@ -153,6 +153,154 @@ final class DailyClassicModelTests: XCTestCase {
         ), "A fresh valid progress file should replace the corrupt file")
     }
 
+    func testGuestResetRemovesOnlyGuestDailyFiles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "GridRaceGuestResetTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let guestStore = DailyClassicStore(directory: root)
+
+        // Seed realistic guest Daily files through the production store seam.
+        let fixture = try Fixture()
+        let guestModel = try DailyClassicModel(
+            pack: fixture.pack,
+            store: guestStore,
+            defaults: fixture.defaults,
+            now: { fixture.date(day: fixture.epochDay, seconds: 100) }
+        )
+        fixture.type("adore", into: guestModel)
+        guestModel.submitGuess()
+        let guestProgressURL = root.appending(path: "daily-progress-v1.json")
+        let guestHistoryURL = root.appending(path: "daily-history-v1.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: guestProgressURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: guestHistoryURL.path))
+
+        // Seed two account caches with distinct sentinel content.
+        let accountIDs = [UUID(), UUID()]
+        var sentinelSnapshots: [URL: Data] = [:]
+        for userID in accountIDs {
+            let accountStore = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+            try accountStore.save(guestModel.game.progress)
+            try accountStore.save(guestModel.history)
+            try accountStore.save(DailySyncMetadata())
+            let sentinel = accountStore.directory.appending(path: "sentinel.txt")
+            let content = Data("account-\(userID.uuidString)".utf8)
+            try content.write(to: sentinel, options: .atomic)
+            for file in ["daily-progress-v1.json", "daily-history-v1.json", "daily-sync-metadata-v1.json", "sentinel.txt"] {
+                let url = accountStore.directory.appending(path: file)
+                sentinelSnapshots[url] = try Data(contentsOf: url)
+            }
+        }
+
+        try guestStore.resetGuestDailyData()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: guestProgressURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: guestHistoryURL.path))
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue, "Guest reset must never remove the shared GridRace root")
+        for (url, expected) in sentinelSnapshots {
+            XCTAssertEqual(try Data(contentsOf: url), expected, "Guest reset must preserve \(url.path)")
+        }
+
+        // Missing guest files are tolerated so recovery stays idempotent.
+        XCTAssertNoThrow(try guestStore.resetGuestDailyData())
+    }
+
+    func testPreviousStreakFirstEverSolve() throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 1)
+    }
+
+    func testPreviousStreakConsecutiveSolve() throws {
+        let fixture = try Fixture()
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+        fixture.type("stone", into: model)
+        model.submitGuess()
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+        XCTAssertEqual(model.displayedCurrentStreak, 2)
+    }
+
+    func testPreviousStreakMissedDayResetsToZero() throws {
+        let fixture = try Fixture()
+        let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1,
+            "id": "daily-classic-en-US-v1",
+            "scheduleVersion": 1,
+            "locale": "en-US",
+            "wordLength": 5,
+            "epochDay": fixture.epochDay,
+            "acceptedGuesses": ["adore", "civic", "crane", "stone"],
+            "answers": ["adore", "civic", "crane", "stone"]
+        ]))
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try DailyClassicModel(
+            pack: pack,
+            store: DailyClassicStore(directory: fixture.directory),
+            defaults: fixture.defaults,
+            now: { now }
+        )
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 2, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.answer, "crane")
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 0)
+        fixture.type("crane", into: model)
+        model.submitGuess()
+        XCTAssertEqual(model.previousDisplayedStreak, 0)
+        XCTAssertEqual(model.displayedCurrentStreak, 1)
+    }
+
+    func testPreviousStreakSurvivesFailedCurrentPuzzle() throws {
+        let fixture = try Fixture()
+        let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1,
+            "id": "daily-classic-en-US-v1",
+            "scheduleVersion": 1,
+            "locale": "en-US",
+            "wordLength": 5,
+            "epochDay": fixture.epochDay,
+            "acceptedGuesses": ["adore", "civic", "crane", "stone"],
+            "answers": ["adore", "civic", "crane", "stone"]
+        ]))
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try DailyClassicModel(
+            pack: pack,
+            store: DailyClassicStore(directory: fixture.directory),
+            defaults: fixture.defaults,
+            now: { now }
+        )
+        fixture.type("adore", into: model)
+        model.submitGuess()
+
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 1)
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.answer, "civic")
+        for _ in 0..<6 {
+            fixture.type("stone", into: model)
+            model.submitGuess()
+        }
+        XCTAssertEqual(model.game.completion?.outcome, .failed)
+        XCTAssertEqual(model.displayedCurrentStreak, 0)
+        XCTAssertEqual(model.previousDisplayedStreak, 1)
+    }
+
     func testTerminalPersistenceRetriesAfterBothWritesFail() throws {
         let fixture = try Fixture()
         let store = FailingStore()

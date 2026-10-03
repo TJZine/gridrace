@@ -77,15 +77,34 @@ sessions, owner-private profiles, intentional guest import, account-scoped cache
 and compact cloud synchronization are implemented. Every current Daily result is an
 imported/client-originated personal record, never server-verified competition.
 
-The paused Phase 2 work establishes the local authoritative backend foundation: Supabase Auth and
-profiles, private words and round secrets, grants and RLS, transactional commands,
+Phase 2 implements the local authoritative backend foundation:
+Supabase Auth and profiles, private words and round secrets, grants and RLS, transactional commands,
 deterministic development-word seeding, account deletion, and database/Edge tests.
 
-The paused Phase 3 work is the first networked vertical slice: exactly two authenticated players,
-one round, a server-selected answer, server-validated guesses, clue-free progress,
+Phase 3 implements the first local networked vertical slice: exactly two
+authenticated players, one round, a server-selected answer, server-validated guesses, clue-free progress,
 reconnect from canonical snapshots, deadline finalization, and shared reveal. It
-must prove answer isolation, RLS denial, idempotent submission, server time, and
-state convergence before broader match flow is added.
+proves answer isolation, RLS denial, idempotent submission, server time, and state
+convergence locally before broader match flow is added. Opponent online/offline labels
+are deferred for this slice; the client shows its own connection/recovery status and
+opponent count/game state. Daily remains the primary, account-optional home action.
+
+Phase 4 extends the anytime private Blind Race to exactly two players and 1/3/5
+rounds, default 3, with explicit creator countdowns, nonrepeating server-selected
+answers, preserved reveals and canonical cumulative/final standings. Its backend,
+Edge, Swift transport/recovery and agreed native selector/results UI are implemented
+and locally verified, including real independent-client multi-round proof and an
+independent implementation review. Evidence and review closure are recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof remains pending. After either account deletes, finish the
+started round and freeze unstarted remaining rounds as
+incomplete. Ordinary creator absence waits; no transfer or automatic advance.
+This mode uses independent random private answers, never the shared Daily answer.
+
+Initial validation with the owner and friends uses free services. No paid commitment
+or automatic upgrade is authorized without a maintainer decision. Free hosting does
+not imply free native distribution; membership, provider setup and hosted release
+prerequisites are separate later gates. Local slice completion is not beta exit.
 
 Later production phases expand the proved slice to the complete Blind Race MVP:
 2–8 players, 1/3/5 rounds, invite links and room codes, full results and rematch,
@@ -98,12 +117,12 @@ not Phase 3 behavior.
 | Screen | Responsibility | Current phase scope |
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
-| Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic and accounts implemented; live create/join paused |
-| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 3; broader configuration and links are later |
-| Lobby | Show the private roster; only the creator starts, with no readiness state. | Phase 3 |
-| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 local tutorial and Phase 3 server-backed slice |
-| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 prototype and Phase 3 shared reveal |
-| Results | Show exact round/match placement and summary. | Local comparison only |
+| Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic, accounts, live create/join and Resume implemented |
+| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 4 native 1/3/5 selector and manual-code flow implemented; links later |
+| Lobby | Show the private roster; only the creator starts, with no readiness state. | Fixed Phase 3 slice implemented |
+| Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 tutorial and fixed Phase 3 server-backed slice implemented |
+| Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 tutorial and fixed Phase 3 shared reveal implemented |
+| Results | Show exact round/match placement and summary. | Round placement implemented; Phase 4 canonical match standings and final/incomplete presentation implemented |
 | Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
 | History | Derive personal Daily statistics from synchronized immutable imported results. | Implemented for Daily Classic; competitive history later |
 | Profile | Manage display name, generated avatar, synchronization, sign out, and account deletion. Email is never exposed. | Implemented; blocks later |

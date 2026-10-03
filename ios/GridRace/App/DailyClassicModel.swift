@@ -57,9 +57,14 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
         try FileManager.default.removeItem(at: progressURL)
     }
 
-    func resetLocalData() throws {
-        guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
+    /// Removes only this store's guest Daily progress/history files.
+    /// Never removes the containing directory, so sibling `Accounts/<uuid>`
+    /// caches sharing the GridRace root are preserved.
+    func resetGuestDailyData() throws {
+        for url in [progressURL, historyURL] {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
     }
 
     private func prepareDirectory() throws {
@@ -202,6 +207,18 @@ final class DailyClassicModel {
         history.statistics.currentStreak(
             asOf: puzzle.day,
             latestResultDay: history.latestResultDay
+        )
+    }
+
+    /// Displayed streak immediately before today's result, derived from
+    /// completed results before the current puzzle day with the existing
+    /// `DailyStatistics` rules. No new persistence; valid on reopen.
+    var previousDisplayedStreak: Int {
+        let prior = history.completedResults.filter { $0.puzzleDay < puzzle.day }
+        let priorStatistics = DailyStatistics.calculate(from: prior)
+        return priorStatistics.currentStreak(
+            asOf: puzzle.day,
+            latestResultDay: prior.last?.puzzleDay
         )
     }
 

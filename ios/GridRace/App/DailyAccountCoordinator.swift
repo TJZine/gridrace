@@ -8,9 +8,11 @@ final class DailyAccountCoordinator {
     private let guestStore: DailyClassicStore
     private let guestDaily: DailyClassicModel
     private let accountService: SupabaseAccountService?
+    private let accountModelService: (any AccountServicing)?
     private let accountStoreFactory: (UUID) throws -> AccountDailyClassicStore
     private var accountStore: AccountDailyClassicStore?
     private var syncEngine: DailySyncEngine?
+    private var syncLifecycle: DailySyncLifecycle?
     private var currentUserID: UUID?
     private var activationUserID: UUID?
     private var syncTask: Task<Void, Never>?
@@ -18,15 +20,17 @@ final class DailyAccountCoordinator {
 
     private(set) var daily: DailyClassicModel
     let tutorial: TutorialModel
+    let live: LiveMatchSession
     private(set) var syncStatus = DailySyncStatus.idle
     private(set) var conflicts: [DailySyncConflict] = []
     private(set) var canImportGuestHistory = false
+    private(set) var isDailyPlayable = true
 
     @ObservationIgnored
     lazy var account = AccountModel(
-        service: accountService,
+        service: accountModelService,
         didChangeSession: { [weak self] userID in self?.sessionChanged(to: userID) },
-        didSignOut: { [weak self] _ in self?.activateGuest() },
+        didSignOut: { [weak self] _ in self?.activateGuest() == .completed },
         didDeleteAccount: { [weak self] userID in try self?.deleteLocalAccount(userID) }
     )
 
@@ -35,14 +39,30 @@ final class DailyAccountCoordinator {
         tutorialPack: WordPack,
         guestStore: DailyClassicStore,
         accountService: SupabaseAccountService? = SupabaseAccountService.configured(),
+        accountModelService: (any AccountServicing)? = nil,
         accountStoreFactory: @escaping (UUID) throws -> AccountDailyClassicStore = {
             try AccountDailyClassicStore.applicationSupport(userID: $0)
+        },
+        liveStoreFactory: @escaping LiveMatchSession.StoreFactory = {
+            try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         }
     ) throws {
         self.dailyPack = dailyPack
         self.guestStore = guestStore
         self.accountService = accountService
+        self.accountModelService = accountModelService ?? accountService
         self.accountStoreFactory = accountStoreFactory
+        live = LiveMatchSession(
+            service: accountService?.makeLiveMatchService(),
+            realtime: accountService?.makeLiveRealtimeService(),
+            storeFactory: liveStoreFactory,
+            refreshAuth: { userID in
+                guard let refreshed = try? await accountService?.refreshSession() else {
+                    return false
+                }
+                return refreshed.userID == userID
+            }
+        )
         let guestDaily = try DailyClassicModel(pack: dailyPack, store: guestStore)
         self.guestDaily = guestDaily
         daily = guestDaily
@@ -51,6 +71,7 @@ final class DailyAccountCoordinator {
     }
 
     isolated deinit {
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
     }
 
@@ -59,18 +80,25 @@ final class DailyAccountCoordinator {
     }
 
     func sessionChanged(to userID: UUID?) {
-        guard userID != currentUserID else { return }
-        syncTask?.cancel()
         guard let userID else {
-            activateGuest()
+            if currentUserID != nil || activationUserID != nil {
+                activateGuest()
+            } else {
+                // Daily may already be guest while live recovery cleanup is pending.
+                live.changeAccount(to: nil)
+            }
             return
         }
+        live.changeAccount(to: userID)
+        guard userID != currentUserID || activationUserID != nil else { return }
         activateAccount(userID)
     }
 
     private func activateAccount(_ userID: UUID) {
         guard let accountService else { return }
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
+        isDailyPlayable = false
 
         if activationUserID != userID {
             let isolatedDate = Date(
@@ -90,23 +118,28 @@ final class DailyAccountCoordinator {
         activationUserID = userID
         currentUserID = nil
         syncEngine = nil
+        syncLifecycle = nil
         accountStore = nil
         conflicts = []
         canImportGuestHistory = false
 
         do {
             let store = try accountStoreFactory(userID)
+            let lifecycle = DailySyncLifecycle()
             let engine = DailySyncEngine(
                 userID: userID,
                 store: store,
-                remote: accountService.makeDailySyncRemote()
+                remote: accountService.makeDailySyncRemote(),
+                lifecycle: lifecycle
             )
             let accountDaily = try DailyClassicModel(pack: dailyPack, store: store)
             let metadata = try store.loadSyncMetadata()
             accountStore = store
             syncEngine = engine
+            syncLifecycle = lifecycle
             currentUserID = userID
             activationUserID = nil
+            isDailyPlayable = true
             daily = accountDaily
             configureDailyCallback()
             canImportGuestHistory = metadata.guestImportDecision == nil && hasGuestDailyData()
@@ -117,12 +150,17 @@ final class DailyAccountCoordinator {
     }
 
     func foregrounded() {
-        daily.refreshForCurrentDay()
+        live.foregrounded()
+        if isDailyPlayable { daily.refreshForCurrentDay() }
         guard account.session != nil else { return }
         schedule {
             await self.account.refreshSession()
             await self.synchronizeCurrent()
         }
+    }
+
+    func backgrounded() {
+        live.backgrounded()
     }
 
     func retrySync() {
@@ -139,7 +177,7 @@ final class DailyAccountCoordinator {
         schedule {
             do {
                 self.guestImportInFlight = true
-                let staged = try await engine.stageGuestImport(from: self.guestStore)
+                let staged = try engine.stageGuestImport(from: self.guestStore)
                 self.syncStatus = staged
                 if case .conflict(let found) = staged {
                     self.conflicts = found
@@ -167,7 +205,7 @@ final class DailyAccountCoordinator {
               let userID = currentUserID else { return }
         schedule {
             do {
-                try await engine.resolve(conflict, with: useCloud ? .useCloud : .keepDevice)
+                try engine.resolve(conflict, with: useCloud ? .useCloud : .keepDevice)
                 self.conflicts.removeFirst()
                 if self.conflicts.isEmpty {
                     await self.synchronize(using: engine, userID: userID)
@@ -183,6 +221,9 @@ final class DailyAccountCoordinator {
 
     var syncMessage: String? {
         guard account.isSignedIn else { return nil }
+        if !isDailyPlayable {
+            return "Account storage is unavailable. Retry, or sign out to keep playing as a guest."
+        }
         return switch syncStatus {
         case .idle: "Ready to sync."
         case .pending: "Your progress is waiting to sync. You can keep playing."
@@ -205,9 +246,9 @@ final class DailyAccountCoordinator {
         schedule {
             do {
                 if let result = self.daily.game.completedResult {
-                    try await engine.markResultPending(result.puzzleID)
+                    try engine.markResultPending(result.puzzleID)
                 } else {
-                    try await engine.markProgressPending()
+                    try engine.markProgressPending()
                 }
                 self.syncStatus = .pending
                 await self.synchronize(using: engine, userID: userID)
@@ -250,25 +291,33 @@ final class DailyAccountCoordinator {
         daily.acceptedStateChanged = { [weak self] in self?.dailyAcceptedStateChanged() }
     }
 
-    private func activateGuest() {
+    @discardableResult
+    private func activateGuest() -> LiveAccountChangeOutcome {
+        let liveOutcome = live.changeAccount(to: nil)
+        syncLifecycle?.invalidate()
         syncTask?.cancel()
         currentUserID = nil
         activationUserID = nil
         syncEngine = nil
+        syncLifecycle = nil
         accountStore = nil
         conflicts = []
         syncStatus = .idle
         canImportGuestHistory = false
         guestImportInFlight = false
+        isDailyPlayable = true
         daily = guestDaily
         configureDailyCallback()
+        return liveOutcome
     }
 
     private func deleteLocalAccount(_ userID: UUID) throws {
-        syncTask?.cancel()
+        let liveOutcome = activateGuest()
         let store = try accountStoreFactory(userID)
         try store.deleteAccountCache()
-        if currentUserID == userID { activateGuest() }
+        if liveOutcome == .recoveryCleanupPending {
+            throw LiveMatchRecoveryError.unavailable
+        }
     }
 
     private func hasGuestDailyData() -> Bool {
@@ -285,8 +334,10 @@ final class DailyAccountCoordinator {
 
 private struct IsolatedDailyClassicStore: DailyClassicStoring, Sendable {
     func loadProgress() throws -> DailyClassicProgress? { nil }
-    func save(_ progress: DailyClassicProgress) throws {}
-    func discardProgress() throws {}
+    func save(_ progress: DailyClassicProgress) throws { throw StorageUnavailable() }
+    func discardProgress() throws { throw StorageUnavailable() }
     func loadHistory() throws -> DailyClassicHistory { DailyClassicHistory() }
-    func save(_ history: DailyClassicHistory) throws {}
+    func save(_ history: DailyClassicHistory) throws { throw StorageUnavailable() }
+
+    private struct StorageUnavailable: Error {}
 }

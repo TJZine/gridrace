@@ -2,7 +2,15 @@
 
 Guest Daily Classic and tutorial play collect no account or analytics data. Optional
 accounts synchronize the owner-private data below. Device registration, report,
-block, analytics, remote deployment, and live multiplayer remain later work.
+block, analytics, remote deployment, and broader live multiplayer remain later work;
+the fixed two-player local live client is implemented and Phase 4 multi-round
+backend/client contracts and native UI are locally verified, including real
+multi-round independent-client proof and an independent implementation review.
+Evidence and review closure are recorded in the
+[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof remains pending. Recovery stores only the
+account-private match pointer and original count/round/build/UUID/word intent, never
+authoritative boards, answers, opponent data, standings or credentials.
 
 ## Production data requirements
 
@@ -14,11 +22,13 @@ block, analytics, remote deployment, and live multiplayer remain later work.
 | Generated avatar (Phase 2 local) | Server generation plus owner choice from non-photo descriptors | Give players a recognizable, non-uploaded visual identity | Profile record and roster snapshot | Same readers as the profile/snapshot | Delete the profile; replace retained roster presentation with a neutral descriptor. | Do not log avatar descriptors or generation inputs. |
 | Daily accepted progress | Account owner's local evaluator after each accepted row; draft letters are excluded | Restore an unfinished personal board on another device | UUID-scoped device file and `daily_progress` behind RLS | Account owner and privileged server only | Delete the account row and only that UUID's local cache after confirmed server deletion | Never log guesses, feedback arrays, puzzle payloads, or identifiers without redaction. |
 | Daily imported result | Current client-originated Daily evaluator, including results completed while signed in | Personal history, backup, streaks, statistics, and board restoration | UUID-scoped device history and immutable `daily_imported_results` behind RLS | Account owner and privileged server only | Delete imported rows and only that UUID's local cache after confirmed server deletion | Never log guesses, feedback, completion payloads, or share text. Client completion time is explicitly untrusted. |
+| Live recovery intent (Phase 3 local) | Client command before dispatch | Retry an uncertain create/guess after relaunch; resume the last selected match | Protected account-scoped local file, separate from Daily history | Current account on this device only | Remove pending payload after resolution; durably clear live recovery on sign-out/confirmed deletion and hide it on identity change. Failed reads or deletion surface an explicit recovery-data discard and do not claim success. No authoritative board, opponent data or bearer is stored. | Never log pending words, UUIDs, codes or file contents. |
+| Create receipt (Phase 2 local) | Authenticated create command | Deduplicate concurrent/lost-response retries | Private PostgreSQL table | Service-only create/deletion functions | Remove during account-deletion preparation or when its match is removed; no production retention period selected | Never log actor/request IDs or request content. |
 | Account-deletion receipt | One-way SHA-256 of the bearer that initiated authenticated deletion | Resume or confirm deletion after a lost response and an already-removed Auth identity | Private PostgreSQL table | Privileged deletion function only | Pending state temporarily references the user; Auth deletion clears that link. Completed state retains only the one-way hash until a production retention period is approved. | Treat as credential-derived sensitive metadata. Never log the raw bearer, hash, receipt lookup, or former user mapping. |
 | Device registration (later) | App instance and APNs | Route optional notifications and associate a registration with its account | Server-only PostgreSQL table; token is not client-readable after registration | Privileged notification service; the owner may register or remove only their own device | Remove on explicit device removal and account deletion. Stale-token expiry is a required retention decision before APNs launch. | Never log full push tokens or notification credentials; redact device identifiers. |
-| Match, room, roster, and result records (Phase 3 local) | Players' authenticated commands plus server transitions | Operate the private two-player race and show authorized results | PostgreSQL behind RLS | Rostered players according to game phase; privileged server | Lobby rows are removed when deletion leaves no valid lobby. Retained results detach the auth link and use `Deleted Player`; broader production retention remains undecided. | Do not log invite secrets, answers, or full snapshots. Redact room, match, and player identifiers. |
+| Match, room, roster, and result records (Phase 3 local) | Players' authenticated commands plus server transitions | Operate the private two-player race and show authorized results | PostgreSQL behind RLS | Rostered players under RLS get the safe match columns including the timing-free revision plus phase-appropriate snapshot fields. Phase 4 v2 snapshots add prior reveals and revealed-only standings; the account-deletion terminal reason remains service-only except in rostered snapshots, absent from direct column grants and Realtime; `updated_at` is service-only and absent from direct select, snapshots, and Realtime. Privileged server | Lobby rows are removed when deletion leaves no valid lobby. Retained results detach the auth link and use `Deleted Player`; broader production retention remains undecided. | Do not log invite secrets, answers, or full snapshots. Redact room, match, and player identifiers. |
 | Guesses and feedback (Phase 3 local) | Player submission; authoritative server validation and evaluation | Enforce attempts, reconstruct the player's board, rank the round, and reveal permitted results | PostgreSQL; answers remain in a separate private schema | During play, submitting player and privileged server; after reveal, rostered players through the defined snapshot/direct policy | Retain only when needed for the survivor's canonical reveal, under an irreversibly anonymized member; broader retention remains undecided. | Raw guesses, answers, feedback arrays, and keyboard evidence never enter production logs or analytics. |
-| Round answers (Phase 2/3 local) | Canonical development pack and server selection | Run and score an authoritative round | Private PostgreSQL schema until atomic reveal | Privileged server before reveal; rostered players only through reveal afterward | Private secret follows the match lifecycle; broader production retention remains undecided. | Never log answers or starting words, including on errors. |
+| Round answers (Phase 2/3/4 local) | Canonical development pack; Phase 4 selects a nonrepeating answer only when that round starts, with no future secret beforehand | Run and score an authoritative round | Private PostgreSQL schema until atomic reveal | Privileged server before reveal; rostered players only through reveal afterward | Private secret follows the match lifecycle; broader production retention remains undecided. | Never log answers or starting words, including on errors. |
 | Reports (later requirement) | Authenticated reporting player using the product's defined report fields | Support safety review and enforcement | Restricted PostgreSQL records | Authorized moderation operators and privileged enforcement code | Moderation retention, deletion/anonymization, and any legal preservation need require an explicit policy before report launch. Account deletion must follow that policy rather than silently discarding or retaining reports. | Do not log report content. Redact involved account and match identifiers. |
 | Blocks (later requirement) | Authenticated blocking player | Prevent disallowed contact or room participation | PostgreSQL behind owner-scoped RLS | Blocking player and privileged enforcement code; the blocked player does not receive the relationship record | Remove on unblock. Account-deletion handling and any short enforcement retention require a decision before launch. | Do not log block relationships; redact identifiers in enforcement diagnostics. |
 
@@ -44,10 +54,13 @@ roster membership, and prevents late joining after countdown begins.
   credentials compile out of Release.
 - Report and block controls are later product requirements. There is no persistence
   or moderation system in Phase 1.
-- Complete in-app account deletion for implemented Phase 2/3 data removes the local
-  Auth identity, profile, Daily progress, imported results, and that UUID's local
-  cache; it removes invalid lobbies and irreversibly anonymizes only survivor-required
-  live results. Later device/report/block data must extend this rule before launch.
+- Complete in-app account deletion for implemented Phase 2/3 data removes the Auth
+  identity, profile, Daily progress, imported results, invalid lobbies and that UUID's
+  local Daily cache, while irreversibly anonymizing only survivor-required live results.
+  A failed device write leaves live recovery hidden from former-account presentation
+  but reachable through an explicit signed-out retry/discard route; it is never reported
+  as successful local cleanup. Later device/report/block data must extend this rule
+  before launch.
 - Imported Daily results are not competitive evidence. Future friend comparisons or
   leaderboards must use a structurally separate server-verified result surface and
   must not silently mix imported data into competitive statistics.

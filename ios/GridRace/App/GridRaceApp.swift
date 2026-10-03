@@ -22,7 +22,7 @@ private struct AppRootView: View {
             case .bundledData:
                 "The bundled puzzle data is unavailable. Reinstall or update GridRace."
             case .savedData:
-                "Your local Daily Classic history could not be read. You can retry or explicitly reset local game data."
+                "Your guest Daily Classic data could not be read. You can retry or explicitly reset guest Daily progress and history. Signed-in account data is preserved."
             }
         }
     }
@@ -41,9 +41,9 @@ private struct AppRootView: View {
                     Button("Try again") { loadApp() }
                         .buttonStyle(.borderedProminent)
                     if case .savedData(let store) = loadFailure {
-                        Button("Reset local game data", role: .destructive) {
+                        Button("Reset guest Daily data", role: .destructive) {
                             do {
-                                try store.resetLocalData()
+                                try store.resetGuestDailyData()
                                 loadApp()
                             } catch {
                                 self.loadFailure = .savedData(store)

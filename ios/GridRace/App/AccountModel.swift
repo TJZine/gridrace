@@ -7,7 +7,7 @@ import Observation
 final class AccountModel {
     private let service: (any AccountServicing)?
     private let didChangeSession: @MainActor (UUID?) -> Void
-    private let didSignOut: @MainActor (UUID) async -> Void
+    private let didSignOut: @MainActor (UUID) async -> Bool
     private let didDeleteAccount: @MainActor (UUID) async throws -> Void
     private var authObservation: Task<Void, Never>?
     private var started = false
@@ -17,6 +17,11 @@ final class AccountModel {
     private(set) var isRestoring = false
     private(set) var isWorking = false
     private(set) var errorMessage: String?
+    // Per-error event seam: incremented on every error assignment (even when
+    // the message string repeats, e.g. retryProfile → loadProfile failing
+    // twice with the same text), so `onChange(errorMessage)` coalescing can
+    // never swallow a refocus. Success/clear paths leave it unchanged.
+    private(set) var errorEvent = 0
     var displayNameDraft = ""
     var avatarSeedDraft = UUID().uuidString.lowercased()
 
@@ -27,7 +32,7 @@ final class AccountModel {
     init(
         service: (any AccountServicing)?,
         didChangeSession: @escaping @MainActor (UUID?) -> Void = { _ in },
-        didSignOut: @escaping @MainActor (UUID) async -> Void = { _ in },
+        didSignOut: @escaping @MainActor (UUID) async -> Bool = { _ in true },
         didDeleteAccount: @escaping @MainActor (UUID) async throws -> Void = { _ in }
     ) {
         self.service = service
@@ -64,7 +69,7 @@ final class AccountModel {
             await receive(restored)
         } catch is CancellationError {
         } catch {
-            errorMessage = "Your account could not be restored. You can keep playing and retry."
+            presentError("Your account could not be restored. You can keep playing and retry.")
         }
     }
 
@@ -76,7 +81,7 @@ final class AccountModel {
             await receive(refreshed)
         } catch is CancellationError {
         } catch {
-            errorMessage = "Your account connection needs attention. Try again when you're online."
+            presentError("Your account connection needs attention. Try again when you're online.")
         }
     }
 
@@ -89,7 +94,7 @@ final class AccountModel {
             await receive(session)
         } catch is CancellationError {
         } catch {
-            errorMessage = "Sign in didn't finish. Try again."
+            presentError("Sign in didn't finish. Try again.")
         }
     }
 
@@ -103,7 +108,7 @@ final class AccountModel {
             await receive(session)
         } catch is CancellationError {
         } catch {
-            errorMessage = "Local sign in didn't finish. Check the local account and try again."
+            presentError("Local sign in didn't finish. Check the local account and try again.")
         }
     }
     #endif
@@ -120,7 +125,7 @@ final class AccountModel {
     func saveProfile() async {
         guard let service, let session, beginWork() else { return }
         guard let name = PlayerProfile.normalizedDisplayName(displayNameDraft) else {
-            errorMessage = "Use 2–16 letters, numbers, spaces, apostrophes, or hyphens."
+            presentError("Use 2–16 letters, numbers, spaces, apostrophes, or hyphens.")
             isWorking = false
             return
         }
@@ -136,7 +141,7 @@ final class AccountModel {
             apply(saved)
         } catch is CancellationError {
         } catch {
-            errorMessage = "Your profile couldn't be saved. Try again."
+            presentError("Your profile couldn't be saved. Try again.")
         }
     }
 
@@ -146,10 +151,12 @@ final class AccountModel {
         do {
             try await service.signOut()
             clearAccountState()
-            await didSignOut(userID)
+            if !(await didSignOut(userID)) {
+                presentError("You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it.")
+            }
         } catch is CancellationError {
         } catch {
-            errorMessage = "Sign out didn't finish. Try again."
+            presentError("Sign out didn't finish. Try again.")
         }
     }
 
@@ -162,28 +169,32 @@ final class AccountModel {
                 try await didDeleteAccount(userID)
             } catch {
                 clearAccountState()
-                didChangeSession(nil)
-                errorMessage = "Your account was deleted, but its local data could not be removed. Reinstall GridRace before sharing this device."
+                presentError("Your account was deleted, but some local data could not be removed. Resolve saved live data if shown, or reinstall GridRace before sharing this device.")
                 return
             }
             clearAccountState()
         } catch is CancellationError {
         } catch {
-            errorMessage = "Your account couldn't be deleted. No local data was removed. Try again."
+            presentError("Your account couldn't be deleted. No local data was removed. Try again.")
         }
     }
 
     func appleAuthorizationFailed(_ error: Error) {
         if (error as? ASAuthorizationError)?.code == .canceled { return }
-        errorMessage = "Sign in didn't finish. Try again."
+        presentError("Sign in didn't finish. Try again.")
     }
 
     func noncePreparationFailed() {
-        errorMessage = "Sign in couldn't start. Try again."
+        presentError("Sign in couldn't start. Try again.")
     }
 
     func clearError() {
         errorMessage = nil
+    }
+
+    private func presentError(_ message: String) {
+        errorMessage = message
+        errorEvent += 1
     }
 
     private func beginWork() -> Bool {
@@ -222,7 +233,7 @@ final class AccountModel {
         } catch {
             guard self.session?.userID == session.userID else { return }
             profile = nil
-            errorMessage = "Your profile couldn't be loaded. Try again."
+            presentError("Your profile couldn't be loaded. Try again.")
         }
     }
 
