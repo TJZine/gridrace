@@ -112,11 +112,16 @@ private struct FeedbackExample: View {
     let feedback: Feedback
     let title: String
     let detail: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var tileSize: CGFloat = 58
 
     var body: some View {
-        HStack(spacing: 16) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+            : AnyLayout(HStackLayout(spacing: 16))
+        layout {
             TileView(letter: letter, feedback: feedback, isDraft: false, emptyLabel: "")
-                .frame(width: 58, height: 58)
+                .frame(width: tileSize, height: tileSize)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(StampType.heading)
                 Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
@@ -128,7 +133,7 @@ private struct FeedbackExample: View {
     }
 }
 
-/// Fourth Help example: fixed five-tile row for the canonical duplicate vector
+/// Fourth Help example: shared five-tile row for the canonical duplicate vector
 /// `excess-guess-repeat` (answer `grape`, guess `apple`, feedback
 /// `[present, present, absent, absent, correct]`). Fixed literals only —
 /// evaluation and assertions belong in `GameRulesTests`.
@@ -137,31 +142,13 @@ private struct DuplicateLetterExample: View {
     let detail: String
     let accessibilityDetail: String
 
-    // One fixed source pairing each tile letter with its vector feedback
-    // (`excess-guess-repeat`: APPLE vs GRAPE → [present, present, absent,
-    // absent, correct]). Literals only; evaluation lives in GameRulesTests.
-    private let tiles: [(letter: Character, feedback: Feedback)] = [
-        (letter: "A", feedback: .present),
-        (letter: "P", feedback: .present),
-        (letter: "P", feedback: .absent),
-        (letter: "L", feedback: .absent),
-        (letter: "E", feedback: .correct),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(StampType.heading)
-            HStack(spacing: 5) {
-                ForEach(tiles.indices, id: \.self) { index in
-                    TileView(
-                        letter: tiles[index].letter,
-                        feedback: tiles[index].feedback,
-                        isDraft: false,
-                        emptyLabel: ""
-                    )
-                    .frame(width: 52, height: 52)
-                }
-            }
+            TileRowView(
+                word: "APPLE",
+                feedback: [.present, .present, .absent, .absent, .correct]
+            )
             Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
         }
         .padding(14)

@@ -112,7 +112,10 @@ guest files. Sheet interaction and actual VoiceOver acceptance remain S4 gates.
 
 The account screen uses a native grouped list on paper: generated avatar and name,
 a 2–16 character Player name editor, Avatar shuffle, simple synced/pending/error
-status with Retry, Sign out, and native confirmed account deletion. Guest-history
+status with Retry, Sign out, and native confirmed account deletion. Idle says
+Ready to sync; only a completed synchronization says Synced. At accessibility
+sizes, editor actions and sync controls stack vertically and status text wraps
+to its natural height. Guest-history
 import opens a scrollable native sheet with Add to account and Not now; dismissing
 it without a choice does not import or skip. Its copy states that results join
 personal history and never count toward Live races. A divergent attempt opens a
@@ -140,7 +143,9 @@ Settings uses native Play, Learn and About sections. Hard Mode shows Reuse every
 revealed clue and its lock note only while locked. Learn opens How to play; About
 opens Word list credits and shows Version. How to play uses three feedback stamp
 rows and the APPLE versus GRAPE example, retaining the full duplicate-letter
-explanation for VoiceOver. Credits preserve the legal text and the Release review
+explanation for VoiceOver. Example tiles scale with text; accessibility sizes
+stack each explanation below its tile and let the duplicate-letter row scroll
+horizontally. Credits preserve the legal text and the Release review
 still pending notice.
 
 Practice introduction identifies Alex and Sam as bots and explicitly distinguishes

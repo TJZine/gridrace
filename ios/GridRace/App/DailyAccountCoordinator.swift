@@ -225,7 +225,7 @@ final class DailyAccountCoordinator {
             return "Couldn't sync · Account storage needs attention."
         }
         return switch syncStatus {
-        case .idle: "Synced"
+        case .idle: "Ready to sync"
         case .pending: "Pending"
         case .synced(let date): "Synced \(date.formatted(.relative(presentation: .named)))."
         case .conflict: "Couldn't sync · Choose an attempt."

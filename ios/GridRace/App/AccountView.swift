@@ -19,6 +19,7 @@ struct AccountView: View {
     @State private var showingImportConfirmation = false
     @State private var showingConflictSheet = false
     @State private var actionTask: Task<Void, Never>?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Account/profile errors: the model mints `errorEvent` per error (even for
     // a repeated identical string), so focus follows the event, not the
     // message value. The banner itself never announces: focus is the sole
@@ -268,7 +269,10 @@ struct AccountView: View {
     }
 
     private func profileEditor(isInitialSetup: Bool) -> some View {
-        VStack(spacing: 14) {
+        let actionLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 10))
+            : AnyLayout(HStackLayout())
+        return VStack(spacing: 14) {
             Text(isInitialSetup ? "Choose your player name" : "Edit profile")
                 .font(StampType.title3.bold())
             privacyReassurance
@@ -291,7 +295,7 @@ struct AccountView: View {
             }
             .buttonStyle(OutlinedInkButtonStyle())
             .disabled(model.isWorking)
-            HStack {
+            actionLayout {
                 if !isInitialSetup {
                     Button {
                         model.displayNameDraft = model.profile?.displayName ?? ""
@@ -300,7 +304,9 @@ struct AccountView: View {
                     } label: {
                         Text("Cancel")
                             .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
                 Button {
                     run {
@@ -321,16 +327,21 @@ struct AccountView: View {
     }
 
     private func syncCard(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        let statusLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return VStack(alignment: .leading, spacing: 12) {
+            statusLayout {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
                 Text(message)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let retrySync {
                     Button(action: retrySync) {
                         Text("Retry")
+                            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
                             .frame(minHeight: 44)
                     }
                     .buttonStyle(OutlinedInkButtonStyle())

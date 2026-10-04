@@ -499,9 +499,41 @@ SE profile was provisioned instead of shutting down the unrelated seed.
 
 | ID | Evidence / obligation | Bounded disposition |
 | --- | --- | --- |
-| C4-1 | AX5 account editor squeezes Cancel/Save into side-by-side narrow columns (`account-edit-light-AX5-bottom.png` in controller captures) | Stack naturally at accessibility sizes; preserve callbacks and validator |
-| C4-2 | Help example tiles use fixed 58/52pt frames while shared glyph type grows; endpoint screenshots do not establish the middle example rows | Inspect middle native AX5 states, scale tile dimensions and provide readable horizontal overflow for the five-letter row if needed |
-| C4-3 | The idle sync state is rendered as Synced even though idle does not establish a successful synchronization | Correct only the idle presentation string to Ready to sync; preserve the sync state machine |
+| C4-1 | AX5 account editor squeezes Cancel/Save into side-by-side narrow columns (`account-edit-light-AX5-bottom.png` in controller captures) | Fixed: stack at accessibility sizes, explicit Cancel hit shape; callbacks and validator preserved |
+| C4-2 | Help example tiles use fixed 58/52pt frames while shared glyph type grows; endpoint screenshots do not establish the middle example rows | Fixed: scaled example tiles, stacked AX explanations and shared horizontally scrolling duplicate row; native middle/endpoints inspected |
+| C4-3 | The idle sync state is rendered as Synced even though idle does not establish a successful synchronization | Fixed: idle presentation says Ready to sync; sync state machine unchanged |
+| C4-4 | Sync message still truncates at AX5 after stacking status controls | Fixed by controller bounded AccountView packet: allow natural vertical text size; targeted native SE/iPad captures and multiline geometry assertions pass |
+
+Support return audited and integrated: three source files only, 141 protected
+tracked hashes and six unrelated hashes preserved; all 1,138 image hashes checked.
+Worker native fixtures cover SE, Pro and native iPad in actual portrait/landscape,
+light/dark and default/AX5, including presented-sheet traits and middle/end scroll
+positions. The capture count does not imply every image has a fit assertion.
+Local mocked AX activations prove editor Cancel/Save, sign-out, import choices,
+no-choice dismissal and both conflict choices; 42 measured action frames meet
+44pt. Source access and test overlays exist only under `/tmp`.
+
+Worker full suite: 220 total / 218 passed / two opt-in skips before the final
+Cancel hit-shape adjustment; final worker focused/native proof: 68 total /
+67 passed / one opt-in skip, clean Debug. Controller final composed source:
+75 total / 74 passed / one opt-in skip / zero failures, clean Debug, frozen flags.
+Evidence: `/tmp/gridrace-stamped-s4-support-result.json`,
+`/tmp/gridrace-stamped-s4-support-controller-audit.json`,
+`/tmp/gridrace-stamped-s4-support-controller-final-main.log` and `.xcresult`,
+`/tmp/gridrace-stamped-s4-support-controller-final-build.log`.
+C4-4 targeted native tests each pass on SE and iPad, with multiline AX message
+heights (249.5pt and 125.5pt); corrected captures visually show the full message.
+Logs and results: `/tmp/gridrace-stamped-s4-support-controller-wrap-v2-SE.log`
+and `.xcresult`, and the corresponding `wrap-v2-iPad` paths. Exact overlays,
+source hashes and corrected images are recorded in
+`/tmp/gridrace-stamped-s4-support-controller-final-evidence.json`.
+
+Open measurement: conflict-sheet native Cancel reports a 36pt AX frame and a
+44pt visual platter. A window hit-test ancestry probe measured 39.5pt vertically;
+it depends on UIKit's private platter hierarchy and does not establish an actual
+OS tap failure or a passing 44pt target. No speculative toolbar workaround lands.
+Retain this ambiguity for actual tap/VoiceOver acceptance and final review;
+`/tmp/gridrace-stamped-s4-support-toolbar3-SE.log` records the probe.
 
 The packet requires actual native middle/endpoints and light/dark/default/AX5
 supporting-screen proof on owned devices. It covers part of S4, not the full
@@ -530,8 +562,8 @@ S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 
 S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
 and their assigned simulator clones deleted; this chat's pinned position is
-restored. Run the S4 software matrix and integrate the bounded supporting-screen
-follow-up after its callback; route further findings through owning-file packets.
+restored. The bounded supporting-screen follow-up is integrated and proved.
+Complete the remaining S4 software matrix; route findings through owning-file packets.
 Hands-on OS checks wait at the human's request. Final independent review and
 closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
