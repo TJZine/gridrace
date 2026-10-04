@@ -156,7 +156,7 @@ session/state machines, storage, backend, or share text.
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Software matrix pending; hands-on checks deferred by human | Actual OS accessibility, keyboard and haptic acceptance still open |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Supporting closure integrated; remaining software matrix assigned; hands-on checks deferred by human | Final supporting focused/native proof passed; actual OS accessibility, keyboard and haptic acceptance still open |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -540,6 +540,22 @@ supporting-screen proof on owned devices. It covers part of S4, not the full
 matrix or actual OS acceptance. Hands-on checks remain deferred at the human's
 request. Final independent review, design/AGENTS implementation pointers and
 Historical closeout remain open.
+
+Supporting closure checkpoint: `30d2f9a44181138447a827376cccd8a3e58d3c8a`.
+Its managed worktree is archived and this controller's fifth pinned position
+restored. The released SE/Pro/iPad simulator and derived-data leases transfer
+to an artifact-only S4 software verification packet; no worker remains active
+on them. A fresh Pro Max profile and fourth frozen-resolved derived-data path
+complete the device inventory without touching the unrelated booted Pro Max.
+
+Remaining software verification uses the configured worker preset (Sol 6.1,
+medium) in a callback-enabled chat. Main checkout is read-only; fixtures and
+overlays go under `/tmp/gridrace-stamped-s4-matrix-*`. The packet covers Home,
+Daily, Live and Practice across actual device/orientation bounds, extends
+supporting proof to Pro Max, and measures action/D15 regions. It distinguishes
+simulated trait evidence from actual OS acceptance, which stays deferred.
+Packet: `/tmp/gridrace-stamped-s4-matrix-packet.md`; protected-byte and process
+lease: `.codex/runs/stamped-ui-refresh/S4-matrix-lease.json`.
 
 ### Commit record
 
