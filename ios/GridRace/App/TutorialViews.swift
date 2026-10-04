@@ -1,5 +1,21 @@
 import SwiftUI
 
+private struct TutorialChromeHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value += nextValue()
+    }
+}
+
+private struct TutorialKeyboardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct TutorialView: View {
     @Bindable var model: TutorialModel
     @Binding var hapticsEnabled: Bool
@@ -44,24 +60,23 @@ private struct IntroductionView: View {
                     .font(.system(size: 56, weight: .bold))
                     .foregroundStyle(Color.ink)
                     .accessibilityHidden(true)
-                Text("GridRace Tutorial")
+                Text("Practice")
                     .font(StampType.display.bold())
                     .multilineTextAlignment(.center)
-                Text("Solve the same five-letter word while Alex and Sam race beside you.")
+                Text("Race two bots")
+                    .font(StampType.title.bold())
+                    .multilineTextAlignment(.center)
+                Text("Alex and Sam are practice bots chasing the same word. You'll only see their progress until the reveal.")
                     .font(StampType.title3)
                     .multilineTextAlignment(.center)
-                Label(
-                    "Opponent letters, feedback, and keyboard clues stay private during play.",
-                    systemImage: "eye.slash.fill"
-                )
-                .font(.body.weight(.semibold))
-                .padding()
-                .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
-                Text("This is an on-device practice race. Its answer and ghost moves are bundled with the app; production games will rely on the server.")
+                Text("Practice runs on this device. Live races use the server.")
                     .font(.callout)
                     .foregroundStyle(Color.secondaryInk)
                     .multilineTextAlignment(.center)
-                Button("Start local race") {
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .paperCard()
+                Button("Start practice") {
                     model.startTutorial()
                 }
                 .buttonStyle(InkButtonStyle())
@@ -89,7 +104,7 @@ private struct CountdownView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Local race starts in")
+            Text("Practice starts in")
                 .font(StampType.title2)
             CountdownNumeral(text: "\(seconds)")
             // Determinate 3-second progress; presentation only, hidden from
@@ -104,7 +119,7 @@ private struct CountdownView: View {
                 .padding(.horizontal)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Local race starts in \(seconds)")
+        .accessibilityLabel("Practice starts in \(seconds)")
         .accessibilityFocused($focused)
         .onAppear { focused = true }
     }
@@ -113,69 +128,179 @@ private struct CountdownView: View {
 private struct RaceView: View {
     @Bindable var model: TutorialModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // U-06 + R-01/F1: invalid/incomplete draft -> focus error banner
     // (announcement off). A per-submit generation mints a fresh focus value
     // so an identical-error resubmit refires (same-value assignment would
     // coalesce and never move focus).
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var errorGeneration = 0
+    @State private var chromeHeight: CGFloat = 0
+    @State private var keyboardHeight: CGFloat = 0
+    @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
+
+    private var minimumBoardHeight: CGFloat {
+        minimumTileSize * 6 + 6 * 5
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 14) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Local tutorial")
-                                .font(StampType.heading)
-                            Text("Clue-free opponent progress")
-                                .font(StampType.caption)
-                                .foregroundStyle(Color.secondaryInk)
-                        }
-                        Spacer()
-                        Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
-                            .font(StampType.figure)
-                            .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
-                    }
-                    .padding(.horizontal)
-
-                    OpponentStrip(opponents: model.opponents)
-                    BoardView(
-                        rows: model.board.rows,
-                        draft: model.board.draft,
-                        isPlaying: model.board.status == .playing
-                    )
-                        .padding(.horizontal)
-                        // Subtle invalid-guess nudge; fully suppressed under
-                        // Reduce Motion (banner + existing haptics only).
-                        .offset(x: (model.errorMessage != nil && !reduceMotion) ? 6 : 0)
-                        .animation(reduceMotion ? nil : .snappy, value: model.errorMessage)
-
-                    if let error = model.errorMessage {
-                        RaceErrorBanner(message: error)
-                            .padding(.horizontal)
-                            .accessibilityFocused($errorFocus, equals: errorGeneration)
-                            .onAppear { errorFocus = errorGeneration }
-                    } else {
-                        Text("Type a five-letter word from the tutorial list.")
-                            .font(StampType.caption)
-                            .foregroundStyle(Color.secondaryInk)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        raceContent(boardHeight: nil)
+                        keyboard
                     }
                 }
-                .padding(.vertical, 12)
-                .frame(maxWidth: 620)
-                .frame(maxWidth: .infinity)
+            } else {
+                GeometryReader { proxy in
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            raceContent(boardHeight: proposedBoardHeight(in: proxy.size.height))
+                        }
+                        keyboard
+                    }
+                }
+            }
+        }
+        .onPreferenceChange(TutorialChromeHeightKey.self) { chromeHeight = $0 }
+        .onPreferenceChange(TutorialKeyboardHeightKey.self) { keyboardHeight = $0 }
+    }
+
+    private func proposedBoardHeight(in availableHeight: CGFloat) -> CGFloat {
+        let measuredChrome = chromeHeight + 40
+        return max(minimumBoardHeight, availableHeight - measuredChrome - keyboardHeight)
+    }
+
+    @ViewBuilder
+    private func raceContent(boardHeight: CGFloat? = nil) -> some View {
+        VStack(spacing: 10) {
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Practice")
+                        .font(StampType.heading)
+                    Spacer()
+                    Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
+                        .font(StampType.figure)
+                        .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
+                }
+                .padding(.horizontal)
+
+                PracticeOpponentStrip(opponents: model.opponents)
+            }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TutorialChromeHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
             }
 
-            KeyboardView(model: model) {
-                errorGeneration += 1
-                errorFocus = model.errorMessage != nil ? errorGeneration : nil
+            boardView(boardHeight: boardHeight)
+
+            statusMessage
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TutorialChromeHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: 620)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var boardBase: some View {
+        BoardView(
+            rows: model.board.rows,
+            draft: model.board.draft,
+            isPlaying: model.board.status == .playing
+        )
+        .padding(.horizontal)
+        // Subtle invalid-guess nudge; fully suppressed under Reduce Motion
+        // (banner + existing haptics only).
+        .offset(x: (model.errorMessage != nil && !reduceMotion) ? 6 : 0)
+        .animation(reduceMotion ? nil : .snappy, value: model.errorMessage)
+    }
+
+    @ViewBuilder
+    private func boardView(boardHeight: CGFloat?) -> some View {
+        if let boardHeight {
+            boardBase.frame(height: boardHeight)
+        } else {
+            boardBase
+        }
+    }
+
+    @ViewBuilder
+    private var statusMessage: some View {
+        if let error = model.errorMessage {
+            RaceErrorBanner(message: error)
+                .padding(.horizontal)
+                .accessibilityFocused($errorFocus, equals: errorGeneration)
+                .onAppear { errorFocus = errorGeneration }
+        } else {
+            Text("Enter five letters from the practice list.")
+                .font(StampType.caption)
+                .foregroundStyle(Color.secondaryInk)
+        }
+    }
+
+    private var keyboard: some View {
+        KeyboardView(model: model) {
+            errorGeneration += 1
+            errorFocus = model.errorMessage != nil ? errorGeneration : nil
+        }
+        .padding(.vertical, 8)
+        .background(Color.page)
+        .overlay(alignment: .top) {
+            Color.line.frame(height: 1)
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TutorialKeyboardHeightKey.self,
+                    value: proxy.size.height
+                )
             }
-            .padding(.vertical, 8)
-            .background(Color.page)
-            .overlay(alignment: .top) {
-                Color.line.frame(height: 1)
+        }
+    }
+}
+
+private struct PracticeOpponentStrip: View {
+    let opponents: [OpponentProgress]
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ForEach(opponents) { opponent in
+                OpponentLine(
+                    name: opponent.name,
+                    count: "\(opponent.acceptedGuessCount)/6",
+                    state: shortVisualState(for: opponent.state),
+                    stateSymbol: opponent.state == .playing ? "hourglass" : "flag.checkered",
+                    connection: nil,
+                    accessibilitySummary: opponent.accessibilityLabel
+                ) {
+                    Image(systemName: opponent.avatarSymbol)
+                        .font(StampType.caption.bold())
+                        .foregroundStyle(Color.ink)
+                }
             }
+        }
+        .padding(.horizontal)
+    }
+
+    private func shortVisualState(for state: OpponentState) -> String {
+        switch state {
+        case .playing: "Playing"
+        case .solved: "Solved"
+        case .failed: "Failed"
+        case .timedOut: "Timed out"
+        case .forfeited: "Forfeited"
         }
     }
 }
@@ -235,7 +360,7 @@ private struct RevealView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Text("Local reveal")
+                Text("Practice reveal")
                     .font(StampType.display.bold())
                 Text("Answer: \(TutorialModel.answer.uppercased())")
                     .font(StampType.title2.bold())
@@ -294,7 +419,7 @@ private struct RevealView: View {
                         .padding()
                         .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
                         .accessibilityFocused($focus, equals: .summary)
-                    Button("Replay tutorial") { model.replay() }
+                    Button("Replay practice") { model.replay() }
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .frame(minHeight: 44)

@@ -255,7 +255,7 @@ final class TutorialModel {
                 return
             } catch {
                 guard let self else { return }
-                self.errorMessage = "The local timer stopped. Replay the tutorial to try again."
+                self.errorMessage = "The practice timer stopped. Replay practice to try again."
             }
         }
     }

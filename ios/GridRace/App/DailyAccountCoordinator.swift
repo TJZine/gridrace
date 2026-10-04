@@ -222,15 +222,15 @@ final class DailyAccountCoordinator {
     var syncMessage: String? {
         guard account.isSignedIn else { return nil }
         if !isDailyPlayable {
-            return "Account storage is unavailable. Retry, or sign out to keep playing as a guest."
+            return "Couldn't sync · Account storage needs attention."
         }
         return switch syncStatus {
-        case .idle: "Ready to sync."
-        case .pending: "Your progress is waiting to sync. You can keep playing."
+        case .idle: "Synced"
+        case .pending: "Pending"
         case .synced(let date): "Synced \(date.formatted(.relative(presentation: .named)))."
-        case .conflict: "Two devices have different attempts. Choose which one to keep on this device."
-        case .failed(.invalidData): "Some saved data could not be synchronized. Your local game is unchanged."
-        case .failed: "Sync is unavailable. Your game is saved on this device; try again when you're online."
+        case .conflict: "Couldn't sync · Choose an attempt."
+        case .failed(.invalidData): "Couldn't sync · Your game is unchanged."
+        case .failed: "Couldn't sync"
         }
     }
 

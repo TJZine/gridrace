@@ -155,8 +155,8 @@ session/state machines, storage, backend, or share text.
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
-| S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Returned; bounded repair pending | `/tmp/gridrace-stamped-s3-result.json`; full suite/build green; target captures incomplete |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Not started | — |
+| S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Software matrix pending; hands-on checks deferred by human | Actual OS accessibility, keyboard and haptic acceptance still open |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -457,13 +457,41 @@ controller chat is pinned, so its S1/S2 managed worktree attachments are retaine
 until that protection is resolved; no manual deletion or pin change is inferred.
 This is an outstanding cleanup item, not completed archival.
 
+S3 integrated after S1 with all five source hashes equal to the audited cumulative
+return (`/tmp/gridrace-stamped-s3-layout-closure-result.json`). Controller audit
+confirms 142 protected tracked hashes, all six unrelated hashes, unchanged worker
+HEAD and empty index. Main frozen suite exit0: 220 total / 218 passed / two expected
+opt-in skips / zero failures; clean Debug exit0. Evidence:
+`/tmp/gridrace-stamped-s3-controller-main.log`, `.xcresult`, and
+`/tmp/gridrace-stamped-s3-controller-build.log`.
+
+C3-1–C3-4 and follow-up card-height, AX-letter and bot-label defects are repaired.
+The worker's navigation-root fixture did not prove the actual pushed Practice
+route. Controller artifact-only proof uses a populated AppRoute navigation path,
+five accepted rows and a sixth draft, asserts native content fit above the
+keyboard, and captures SE light/dark/default/AX5 endpoints. One selected native
+test passed (`/tmp/gridrace-stamped-s3-controller-route-proof-final.log`). Account
+edit, deletion confirmation, and actual presented import/conflict sheets are also
+captured through artifact-only state/access visibility overlays; production bytes
+stay unchanged. Worker screen bodies plus controller native presentation captures
+cover S3's required light/dark surfaces. Captures and exact verification overlays
+are recorded in `/tmp/gridrace-stamped-s3-controller-evidence.json`.
+
+Remaining S4 obligations include the full device/orientation/trait matrix,
+interactive sheet regression checks and actual OS-assisted A9. On 2026-10-03 the
+human requested that hands-on checks wait; no OS acceptance is inferred. The
+human authorized temporarily unpinning this controller for managed cleanup and
+restoring its pinned position afterward. Credits retain the independent legal
+release-review pending notice; this UI implementation does not approve release.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
 authorized starting HEAD `2d19d2c`. S0a mechanical split:
 `38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: `908aa9b932832d286e0582537b2b3a02ec0b4c99`.
 S2 Live integration: `be33aa15c14718a7d96de02e5da11abe66c1ade6`.
-S1 Daily/routing integration: this commit.
+S1 Daily/routing integration: `5004657bae2fbd64d943344aca6623bdb1e232b0`.
+S3 supporting integration: this commit.
 
 ## Blockers and stop conditions
 
@@ -475,11 +503,13 @@ S1 Daily/routing integration: this commit.
 
 ## Next action
 
-S2 and S1 are integrated and proved in order. S3's bounded correction chat is
-active; audit its cumulative patch and native screen/sheet evidence, then integrate
-and prove S3 before S4. Managed worktree cleanup remains blocked by this chat's
-pin protection. Controller chat is `01a103c6-10bd-7a30-acc2-68334f0cd33a` on
-host `local`. End dispatch turns without waiting or polling.
+S2, S1 and S3 are integrated and proved in order. Complete managed cleanup with
+the authorized temporary unpin and restore this chat's pinned position. Run the
+S4 software matrix; route findings through bounded packets to owning files.
+Hands-on OS checks wait at the human's request. Final independent review and
+closeout remain pending. Controller chat is
+`01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
+End dispatch turns without waiting or polling.
 
 ## Closeout checklist
 

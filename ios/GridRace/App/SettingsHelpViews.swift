@@ -3,50 +3,63 @@ import SwiftUI
 struct DailySettingsView: View {
     @Bindable var model: DailyClassicModel
 
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
     var body: some View {
         Form {
-            Section {
+            Section("Play") {
                 Toggle("Haptics", isOn: Binding(
                     get: { model.settings.hapticsEnabled },
                     set: { model.updateHaptics($0) }
                 ))
+                .listRowBackground(Color.card)
                 Toggle("High-contrast feedback", isOn: Binding(
                     get: { model.settings.highContrastEnabled },
                     set: { model.updateHighContrast($0) }
                 ))
+                .listRowBackground(Color.card)
                 Toggle("Hard Mode", isOn: Binding(
                     get: { model.game.progress.hardModeEnabled },
                     set: { model.updateHardMode($0) }
                 ))
                 .disabled(!model.game.canChangeHardMode)
-            } header: {
-                Text("Play")
-            } footer: {
-                Text(model.game.canChangeHardMode
-                    ? "Hard Mode requires every revealed clue to be reused."
-                    : "Hard Mode is locked after the first accepted guess until tomorrow.")
+                .listRowBackground(Color.card)
+                Text("Reuse every revealed clue")
+                    .font(StampType.caption)
+                    .foregroundStyle(Color.secondaryInk)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.card)
+                if !model.game.canChangeHardMode {
+                    Text("Locked until tomorrow's puzzle")
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.card)
+                }
             }
             Section("Learn") {
                 NavigationLink(value: AppRoute.help) {
-                    Label("How to Play", systemImage: "questionmark.circle")
+                    Label("How to play", systemImage: "questionmark.circle")
                 }
-                NavigationLink(value: AppRoute.tutorial) {
-                    Label("Practice race", systemImage: "figure.run")
-                }
+                .listRowBackground(Color.card)
             }
-            Section("Word list") {
+            Section("About") {
                 NavigationLink(value: AppRoute.attribution) {
-                    Label("Word list attribution", systemImage: "book.closed")
+                    Label("Word list credits", systemImage: "book.closed")
                 }
-            }
-            Section {
-                Text("Daily Classic resets worldwide at 00:00 UTC. Reduce Motion follows your system accessibility setting.")
-                    .font(.callout)
-                    .foregroundStyle(Color.secondaryInk)
+                .listRowBackground(Color.card)
+                LabeledContent("Version", value: version)
+                    .font(StampType.caption)
+                    .listRowBackground(Color.card)
             }
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)
+        .listStyle(.insetGrouped)
+        .tint(Color.ink)
+        .environment(\.defaultMinListRowHeight, 44)
         .navigationTitle("Settings")
     }
 }
@@ -57,30 +70,32 @@ struct DailyHelpView: View {
             Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Reach the finish in six")
+                    Text("Six guesses to find the word")
                         .font(StampType.display.bold())
                     Text("Guess the five-letter answer in six accepted words. Each row gives evidence for your next move.")
                         .font(StampType.title3)
                     FeedbackExample(
                         letter: "R", feedback: .correct,
-                        title: "Correct position", detail: "The checkmark means R is exactly where it belongs."
+                        title: "Right letter, right spot", detail: "A checkmark means the letter is exactly where it belongs."
                     )
                     FeedbackExample(
                         letter: "A", feedback: .present,
-                        title: "Present elsewhere", detail: "The turning arrow means A is in the answer in another position."
+                        title: "In the word, wrong spot", detail: "Turning arrows mean the letter is in the answer in another position."
                     )
                     FeedbackExample(
                         letter: "C", feedback: .absent,
-                        title: "Not in the answer", detail: "The minus means this C is not used. Repeated letters are counted exactly."
+                        title: "Not in the word", detail: "A minus means this letter is not in the answer."
                     )
                     DuplicateLetterExample(
                         title: "Same letter twice",
-                        detail: "In APPLE against GRAPE, exact matches use up answer copies first, so E is exact. Leftover copies are then claimed left to right: A and the first P are present while an unused copy remains, and the second P is absent because GRAPE has no P copy left."
+                        detail: "Answer GRAPE has one P, so only the first P is marked.",
+                        accessibilityDetail: "In APPLE against GRAPE, exact matches use up answer copies first, so E is exact. Leftover copies are then claimed left to right: A and the first P are present while an unused copy remains, and the second P is absent because GRAPE has no P copy left."
                     )
-                    Divider()
-                    Label("One puzzle is shared worldwide each UTC day.", systemImage: "globe.americas.fill")
-                    Label("A finished result cannot be replayed or changed.", systemImage: "lock.fill")
-                    Label("Hard Mode reuses every revealed clue.", systemImage: "shield.checkered")
+                    Text("One puzzle a day, worldwide · new at 00:00 UTC")
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: 560, alignment: .leading)
                 .padding(24)
@@ -107,6 +122,8 @@ private struct FeedbackExample: View {
                 Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
             }
         }
+        .padding(14)
+        .paperCard()
         .accessibilityElement(children: .combine)
     }
 }
@@ -118,6 +135,7 @@ private struct FeedbackExample: View {
 private struct DuplicateLetterExample: View {
     let title: String
     let detail: String
+    let accessibilityDetail: String
 
     // One fixed source pairing each tile letter with its vector feedback
     // (`excess-guess-repeat`: APPLE vs GRAPE → [present, present, absent,
@@ -146,7 +164,10 @@ private struct DuplicateLetterExample: View {
             }
             Text(detail).font(.callout).foregroundStyle(Color.secondaryInk)
         }
-        .accessibilityElement(children: .combine)
+        .padding(14)
+        .paperCard()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title). \(accessibilityDetail)")
     }
 }
 
@@ -164,7 +185,7 @@ struct DailyAttributionView: View {
             Color.page.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Where the words come from")
+                    Text("Word list credits")
                         .font(StampType.display.bold())
                     Text("Daily Classic accepts a frozen baseline plus eligible English Wiktionary spellings. Answers are original GridRace curation.")
                         .font(StampType.title3)
@@ -203,7 +224,7 @@ struct DailyAttributionView: View {
                             .font(.callout)
                             .foregroundStyle(Color.secondaryInk)
                     }
-                    Divider()
+                    Divider().overlay(Color.line)
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Release review still pending", systemImage: "lock.fill")
                             .font(StampType.heading)
@@ -217,7 +238,7 @@ struct DailyAttributionView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .navigationTitle("Word List")
+        .navigationTitle("Word list credits")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -64,8 +64,7 @@ type, round-seal tiles, feedback keys, ink controls and shared notice/countdown/
 opponent leaves. Correct uses claret fill and a check; present uses a double ring
 and rotating arrows; absent uses an unfilled dimmed bold letter and minus. The
 High-contrast feedback preference and Increased Contrast use the same strengthened
-marks. Daily and Live layouts are implemented by S1/S2; supporting layouts
-remain transitional until S3 integrates.
+marks. Daily, Live and supporting layouts now use the accepted stamped direction.
 
 ### Daily Classic home and play
 
@@ -111,10 +110,17 @@ Coordinator ownership of account cleanup, guest history and callbacks is unchang
 First sign-in asks before adding guest history; skipping/importing does not delete
 guest files. Sheet interaction and actual VoiceOver acceptance remain S4 gates.
 
-The account screen shows the generated avatar, 2–16 character player-name editor,
-simple synced/pending/error status, retry, sign out, and confirmed deletion. A
-divergent attempt explains that devices differ and offers “Use synced attempt” or
-“Keep this device.” It never presents either imported attempt as verified. Network
+The account screen uses a native grouped list on paper: generated avatar and name,
+a 2–16 character Player name editor, Avatar shuffle, simple synced/pending/error
+status with Retry, Sign out, and native confirmed account deletion. Guest-history
+import opens a scrollable native sheet with Add to account and Not now; dismissing
+it without a choice does not import or skip. Its copy states that results join
+personal history and never count toward Live races. A divergent attempt opens a
+Resolve attempt sheet with both six-row boards side by side at default type, then
+Use synced attempt and Keep this device. At accessibility sizes the boards scroll
+horizontally with full-size letters and symbols. Each board and row is a semantic
+container; a newly presented or successive conflict focuses its heading once.
+These choices never present an imported attempt as verified. Network
 failure leaves the local game available. If sign-out or confirmed deletion cannot
 durably clear live recovery, former-account Daily/account data stays hidden and Home
 shows the Live row's “Resolve” action, which opens Live for retry or confirmed
@@ -127,6 +133,23 @@ letters and feedback stay private until reveal. Phase 1 then runs a real local
 board against two deterministic ghosts without requiring authentication.
 Clearly label this as an on-device tutorial, not a production secrecy or server
 authority demonstration.
+
+### Supporting screens and Practice
+
+Settings uses native Play, Learn and About sections. Hard Mode shows Reuse every
+revealed clue and its lock note only while locked. Learn opens How to play; About
+opens Word list credits and shows Version. How to play uses three feedback stamp
+rows and the APPLE versus GRAPE example, retaining the full duplicate-letter
+explanation for VoiceOver. Credits preserve the legal text and the Release review
+still pending notice.
+
+Practice introduction identifies Alex and Sam as bots and explicitly distinguishes
+local practice from server-backed Live races. Play uses the shared countdown,
+six-row board, feedback keys and two readable progress rows; spoken opponent
+summaries retain their full meanings. Board sizing reserves the natural chrome and
+keyboard heights. Accessibility sizes scroll the whole play screen vertically and
+the board and keyboard horizontally. Reveal keeps the existing local sequence,
+result summaries, replay and finish behavior.
 
 ### Live entry and lobby
 
