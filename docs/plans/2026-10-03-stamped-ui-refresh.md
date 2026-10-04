@@ -153,9 +153,9 @@ session/state machines, storage, backend, or share text.
 | --- | --- | --- | --- | --- | --- |
 | S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Complete | 52 declaration bodies unchanged; six access changes; full iOS 214 passed/two opt-in skips; clean Debug; controller differential audit |
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
-| S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Not started | — |
-| S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Not started | — |
-| S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Not started | — |
+| S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Returned; audited; awaits S2 integration | `/tmp/gridrace-stamped-s1-result.json`; 219 total / 217 passed / two opt-in skips; SE/Pro native captures |
+| S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Dispatched | Sol 6.1 medium; D9 isolated worktree and frozen resolve |
+| S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Returned; bounded repair pending | `/tmp/gridrace-stamped-s3-result.json`; full suite/build green; target captures incomplete |
 | S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Not started | — |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
@@ -396,6 +396,34 @@ The human approved the compact QWERTY exception (D15); S0b acceptance is complet
 Contrast minima: body 5.0511:1, bold letters/required graphics 3.0694:1.
 Exact-source suite/build proof is reused; this approval changes docs, not product bytes.
 
+S1 callback received; complete six-file diff inspected, returned source/patch and
+72 screenshot hashes checked, 138 protected tracked hashes and six unrelated
+hashes match, HEAD/index unchanged. Default SE Home, Hard Mode play and light/dark
+result captures inspected; no established source finding. Full suite 219 total /
+217 passed / two expected opt-in skips, Pro native render test and Debug build pass.
+Account sheet proof is presentation reducer plus existing lifecycle coverage;
+actual sheet interaction and OS focus remain outstanding. Controller audit:
+`/tmp/gridrace-stamped-s1-controller-audit.json`. No integration before S2.
+
+S3 callback received; complete five-file diff inspected, patch hash verified,
+137 protected tracked hashes and six unrelated hashes match; HEAD/index unchanged.
+Full suite 216 total / 214 passed / two expected opt-in skips and Debug build pass.
+Required per-screen/per-sheet light/dark captures are missing; S3 acceptance is
+incomplete. Controller audit `/tmp/gridrace-stamped-s3-controller-audit.json`.
+Bounded S3 correction packet addresses accepted findings C3-1–C3-4 below; it
+reuses the released isolated worktree, SE clone and pre-resolved build path.
+
+| ID | Finding | Disposition |
+| --- | --- | --- |
+| C3-1 | Conflict cards require 412pt including padding; default SE cannot show both at once | Repair responsive side-by-side sizing within AccountView; AX can scroll |
+| C3-2 | Successive-conflict focus generation was removed; new conflict boards lack accessibility containers | Restore single-owner heading focus per conflict and board/row grouping |
+| C3-3 | Guest import remains an alert despite the accepted sheet direction | Use native sheet with unchanged callbacks and owner-private history copy |
+| C3-4 | Practice board gets no remaining-height proposal; required default SE fit has no proof | Repair container height reservation in TutorialViews and obtain native fit evidence |
+| C3-5 | S3 target screenshots are missing | Keep verification open; capture native fixtures or actual UI before S3 acceptance |
+
+“Release review still pending” remains in credits pending controller adjudication;
+legal text is preserved. No backend harness or actual OS acceptance claimed.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -412,9 +440,9 @@ authorized starting HEAD `2d19d2c`. S0a mechanical split:
 
 ## Next action
 
-S0b is complete. Controller commits the checkpoint, then prepares D9
-worktrees, cloned simulators and frozen resolves before callback-enabled S1–S3
-dispatch using D14 settings. Integration remains S2 → S1 → S3. Controller chat is
+S0b is committed as `908aa9b`. S1 is audited and waits for S2's callback;
+S2 remains dispatched. S3 needs the bounded correction packet and missing native
+screen/sheet evidence. Integration remains S2 → S1 → S3. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
 End dispatch turns without waiting or polling.
 
