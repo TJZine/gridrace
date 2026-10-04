@@ -2,7 +2,7 @@ Status: Active
 Scope: GridRace iOS presentation refresh to the accepted stamped scorecard direction
 Owner: Codex stamped UI refresh primary controller (/root)
 Started: 2026-10-03
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 # Stamped UI Refresh
 
@@ -156,7 +156,7 @@ session/state machines, storage, backend, or share text.
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Supporting closure integrated; remaining software matrix assigned; hands-on checks deferred by human | Final supporting focused/native proof passed; actual OS accessibility, keyboard and haptic acceptance still open |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Software matrix returned; three fit defects require human stop-condition disposition; hands-on checks deferred | Native four-device evidence audited; S4/A9 not accepted |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -557,6 +557,49 @@ simulated trait evidence from actual OS acceptance, which stays deferred.
 Packet: `/tmp/gridrace-stamped-s4-matrix-packet.md`; protected-byte and process
 lease: `.codex/runs/stamped-ui-refresh/S4-matrix-lease.json`.
 
+S4-matrix callback received 2026-10-04 from worker chat
+`01a104c9-45aa-7550-a705-1c447489fdf1`. Controller verifies unchanged HEAD,
+144 protected tracked hashes, six unrelated hashes and empty index; all 13 report
+reference hashes match. Selected raw failure-image hashes match the manifest and
+the native captures visibly corroborate the geometry. The worker reports 6,594
+case records and 49,536 retained images (including superseded fixtures); these
+counts are not acceptance. Controller did not rehash every image. Report SHA256:
+`6df2a222b6fbbbff216f6759a455195e21bd4b57035f1929c95a30db34b7379c`.
+Result and controller audit: `/tmp/gridrace-stamped-s4-matrix-result.json` and
+`/tmp/gridrace-stamped-s4-matrix-controller-audit.json`.
+
+| ID | Severity / location | Claim and evidence | Disposition / action / proof |
+| --- | --- | --- | --- |
+| S4-F1 | Blocking default fit; LiveMatchViews.swift:826 | Default phone landscape has no vertical scrolling, overlaps route chrome and puts keyboard/notice actions below the scene; SE Discard is unreachable. Native evidence: `finding-live-landscape.json` under the matrix prefix. | Accepted defect; stop condition reached. Proposed two-column phone landscape, preserving six rows and reachable controls; human direction pending before affected writes. |
+| S4-F2 | Default fit; DailyGameViews.swift | Default phone landscape reaches board and keyboard only by scrolling, failing simultaneous fit; native Pro `daily-five-and-draft-landscape-light-large-base` capture. | Accepted defect; same proposed responsive two-column repair and targeted default/AX native proof after approval. |
+| S4-F3 | Blocking SE default notice fit; TutorialViews.swift:137 | SE portrait full board/error: upper viewport ends y497; notice begins y497.25, height49. Scrolling58.5 reaches it while clipping chrome. Native `finding-SE-practice-error.json` and raw captures. | Accepted defect; compact bot chrome and reserve measured error/status above the keyboard. Human stop-condition disposition pending; preserve readable tiles and controls. |
+
+Four-profile native matrix includes actual rotations and route chrome, light/dark,
+default/AX5, canonical 45 Live mappings, full-board errors, completed reveals and
+middle/end scroll specimens. Corrected trait probes establish Bold Text, Increased
+Contrast and app High-contrast feedback; Reduce Motion-labelled captures observed
+false, so they do not prove that trait. Grayscale conversions are illustrative.
+Failed and superseded fixture runs remain in `test-outcomes.json`; the corrected
+Pro Account alert check waits for actual presentation and passes. Native outer
+Account visible-bounds checks pass118/118 for corrected authentication/profile,
+sign-out and mocked deletion transitions. Native Delete confirmation input and
+outer import/conflict callback preservation are not established; inner sheets and
+their callbacks retain separate supporting proof. A proposed remote-factory test
+seam would cross the allowed model boundary and is not authorized or implemented.
+
+Action/letter AX rectangles do not overlap; SE minimum letters are32×48pt and
+actions44×48pt. Pro Daily AX measured47.6667pt height remains a raw pixel-boundary
+observation, not an unqualified48pt pass. Fresh Pro Max public AX traversal was
+empty, so its input/regions remain unavailable. Public hit tests do not identify
+individual SwiftUI targets. Coordinate taps and native toolbar target ownership
+remain unverified. Actual OS VoiceOver/Reduce Motion/grayscale, hardware keyboard
+and haptics remain deferred by the human. All four owned sims are Shutdown and
+the worker released all file/process leases; retain resources for bounded repair.
+
+Concrete repair proposal: `/tmp/gridrace-stamped-s4-layout-repair-proposal.md`.
+No product repair dispatched or written after the stop condition. S4 acceptance,
+final independent review and closeout remain open.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -579,7 +622,9 @@ S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
 and their assigned simulator clones deleted; this chat's pinned position is
 restored. The bounded supporting-screen follow-up is integrated and proved.
-Complete the remaining S4 software matrix; route findings through owning-file packets.
+Resolve the human stop condition for accepted S4-F1–F3 using the concrete layout
+proposal, then issue owning-file repair packets and targeted proof. The software
+matrix callback is audited; no further product writes before that disposition.
 Hands-on OS checks wait at the human's request. Final independent review and
 closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
