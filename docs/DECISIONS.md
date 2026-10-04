@@ -2,7 +2,8 @@
 
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
-tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
+tracker. Current execution belongs in its task record; [`NOW.md`](NOW.md) is navigation.
+General procedures come from shared coding skills; the [project profile](../.agents/project.md) owns GridRace-specific guidance. The detailed
 [Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md)
 owns the accepted presentation work and transferred Phase 4 A9 proof. The
 [Phase 4 Blind Race plan](plans/2026-10-02-phase-4-blind-race.md) and Phase 2/3

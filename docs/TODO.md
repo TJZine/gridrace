@@ -3,8 +3,9 @@
 > Non-authoritative backlog. These are candidates, not approved plans, current
 > status, or product contracts. Track current work only in the one active file under
 > [`docs/plans/`](plans/). Historical plans are evidence, not current instructions.
-> Before starting a candidate, use the planning depth required by the engineering
-> runbook. Promote it into a dated plan only when durable tracking is warranted; then
+> Before starting a candidate, use the [project profile](../.agents/project.md)
+> and shared coding skills for scoped planning and evidence. Promote it into a
+> dated plan only when durable tracking is warranted; then
 > remove or revise the candidate here.
 
 ## After the Accepted Live and Presentation Scope

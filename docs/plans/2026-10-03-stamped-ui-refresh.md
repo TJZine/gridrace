@@ -6,6 +6,16 @@ Last updated: 2026-10-04
 
 # Stamped UI Refresh
 
+## Shared workflow transition — 2026-10-04
+
+[AGENTS.md](../../AGENTS.md), the [project profile](../../.agents/project.md)
+and shared develop/design/review/verify skills replace prior process mechanics.
+Maintenance stays explicit-only. Historical models, role names, leases, machine
+paths, callbacks and source hashes describe recorded runs, not future requirements.
+Accepted product/design/API/data decisions, human authorizations and qualified
+proof remain intact. This workflow refresh does not resume product work, alter
+task status or claim unresolved acceptance passed.
+
 ## Activation gate
 
 Activation completed on 2026-10-03 under the human's rescope authorization.
@@ -155,7 +165,7 @@ session/state machines, storage, backend, or share text.
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
-| S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
+| S3 Supporting | implementation owner (historical Luna run) | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
 | S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Software matrix returned; three fit defects require human stop-condition disposition; hands-on checks deferred | Native four-device evidence audited; S4/A9 not accepted |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
@@ -297,25 +307,29 @@ reviewer on the integrated packet).
 | S3 | Full suite; screenshots of each screen and sheet in light and dark; VoiceOver text for the duplicate-letter example; S3 regression checks |
 | S4 | Matrix above; findings routed to owning units; final independent review |
 
-Commands come from the runbook canon with the frozen flags
+Commands come from the project profile with the frozen flags
 (`-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
--skipPackageUpdates`). Each new derived-data path gets the runbook's frozen
+-skipPackageUpdates`). Each new derived-data path gets the profile's frozen
 resolve first. Provision missing simulators before S4.
 
 ## Orchestration
 
-The controller kickoff packet is
-[`2026-10-03-stamped-ui-refresh-kickoff.md`](2026-10-03-stamped-ui-refresh-kickoff.md);
-volatile run state (leases, baselines, callback results) lives in the gitignored
-`.codex/runs/stamped-ui-refresh/`. Controller runs the activation checkpoint, then S0a and S0b serially (each to one
-worker or locally), auditing, proving, and committing each. Under D13, new work
-sessions use `create_thread`, inherit user model settings, and receive direct human
-authorization for one result callback to the controller chat after releasing leases.
-The controller ends dispatch turns without waiting or polling. It then creates the
-D9 worktrees and dispatches S1, S2, and S3 in parallel with the runbook's compact
-worker packet and a lease per unit. It integrates in order S2, S1, S3, proving
-each on the main checkout and committing per unit, then runs S4 and the final
-review.
+The [continuation entrypoint](2026-10-03-stamped-ui-refresh-kickoff.md) routes to
+this plan's actual current checkpoint. Activation, S0a/S0b and S2/S1/S3 integration
+are complete; do not replay them. For the accepted units, S0a precedes S0b, S0b
+establishes D6 contracts, and D9 isolates parallel S1–S3 worktrees/simulators/output.
+S2's entry branch must land before S1 removes Home's inline Live controls; the
+recorded integration order is S2, S1, S3. Preserve those real dependencies and proof.
+
+Use develop-code with conditional design/review/verification and one integration
+owner. Coordinate shared design/board components, adjacent owner refinements and
+exclusive runtime resources. Helpers return concise outcomes, changed files,
+source state, evidence and limitations through supported host mechanisms. Separate
+chats and messages need actual user authorization; they are not a required pipeline.
+No fixed role/model roster, cross-chat callback or end-turn/no-wait rule applies.
+Existing `.codex/runs/stamped-ui-refresh/` artifacts preserve run provenance and
+resource ownership; they are not a second checkpoint authority. Reuse valid proof,
+run affected checks after repairs, and retain S4/A9 plus final independent review.
 
 ## Ledgers
 
@@ -326,8 +340,8 @@ review.
 | 2026-10-03 | D1–D6 | Recorded at authoring. Human chose rescope activation and delegated D3/D4 to the recommended design, authorizing app rework needed to fit it. |
 | 2026-10-03 | D7–D12 | Added from the adversarial plan review (below). |
 | 2026-10-03 | Activation baseline | Human authorized latest HEAD `2d19d2c` instead of the kickoff-file commit. Rescope activation transfers A9 intact to S4. |
-| 2026-10-03 | D13 workflow steering | Human replaced global engineering guidance with the shared develop/design/review/verify skills and instructed `create_thread` for new work sessions with one callback to this controller. Supersedes kickoff Ponytail enforcement and subagent dispatch. Accepted product scope, ownership, isolation, and no-polling boundaries remain. |
-| 2026-10-03 | D14 worker settings | Human specifies `worker` = `gpt-6.1-sol` / medium and `worker_luna` = `gpt-5.6-luna` / xhigh for future implementation chats. S1/S2 use worker; S3 uses worker_luna. Current S0b Sol/high is explicitly permitted to finish unchanged. |
+| 2026-10-03 | D13 historical workflow steering (superseded by 2026-10-04 refresh) | Human replaced global engineering guidance with the shared develop/design/review/verify skills and instructed `create_thread` for new work sessions with one callback to this controller. Supersedes kickoff Ponytail enforcement and subagent dispatch. Accepted product scope, ownership, isolation, and no-polling boundaries remain. |
+| 2026-10-03 | D14 historical worker settings (superseded by 2026-10-04 refresh) | Human specifies `worker` = `gpt-6.1-sol` / medium and `worker_luna` = `gpt-5.6-luna` / xhigh for future implementation chats. S1/S2 use worker; S3 uses worker_luna. Current S0b Sol/high is explicitly permitted to finish unchanged. |
 
 ### Review findings
 
@@ -548,8 +562,9 @@ to an artifact-only S4 software verification packet; no worker remains active
 on them. A fresh Pro Max profile and fourth frozen-resolved derived-data path
 complete the device inventory without touching the unrelated booted Pro Max.
 
-Remaining software verification uses the configured worker preset (Sol 6.1,
-medium) in a callback-enabled chat. Main checkout is read-only; fixtures and
+Historical S4 matrix assignment: software verification used the then-configured
+worker preset (Sol 6.1, medium) in a callback-enabled chat. Those settings are
+superseded by the workflow transition above. Main checkout was read-only; fixtures and
 overlays go under `/tmp/gridrace-stamped-s4-matrix-*`. The packet covers Home,
 Daily, Live and Practice across actual device/orientation bounds, extends
 supporting proof to Pro Max, and measures action/D15 regions. It distinguishes
@@ -628,7 +643,7 @@ matrix callback is audited; no further product writes before that disposition.
 Hands-on OS checks wait at the human's request. Final independent review and
 closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
-End dispatch turns without waiting or polling.
+Continue only after the outstanding product decision; use supported host coordination.
 
 ## Closeout checklist
 

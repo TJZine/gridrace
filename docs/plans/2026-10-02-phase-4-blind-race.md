@@ -6,6 +6,16 @@ Last updated: 2026-10-03
 
 # Phase 4 Blind Race
 
+## Shared workflow transition — 2026-10-04
+
+[AGENTS.md](../../AGENTS.md), the [project profile](../../.agents/project.md)
+and shared develop/design/review/verify skills replace prior process mechanics.
+Maintenance stays explicit-only. Historical models, role names, leases, machine
+paths, callbacks and source hashes describe recorded runs, not future requirements.
+Accepted product/design/API/data decisions, human authorizations and qualified
+proof remain intact. This workflow refresh does not resume product work, alter
+task status or claim unresolved acceptance passed.
+
 ## Rescope closeout — 2026-10-03
 
 The human chose rescope activation of the

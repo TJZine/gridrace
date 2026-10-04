@@ -2,8 +2,4 @@
 trigger: always_on
 ---
 
-# General Rules
-
-Read `AGENTS.md` first, then the relevant section of `docs/ENGINEERING_RUNBOOK.md`
-and any active plan governing the task. Those repository authorities take precedence
-over this thin tool-specific shim.
+Read AGENTS.md, then the task-relevant sections of .agents/project.md and the applicable active plan. This is a tool shim, not another workflow authority.
