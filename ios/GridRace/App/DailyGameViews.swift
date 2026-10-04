@@ -18,6 +18,7 @@ private enum DailyGameScrollTarget: Hashable {
 struct DailyGameView: View {
     @Bindable var model: DailyClassicModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var acceptsHardwareInput: Bool
     @AccessibilityFocusState private var axFocus: DailyGameFocus?
     // R-01/F1 + F3: every submit mints a fresh error-focus value so an
@@ -25,6 +26,7 @@ struct DailyGameView: View {
     // stale target survives (same-value assignment would never move focus).
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var errorGeneration = 0
+    @State private var chromeHeight: CGFloat = 219
     // Message that already owns focus. Submit-path errors are focused in
     // noteSubmit; only errors arriving without a submit (save/record
     // failures) are focused in `onChange` — one owner per transition.
@@ -44,91 +46,50 @@ struct DailyGameView: View {
     var body: some View {
         ZStack {
             Color.page.ignoresSafeArea()
-            VStack(spacing: 0) {
+            GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 6) {
                             puzzleHeader
-                            if model.game.isComplete {
-                                // Completed semantic order: a terminal error
-                                // first when present, then the result, then
-                                // the finished board below it.
-                                terminalError
-                                resultPanel
-                                    .id(DailyGameScrollTarget.result)
-                                BoardView(
-                                    rows: model.game.rows,
-                                    draft: model.game.draft,
-                                    isPlaying: false,
-                                    highContrast: model.settings.highContrastEnabled
-                                )
-                                .padding(.horizontal)
-                            } else {
-                                BoardView(
-                                    rows: model.game.rows,
-                                    draft: model.game.draft,
-                                    isPlaying: true,
-                                    highContrast: model.settings.highContrastEnabled
-                                )
-                                .padding(.horizontal)
-                                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
-
-                                statusMessage
-                            }
+                                .background(chromeMeasurement)
+                            BoardView(
+                                rows: model.game.rows,
+                                draft: model.game.draft,
+                                isPlaying: !model.game.isComplete,
+                                highContrast: model.settings.highContrastEnabled
+                            )
+                            .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : max(294, geometry.size.height - chromeHeight - 20))
+                            .accessibilitySortPriority(model.game.isComplete ? 1 : 0)
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
+                            inputSlot
+                                .background(chromeMeasurement)
                         }
                         .frame(maxWidth: 620)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                     }
                     .onChange(of: model.resultEvent) { _, _ in
-                        // Fresh completion: the error owns the transition
-                        // when present, otherwise the result panel. No
-                        // visual scroll animation under Reduce Motion, and
-                        // never decorative motion for the error target.
                         guard model.game.isComplete else { return }
                         if model.errorMessage != nil {
                             proxy.scrollTo(DailyGameScrollTarget.error, anchor: .top)
-                        } else if reduceMotion {
+                        } else if dynamicTypeSize.isAccessibilitySize {
                             proxy.scrollTo(DailyGameScrollTarget.result, anchor: .top)
-                        } else {
-                            withAnimation(.easeOut(duration: 0.25)) {
-                                proxy.scrollTo(DailyGameScrollTarget.result, anchor: .top)
-                            }
                         }
                     }
                     .onChange(of: model.errorMessage) { _, message in
-                        // A completion-related error arriving after the
-                        // result event still brings the error into view
-                        // immediately; focus ownership stays with the
-                        // existing error-focus path.
                         guard model.game.isComplete, message != nil else { return }
                         proxy.scrollTo(DailyGameScrollTarget.error, anchor: .top)
                     }
                 }
-
-                if !model.game.isComplete {
-                    hardModeKeyboardHint
-                    LetterKeyboardView(
-                        keyboard: model.game.keyboard,
-                        typeLetter: { model.typeLetter($0) },
-                        submit: { model.submitGuess(); noteSubmit() },
-                        delete: { model.deleteLetter() },
-                        highContrast: model.settings.highContrastEnabled
-                    )
-                    .padding(.vertical, 8)
-                    .background(Color.page)
-                    .overlay(alignment: .top) {
-                        Color.line.frame(height: 1)
-                    }
-                }
             }
         }
-        .navigationTitle("Daily Classic")
+        .onPreferenceChange(DailyChromeHeightKey.self) { chromeHeight = $0 }
+        .navigationTitle("Daily classic")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: AppRoute.settings) {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "gearshape").frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Settings")
             }
@@ -137,7 +98,7 @@ struct DailyGameView: View {
         .focused($acceptsHardwareInput)
         .onAppear {
             acceptsHardwareInput = true
-            // Reopened completed puzzle: the result already leads, so land
+            // Reopened completed puzzle: the result seal owns focus, so land
             // VoiceOver on it. An error still owns focus instead (handled by
             // the error-focus path), matching the fresh-completion rule.
             if model.game.isComplete, model.errorMessage == nil {
@@ -190,18 +151,48 @@ struct DailyGameView: View {
         }
     }
 
+    private var chromeMeasurement: some View {
+        GeometryReader { geometry in
+            Color.clear.preference(key: DailyChromeHeightKey.self, value: geometry.size.height)
+        }
+    }
+
+    @ViewBuilder
+    private var inputSlot: some View {
+        VStack(spacing: 6) {
+            if model.game.isComplete {
+                terminalError
+                KeyboardSlot { resultPanel }.id(DailyGameScrollTarget.result)
+            } else {
+                statusMessage
+                KeyboardSlot {
+                    VStack(spacing: 0) {
+                        hardModeKeyboardHint
+                        LetterKeyboardView(
+                            keyboard: model.game.keyboard,
+                            typeLetter: { model.typeLetter($0) },
+                            submit: { model.submitGuess(); noteSubmit() },
+                            delete: { model.deleteLetter() },
+                            highContrast: model.settings.highContrastEnabled
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private var puzzleHeader: some View {
         HStack {
-            Label("#\(model.puzzle.number)", systemImage: "calendar")
-            Spacer()
-            GuessesUsedIndicator(
-                used: model.game.rows.count,
-                outcome: model.game.completion?.outcome
-            )
+            Text("Puzzle #\(model.puzzle.number)").font(StampType.caption)
+            Spacer(minLength: 4)
+            GuessesUsedIndicator(used: model.game.rows.count, outcome: model.game.completion?.outcome)
+            NavigationLink(value: AppRoute.help) {
+                Image(systemName: "questionmark.circle").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("How to play")
         }
-        .font(.subheadline.weight(.semibold))
         .foregroundStyle(Color.secondaryInk)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
     }
 
     @ViewBuilder
@@ -210,20 +201,6 @@ struct DailyGameView: View {
             RaceErrorBanner(message: error)
                 .padding(.horizontal)
                 .accessibilityFocused($errorFocus, equals: errorGeneration)
-        } else if !model.game.isComplete {
-            // Once the above-keyboard Hard Mode hint appears (first accepted
-            // guess), the generic line stays out so the two never duplicate.
-            if model.game.progress.hardModeEnabled {
-                if model.game.rows.isEmpty {
-                    Text("Hard Mode: revealed clues must be reused.")
-                        .font(StampType.caption)
-                        .foregroundStyle(Color.secondaryInk)
-                }
-            } else {
-                Text("Enter any accepted five-letter word.")
-                    .font(StampType.caption)
-                    .foregroundStyle(Color.secondaryInk)
-            }
         }
     }
 
@@ -237,6 +214,7 @@ struct DailyGameView: View {
                 .padding(.horizontal)
                 .accessibilityFocused($errorFocus, equals: errorGeneration)
                 .id(DailyGameScrollTarget.error)
+                .accessibilitySortPriority(4)
         }
     }
 
@@ -258,83 +236,57 @@ struct DailyGameView: View {
         }
     }
 
-    private var resultHeaderLabel: String {
-        guard let completion = model.game.completion else { return "Daily result." }
-        if completion.outcome == .solved {
-            return "Solved in \(completion.guessCount) guesses. The answer was \(model.puzzle.answer.uppercased())."
-        }
-        return "Daily puzzle failed. The answer was \(model.puzzle.answer.uppercased())."
+    private var resultTitle: String {
+        model.game.completion?.outcome == .solved
+            ? "Solved in \(model.game.completion?.guessCount ?? 0)" : "Not solved"
     }
 
-    /// Streak line for the result panel, derived from model-owned streak
-    /// state: solved shows the previous-to-current transition, a failed
-    /// puzzle with a prior streak shows the streak ended, and a failed
-    /// puzzle with no prior streak omits the row.
-    @ViewBuilder
-    private var streakContext: some View {
+    private var streakText: String {
         if model.game.completion?.outcome == .solved {
-            Text("Streak \(model.previousDisplayedStreak) → \(model.displayedCurrentStreak).")
-                .font(.subheadline.weight(.semibold))
-                .accessibilityLabel("Streak \(model.previousDisplayedStreak) to \(model.displayedCurrentStreak).")
-        } else if model.previousDisplayedStreak > 0 {
-            Text("Streak ended.")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.secondaryInk)
+            return "Streak \(model.previousDisplayedStreak) → \(model.displayedCurrentStreak)"
         }
+        return model.previousDisplayedStreak > 0 ? "Streak ended" : "Result locked"
     }
 
     private var resultPanel: some View {
-        VStack(spacing: 12) {
-            Text("ANSWER")
-                .font(StampType.caption.weight(.bold))
-                .tracking(1.2)
-                .foregroundStyle(Color.secondaryInk)
-                .accessibilityHidden(true)
-            Text(model.puzzle.answer.uppercased())
-                .font(StampType.title.bold())
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(Color.card, in: Capsule())
+        VStack(spacing: 4) {
+            ScorecardSeal(title: resultTitle, usesClaret: model.game.completion?.outcome == .solved)
                 .accessibilityFocused($axFocus, equals: .resultHeader)
-                .accessibilityLabel(resultHeaderLabel)
-            Text(model.game.completion?.outcome == .solved
-                ? "Solved in \(model.game.completion?.guessCount ?? 0)"
-                : "Not solved")
-                .font(StampType.heading)
-                // Sighted copy only: the answer capsule above already
-                // announces the full result (outcome, guess count, answer).
-                .accessibilityHidden(true)
-            streakContext
-            Text("Locked result.")
-                .font(StampType.caption)
+                .accessibilitySortPriority(3)
+            Text("The answer was \(model.puzzle.answer.uppercased())")
+                .font(StampType.caption.bold())
+                .accessibilitySortPriority(2)
+            Label(streakText, systemImage: "lock.fill")
+                .font(StampType.caption2)
                 .foregroundStyle(Color.secondaryInk)
-            if let result = model.game.completedResult {
-                ShareLink(item: DailyClassicShare.text(for: result)) {
-                    Label("Share result", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(InkButtonStyle())
-                NavigationLink(value: AppRoute.statistics) {
-                    Label("View statistics", systemImage: "chart.bar.fill")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(OutlinedInkButtonStyle())
-            }
+                .accessibilityLabel("Locked result. \(streakText)")
             NextPuzzleLabel(reset: model.nextReset)
+            if let result = model.game.completedResult {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 8))
+                layout {
+                    ShareLink(item: DailyClassicShare.text(for: result)) {
+                        Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(InkButtonStyle())
+                    .accessibilityLabel("Share result")
+                    NavigationLink(value: AppRoute.statistics) {
+                        Text("Stats").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(OutlinedInkButtonStyle())
+                    .accessibilityLabel("View statistics")
+                }
+                .padding(.top, 2)
+            }
         }
-        .padding(18)
+        .padding(6)
         .frame(maxWidth: 440)
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.line, lineWidth: 1.5)
-        }
-        .padding(.horizontal, 20)
-        .accessibilityElement(children: .contain)
+        .paperCard(cornerRadius: 12)
+        .padding(.horizontal, 16)
     }
 }
 
-/// Compact six-segment attempts-used indicator for the Daily header.
+/// Compact six-dot attempts-used indicator for the Daily header.
 /// Filled segments use ink; remaining segments are ink outlines,
 /// so used vs remaining never depends on color alone. One AX element.
 private struct GuessesUsedIndicator: View {
@@ -345,13 +297,13 @@ private struct GuessesUsedIndicator: View {
         HStack(spacing: 4) {
             ForEach(0..<6, id: \.self) { index in
                 if index < used {
-                    Capsule()
+                    Circle()
                         .fill(Color.ink)
-                        .frame(width: 18, height: 6)
+                        .frame(width: 7, height: 7)
                 } else {
-                    Capsule()
+                    Circle()
                         .stroke(Color.ink, lineWidth: 1.5)
-                        .frame(width: 18, height: 6)
+                        .frame(width: 7, height: 7)
                 }
             }
         }
@@ -392,4 +344,11 @@ struct NextPuzzleLabel: View {
         let seconds = max(0, Int(reset.timeIntervalSince(date)))
         return "\(seconds / 3600) hours, \(seconds / 60 % 60) minutes, \(seconds % 60) seconds"
     }
+}
+
+/// Sum the screen's natural header and footer heights before proposing the
+/// remaining board space. Error and Hard Mode copy grow without truncation.
+private struct DailyChromeHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
 }

@@ -80,18 +80,18 @@ enum DailyHomeStatus: Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .unplayed: "Ready to race"
-        case .inProgress: "Race in progress"
-        case .solved: "Solved today"
-        case .failed: "Finished today"
+        case .unplayed: "Ready to play"
+        case .inProgress(let rows): "\(rows) of 6 rows used"
+        case .solved(let rows): "Solved in \(rows)"
+        case .failed: "Not solved"
         }
     }
 
     var action: String {
         switch self {
-        case .unplayed: "Play today's puzzle"
-        case .inProgress: "Continue today's puzzle"
-        case .solved, .failed: "View today's result"
+        case .unplayed: "Play"
+        case .inProgress: "Continue"
+        case .solved, .failed: "Result"
         }
     }
 

@@ -1,9 +1,127 @@
 import Foundation
 import XCTest
+import SwiftUI
+import UIKit
 @testable import GridRace
 
 @MainActor
 final class DailyClassicModelTests: XCTestCase {
+    func testProgramStampsAndResultStatus() {
+        XCTAssertEqual(DailyHomeStatus.unplayed.action, "Play")
+        XCTAssertEqual(DailyHomeStatus.inProgress(2).action, "Continue")
+        XCTAssertEqual(DailyHomeStatus.inProgress(2).title, "2 of 6 rows used")
+        XCTAssertEqual(DailyHomeStatus.solved(3).action, "Result")
+        XCTAssertEqual(DailyHomeStatus.solved(3).title, "Solved in 3")
+        XCTAssertEqual(DailyHomeStatus.failed.action, "Result")
+        XCTAssertEqual(DailyHomeStatus.failed.title, "Not solved")
+    }
+
+    func testAccountSheetWaitsForSignInAndProfileAndStaysOpenForExpiredAuth() {
+        var signedOut = AccountSheetState(isSignedIn: false)
+        XCTAssertFalse(signedOut.observe(isSignedIn: false, profileReady: false))
+        XCTAssertFalse(signedOut.observe(isSignedIn: true, profileReady: false), "Authentication alone cannot hide profile setup or a profile-load error")
+        XCTAssertTrue(signedOut.observe(isSignedIn: true, profileReady: true))
+        var expired = AccountSheetState(isSignedIn: true)
+        XCTAssertFalse(expired.observe(isSignedIn: true, profileReady: true))
+        XCTAssertFalse(expired.observe(isSignedIn: true, profileReady: false))
+        XCTAssertFalse(expired.observe(isSignedIn: false, profileReady: false), "Sign-out and deletion keep the sheet open")
+        XCTAssertTrue(expired.observe(isSignedIn: true, profileReady: true), "A new sign-in after sign-out can dismiss")
+        var cancelled = AccountSheetState(isSignedIn: false)
+        XCTAssertFalse(cancelled.observe(isSignedIn: true, profileReady: false))
+        XCTAssertFalse(cancelled.observe(isSignedIn: false, profileReady: false))
+        XCTAssertFalse(cancelled.observe(isSignedIn: false, profileReady: true))
+    }
+
+    /// Native target-runtime evidence with the real screen bounds and safe areas.
+    /// AX captures include lower scroll content; OS VoiceOver remains an S4 gate.
+    func testDailyNativeScreensFitAndAccessibilityContentScrolls() async throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let size = scene.screen.bounds.size
+        let device = size.width < 390 ? "SE" : "Pro"
+        let account = AccountModel(service: nil)
+        for state in ["unplayed", "progress", "solved", "failed", "hard-mode", "storage", "resume", "resolve"] {
+            if state == "progress" { fixture.type("civic", into: model); model.submitGuess() }
+            if state == "solved" { fixture.type("adore", into: model); model.submitGuess() }
+            let shown: DailyClassicModel
+            if state == "failed" || state == "hard-mode" {
+                shown = try fixture.model(store: FailingStore(), now: { now })
+                if state == "hard-mode" { shown.updateHardMode(true) }
+                for _ in 0..<(state == "failed" ? 6 : 1) { fixture.type("civic", into: shown); shown.submitGuess() }
+            } else { shown = model }
+            let store = DailyScreenLiveStore(fails: state == "resolve")
+            let live = LiveMatchSession(service: DailyScreenLiveService(), realtime: nil, storeFactory: { _ in store })
+            if state == "resume" || state == "resolve" {
+                live.changeAccount(to: UUID())
+                if state == "resume" {
+                    live.leaveToHome()
+                    XCTAssertTrue(live.hasSavedMatch)
+                } else { XCTAssertEqual(live.phase, .storageUnavailable) }
+            }
+            for dark in [false, true] {
+                let home = NavigationStack {
+                    DailyHomeView(model: shown, account: account, live: live, syncMessage: nil,
+                                  isDailyPlayable: state != "storage", retryDailyStorage: {}, openRoute: { _ in })
+                }
+                try await capture(home, scene: scene, name: "\(device)-home-\(state)-\(dark ? "dark" : "light")", dark: dark)
+                if ["unplayed", "progress", "solved", "failed", "hard-mode"].contains(state) {
+                    try await capture(NavigationStack { DailyGameView(model: shown) }, scene: scene,
+                                      name: "\(device)-daily-\(state)-\(dark ? "dark" : "light")", dark: dark, mustFit: true)
+                }
+                if state == "solved" || state == "failed" {
+                    try await capture(NavigationStack { DailyStatisticsView(model: shown) }, scene: scene,
+                                      name: "\(device)-stats-\(state)-\(dark ? "dark" : "light")", dark: dark)
+                }
+            }
+        }
+        try await capture(NavigationStack { DailyGameView(model: model) }, scene: scene, name: "\(device)-daily-AX5", accessibility: true)
+        let playing = try fixture.model(store: FailingStore(), now: { now })
+        try await capture(NavigationStack { DailyGameView(model: playing) }, scene: scene, name: "\(device)-daily-play-AX5", accessibility: true)
+        try await capture(NavigationStack { DailyStatisticsView(model: model) }, scene: scene, name: "\(device)-stats-AX5", accessibility: true)
+    }
+
+    private func capture<V: View>(_ view: V, scene: UIWindowScene, name: String, dark: Bool = false,
+                                  accessibility: Bool = false, mustFit: Bool = false) async throws {
+        let host = UIHostingController(rootView: view.tint(Color.ink).foregroundStyle(Color.ink)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
+        host.overrideUserInterfaceStyle = dark ? .dark : .light
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.screen.bounds
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await Task.sleep(for: .milliseconds(350))
+        host.view.layoutIfNeeded()
+        let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
+        if mustFit {
+            for scroll in scrolls where scroll.bounds.height > 100 {
+                XCTAssertLessThanOrEqual(scroll.contentSize.height, scroll.bounds.height + 1, "Default screen must fit: \(name)")
+            }
+        }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        func attach(_ suffix: String) {
+            let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name + suffix
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        attach("")
+        if accessibility {
+            for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height {
+                scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
+                host.view.layoutIfNeeded()
+                attach("-bottom-\(index)")
+            }
+        }
+    }
+
+    private func descendants(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { descendants($0) }
+    }
+
     func testDraftAndAcceptedRowsRestoreAfterRecreation() throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)
@@ -405,4 +523,26 @@ private final class Fixture {
     func date(day: Int, seconds: Int = 0) -> Date {
         Date(timeIntervalSince1970: TimeInterval(day * 86_400 + seconds))
     }
+}
+
+private struct DailyScreenLiveStore: LiveMatchRecoveryStoring {
+    let fails: Bool
+    func load() throws -> LiveRecoveryState {
+        if fails { throw LiveMatchRecoveryError.invalidData }
+        return LiveRecoveryState(matchID: UUID())
+    }
+    func save(_ state: LiveRecoveryState) throws {}
+    func clear() throws {}
+}
+
+private struct DailyScreenLiveService: LiveMatchServicing {
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
+        throw LiveMatchServiceError.unavailable
+    }
+    func joinMatch(code: String) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String, clientBuild: Int) async throws -> LiveGuessReceipt {
+        throw LiveMatchServiceError.unavailable
+    }
+    func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { throw LiveMatchServiceError.unavailable }
 }

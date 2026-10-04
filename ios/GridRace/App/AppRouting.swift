@@ -15,6 +15,8 @@ struct DailyAppView: View {
     @Bindable var app: DailyAccountCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @State private var path: [AppRoute] = []
+    @State private var showsAccount = false
+    @State private var accountSheetState = AccountSheetState(isSignedIn: false)
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -25,7 +27,7 @@ struct DailyAppView: View {
                 syncMessage: app.syncMessage,
                 isDailyPlayable: app.isDailyPlayable,
                 retryDailyStorage: { app.retrySync() },
-                openRoute: { path.append($0) }
+                openRoute: openRoute
             )
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
@@ -33,7 +35,7 @@ struct DailyAppView: View {
                         if app.isDailyPlayable {
                             DailyGameView(model: app.daily)
                         } else {
-                            DailyStorageUnavailableView(retry: { app.retrySync() })
+                            DailyStorageUnavailableView(retry: { app.retrySync() }, openAccount: presentAccount)
                         }
                     case .live:
                         LiveMatchFlowView(
@@ -41,10 +43,10 @@ struct DailyAppView: View {
                             hapticsEnabled: app.daily.settings.hapticsEnabled,
                             highContrast: app.daily.settings.highContrastEnabled,
                             isSignedIn: app.account.isSignedIn,
-                            openAccount: { path.append(.account) }
+                            openAccount: presentAccount
                         )
                     case .statistics: DailyStatisticsView(model: app.daily)
-                    case .account: accountDestination
+                    case .account: Color.page
                     case .settings: DailySettingsView(model: app.daily)
                     case .help: DailyHelpView()
                     case .attribution: DailyAttributionView()
@@ -59,6 +61,30 @@ struct DailyAppView: View {
                     }
                 }
         }
+        .sheet(isPresented: $showsAccount) {
+            NavigationStack {
+                accountDestination
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showsAccount = false }
+                        }
+                    }
+            }
+            .foregroundStyle(Color.ink)
+            .tint(Color.ink)
+            .environment(\.highContrastFeedback, app.daily.settings.highContrastEnabled)
+        }
+        .onChange(of: path) { _, routes in
+            // Older value-based Account links use the same sheet route.
+            if routes.last == .account {
+                path.removeLast()
+                presentAccount()
+            }
+        }
+        .onChange(of: app.account.isSignedIn) { _, _ in updateAccountSheet() }
+        .onChange(of: app.account.needsProfileSetup) { _, _ in updateAccountSheet() }
+        .onChange(of: app.account.isWorking) { _, _ in updateAccountSheet() }
+        .onChange(of: app.account.profile) { _, _ in updateAccountSheet() }
         .environment(\.highContrastFeedback, app.daily.settings.highContrastEnabled)
         .foregroundStyle(Color.ink)
         .tint(Color.ink)
@@ -76,6 +102,24 @@ struct DailyAppView: View {
             guard !Task.isCancelled, app.isDailyPlayable else { return }
             app.daily.refreshForCurrentDay()
         }
+    }
+
+    private func openRoute(_ route: AppRoute) {
+        if route == .account { presentAccount() }
+        else { path.append(route) }
+    }
+
+    private func presentAccount() {
+        accountSheetState = AccountSheetState(isSignedIn: app.account.isSignedIn)
+        showsAccount = true
+    }
+
+    private func updateAccountSheet() {
+        guard showsAccount else { return }
+        if accountSheetState.observe(
+            isSignedIn: app.account.isSignedIn,
+            profileReady: app.account.profile != nil && !app.account.isWorking && !app.account.needsProfileSetup
+        ) { showsAccount = false }
     }
 
     private var accountDestination: some View {
@@ -96,20 +140,38 @@ struct DailyAppView: View {
     }
 }
 
+/// Dismiss only a sign-in begun while this sheet was open. Profile setup can
+/// finish after authentication; an already signed-in expired session stays open.
+struct AccountSheetState {
+    private var wasSignedIn: Bool
+    private var awaitsProfile = false
+
+    init(isSignedIn: Bool) { wasSignedIn = isSignedIn }
+
+    mutating func observe(isSignedIn: Bool, profileReady: Bool) -> Bool {
+        if !wasSignedIn && isSignedIn { awaitsProfile = true }
+        wasSignedIn = isSignedIn
+        if !isSignedIn { awaitsProfile = false }
+        return awaitsProfile && isSignedIn && profileReady
+    }
+}
+
 private struct DailyStorageUnavailableView: View {
     let retry: () -> Void
+    let openAccount: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Daily storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
-        } description: {
-            Text("Retry account storage, or sign out from Account to keep playing as a guest.")
-        } actions: {
-            Button("Retry", action: retry)
-                .buttonStyle(InkButtonStyle())
-            NavigationLink("Open Account", value: AppRoute.account)
+        ZStack {
+            Color.page.ignoresSafeArea()
+            ScrollView {
+                NoticeCard(subject: "Daily", title: "Couldn't open your puzzle", message: "Retry, or open Account to sign out and play as a guest.") {
+                    Button("Retry", action: retry).buttonStyle(InkButtonStyle())
+                    Button("Open Account", action: openAccount).buttonStyle(OutlinedInkButtonStyle())
+                }
+                .padding(20)
+            }
         }
-        .navigationTitle("Daily Classic")
+        .navigationTitle("Daily classic")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -10,12 +10,13 @@ production MVP.
 The Daily and account routes are:
 
 ```text
-Home
-  -> Daily Classic -> play or immutable result -> statistics/share
-  -> Statistics
-  -> Account -> Sign in with Apple -> profile setup -> sync/import/status
-             -> profile edit, retry, sign out, or confirmed deletion
-  -> Settings -> How to Play or Tutorial
+Home: numbered Daily classic / Live race / Practice program
+  -> Daily classic -> play or immutable result -> statistics/share
+  -> Statistics (header)
+  -> Account sheet (header) -> Sign in with Apple -> profile setup
+                           -> sync/import/status, edit, sign out, confirmed deletion
+  -> Settings (header) -> How to play or Word list credits
+  -> Practice
 ```
 
 The preserved tutorial flow is:
@@ -31,7 +32,7 @@ Tutorial introduction
 Live presentation now provides these routes alongside Daily Classic:
 
 ```text
-Home (inline Live controls until S1 integrates)
+Home → Live race (Open / Resume / Resolve)
   -> Live entry -> Host (1/3/5 rounds) or six-character Join
                 -> Account callback when signed out
   -> Create/Join -> Lobby -> Countdown -> Round -> Reveal/standings
@@ -44,8 +45,8 @@ Live entry appears for an inactive session with no snapshot, including a saved
 pending request. Resume remains available when saved data exists. Signed out,
 the screen offers Sign in to race through the Account callback; expired sign-in
 has its own notice with Back to race and Open account. Back to race resets the
-presentation to entry without dismissing the Live route. The current Account
-callback still opens the Account destination; S1 will host it as a sheet.
+presentation to entry without dismissing the Live route. The Account callback
+presents the shared native Account sheet over Live.
 
 The match creator starts the first and later countdowns. There is no readiness
 state. Once the first countdown starts, new players cannot join; an existing
@@ -63,15 +64,21 @@ type, round-seal tiles, feedback keys, ink controls and shared notice/countdown/
 opponent leaves. Correct uses claret fill and a check; present uses a double ring
 and rotating arrows; absent uses an unfilled dimmed bold letter and minus. The
 High-contrast feedback preference and Increased Contrast use the same strengthened
-marks. Live layout is implemented by S2; Daily and supporting layouts remain
-transitional until their units integrate.
+marks. Daily and Live layouts are implemented by S1/S2; supporting layouts
+remain transitional until S3 integrates.
 
 ### Daily Classic home and play
 
-Home leads with today's Daily Classic status: unplayed, in progress, solved, or
-failed. Its primary action is Play, Continue, or View result. A compact streak
-summary and direct routes to statistics, settings, help, and tutorial follow without
-empty destinations for future modes.
+Home is a numbered program: 01 Daily classic, 02 Live race, 03 Practice.
+Daily shows puzzle number and unplayed/in-progress/solved/failed status with a
+Play, Continue, or Result stamp. Header icons open Statistics, Account, and
+Settings. A monospaced played/solved/streak line follows the program; duplicate
+Help/Practice rows and inline Live Create/Join controls are removed. Help remains
+reachable from game headers and Settings; Practice appears once on Home.
+The Live row shows Resolve for storage-unavailable recovery and opens Live;
+Resume calls the existing saved-race recovery before opening Live; otherwise
+Open leads to the Live entry screen. Authentication never gates Daily.
+Daily storage failure shows an action notice with Retry and Open Account.
 
 Play keeps the six-row board and keyboard primary. Invalid or incomplete words leave
 the draft intact and announce a concise reason. Accepted rows reveal using GridRace's
@@ -79,16 +86,30 @@ symbol-plus-color semantics; Reduce Motion shows the same complete row immediate
 Hardware letters, delete, and return mirror the on-screen controls. Backgrounding
 persists the draft and board; foregrounding rechecks the UTC puzzle day.
 
-Completion reveals the answer, today's immutable result, share action, statistics,
-and next-puzzle availability. Reopening never reapplies statistics or changes the result.
+Daily play uses a slim puzzle/help/six-dot header above the six-row board.
+The keyboard and result occupy the same reserved slot; the board receives the
+space left after measuring the natural header and slot heights. At accessibility
+sizes, the whole screen scrolls vertically and the shared board/keyboard scroll
+horizontally. Completion shows the result seal, answer, streak context, next
+puzzle time, Share and Stats. Semantic/focus order is error when present, then
+seal, answer, rows and remaining controls. Reopening never reapplies statistics
+or changes the immutable result or share bytes.
+
+Statistics shows four monospaced figures and a Rows used chart for 1–6 solved
+rows plus a separate outlined not-solved row. Today's bar is claret and has a
+literal Today marker, including at accessibility sizes; the footer is removed.
 
 ### Account and synchronization
 
-Home always shows an account card. Signed out, it explains “Save and sync your
-progress” without blocking play. Sign in uses the native Apple control; Debug builds
-also expose a credential-free local Supabase test form. First sign-in loads the
-owner-only profile and asks before adding existing guest history. Skipping or importing
-does not delete guest files.
+Account opens as a native NavigationStack sheet with Done over the current route.
+Native Apple sign-in and Debug-only local test sign-in remain in the shared Account
+view. A sheet opened while signed out dismisses only after a new false→true
+sign-in transition, a loaded profile, completed account work and finished profile
+setup. A sheet opened while already signed in (including expired authentication)
+stays open; sign-out/deletion or import/conflict updates alone do not dismiss it.
+Coordinator ownership of account cleanup, guest history and callbacks is unchanged.
+First sign-in asks before adding guest history; skipping/importing does not delete
+guest files. Sheet interaction and actual VoiceOver acceptance remain S4 gates.
 
 The account screen shows the generated avatar, 2–16 character player-name editor,
 simple synced/pending/error status, retry, sign out, and confirmed deletion. A
@@ -96,8 +117,8 @@ divergent attempt explains that devices differ and offers “Use synced attempt�
 “Keep this device.” It never presents either imported attempt as verified. Network
 failure leaves the local game available. If sign-out or confirmed deletion cannot
 durably clear live recovery, former-account Daily/account data stays hidden and Home
-replaces Create/Join/Resume with “Resolve saved live data,” which opens Live Race for
-retry or discard.
+shows the Live row's “Resolve” action, which opens Live for retry or confirmed
+discard.
 
 ### Onboarding and tutorial
 

@@ -153,7 +153,7 @@ session/state machines, storage, backend, or share text.
 | --- | --- | --- | --- | --- | --- |
 | S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Complete | 52 declaration bodies unchanged; six access changes; full iOS 214 passed/two opt-in skips; clean Debug; controller differential audit |
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
-| S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Returned; audited; awaits S2 integration | `/tmp/gridrace-stamped-s1-result.json`; 219 total / 217 passed / two opt-in skips; SE/Pro native captures |
+| S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Returned; bounded repair pending | `/tmp/gridrace-stamped-s3-result.json`; full suite/build green; target captures incomplete |
 | S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Not started | — |
@@ -440,12 +440,30 @@ renders remain separate from S4 OS acceptance. Backend harness not run.
 `screen-flow.md` now describes shipped S2 surfaces while retaining the current
 pre-S1 Home/Account composition.
 
+S1 applied on main after S2 `be33aa1`, with all six product/test source hashes
+matching the audited worker result. Combined full suite exit0, 220 total / 218
+passed / two expected opt-in skips / zero failures, using frozen flags and its
+assigned SE/build path. Evidence `/tmp/gridrace-stamped-s1-controller-main.log`,
+`.xcresult` and Debug build `/tmp/gridrace-stamped-s1-controller-build.log`.
+Worker SE/Pro screenshot evidence is reused for unchanged S1 source; combined
+Live render fixtures, Account sheet reducer, cleanup/import and share regressions
+passed on main. Actual Account sheet sign-in/sign-out/deletion/import interaction
+and OS accessibility are still S4 gates. `screen-flow.md` now describes the
+numbered Home program, Daily keyboard/result slot, chart and Account sheet.
+
+S2 cloned simulator deleted after integration. App-managed worktree archive was
+rejected with “This worktree is protected by a pinned task or workspace.” The
+controller chat is pinned, so its S1/S2 managed worktree attachments are retained
+until that protection is resolved; no manual deletion or pin change is inferred.
+This is an outstanding cleanup item, not completed archival.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
 authorized starting HEAD `2d19d2c`. S0a mechanical split:
 `38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: `908aa9b932832d286e0582537b2b3a02ec0b4c99`.
-S2 Live integration: this commit.
+S2 Live integration: `be33aa15c14718a7d96de02e5da11abe66c1ade6`.
+S1 Daily/routing integration: this commit.
 
 ## Blockers and stop conditions
 
@@ -457,12 +475,11 @@ S2 Live integration: this commit.
 
 ## Next action
 
-S2 is integrated and proved on main. Integrate S1 next, proving the combined
-Home/Live entry and Account sheet composition before its commit. S3's bounded
-correction chat is active; its native screen/sheet evidence remains required.
-Integration remains S2 → S1 → S3. Controller chat is
-`01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
-End dispatch turns without waiting or polling.
+S2 and S1 are integrated and proved in order. S3's bounded correction chat is
+active; audit its cumulative patch and native screen/sheet evidence, then integrate
+and prove S3 before S4. Managed worktree cleanup remains blocked by this chat's
+pin protection. Controller chat is `01a103c6-10bd-7a30-acc2-68334f0cd33a` on
+host `local`. End dispatch turns without waiting or polling.
 
 ## Closeout checklist
 
