@@ -1,9 +1,9 @@
 # GridRace Screen Flow
 
 This document describes presentation and navigation. Exact game behavior lives in
-[`game-rules.md`](game-rules.md). “Tutorial” means Phase 1 local behavior; “live
-slice” means the Phase 3 server-backed two-player/one-round flow; “later” means the
-broader production MVP.
+[`game-rules.md`](game-rules.md). “Tutorial” means the documented on-device
+practice behavior; live racing is the server-backed two-player flow with 1, 3, or 5 rounds. “Later” means the broader
+production MVP.
 
 ## Flow map
 
@@ -28,17 +28,24 @@ Tutorial introduction
   -> replay tutorial or finish
 ```
 
-The implemented Phase 3 slice adds these routes alongside Daily Classic:
+Live presentation now provides these routes alongside Daily Classic:
 
 ```text
-Home (Daily remains primary)
-  -> Live create/join -> existing account flow if signed out
-     -> Create -> Lobby -> Countdown -> Round -> Reveal -> Home
-     -> Join   -> Lobby -> Countdown -> Round -> Reveal -> Home
-  -> Resume saved live recovery -> resolve pending request -> canonical snapshot
-                               -> current live state
-  -> Account -> identity, sign out, account deletion
+Home (inline Live controls until S1 integrates)
+  -> Live entry -> Host (1/3/5 rounds) or six-character Join
+                -> Account callback when signed out
+  -> Create/Join -> Lobby -> Countdown -> Round -> Reveal/standings
+                 -> creator Start next or final/incomplete result -> Home
+  -> Resume saved race -> resolve original saved request -> current snapshot
+  -> saved storage failure -> Retry or confirmed Discard
 ```
+
+Live entry appears for an inactive session with no snapshot, including a saved
+pending request. Resume remains available when saved data exists. Signed out,
+the screen offers Sign in to race through the Account callback; expired sign-in
+has its own notice with Back to race and Open account. Back to race resets the
+presentation to entry without dismissing the Live route. The current Account
+callback still opens the Account destination; S1 will host it as a sheet.
 
 The match creator starts the first and later countdowns. There is no readiness
 state. Once the first countdown starts, new players cannot join; an existing
@@ -56,7 +63,8 @@ type, round-seal tiles, feedback keys, ink controls and shared notice/countdown/
 opponent leaves. Correct uses claret fill and a check; present uses a double ring
 and rotating arrows; absent uses an unfilled dimmed bold letter and minus. The
 High-contrast feedback preference and Increased Contrast use the same strengthened
-marks. Feature layouts below remain transitional until S1–S3.
+marks. Live layout is implemented by S2; Daily and supporting layouts remain
+transitional until their units integrate.
 
 ### Daily Classic home and play
 
@@ -99,43 +107,57 @@ board against two deterministic ghosts without requiring authentication.
 Clearly label this as an on-device tutorial, not a production secrecy or server
 authority demonstration.
 
-### Home, create/join, and lobby
+### Live entry and lobby
 
-Phase 3 provides fixed Create, manual-code Join and Resume alongside the existing Daily,
-tutorial and Account routes; authentication never gates Daily.
-Create always makes exactly two seats and one round; configuration and invite links
-remain later. Starting a new create durably replaces the previous selected match
-pointer before dispatch; a failed save retains that pointer and blocks the request.
-An uncertain create remains resumable from Home using its original request identity.
-Join keeps the previously saved pointer until its result is saved. A failed Join preserves
-its error and does not automatically reopen the old room; generic Retry does not select
-that old pointer or erase the denial, and the UI does not offer that wrong action.
-Explicit Resume can recover that saved room. If resolution cannot be saved, storage
-Retry/Discard remains required before ordinary commands or automatic recovery resume.
-Lobby shows the private roster, room code, this client's connection/
-recovery status,
-and creator-only Start. It does not add readiness, public discovery, chat, or late
-joining.
+Live entry owns native 1/3/5-round Create selection (3 selected), a single native
+six-character Join field, and Resume for saved recovery. The round selector uses
+a menu at accessibility sizes. Create is disabled during an in-flight command or
+pending intent; Join preserves its existing six-character/in-flight gate. Session
+ownership of durable pointers and immutable request identities is unchanged.
+Create durably replaces the previous selected match pointer before dispatch; a
+failed save retains that pointer and blocks the request. Join retains the saved
+pointer until its result is saved. An uncertain create remains resumable. A failed Join preserves its error and
+saved pointer but offers no generic Retry that would reopen the old room.
+Explicit Back to race and Resume select recovery instead.
 
-The accepted Phase 4 direction adds a native 1/3/5 Create selector (3 selected),
-Round N of M, the existing reveal followed by canonical standings, creator-only
-Start next, and final standings/Home/prior reveals. If either account deletes,
-finish the started round then show incomplete/Home with preserved anonymized
-reveals and partial standings. Ordinary creator absence keeps the reveal waiting.
-Backend and native presentation implement these boundaries. Saved Start Retry
-uses the original session-owned target even after Home/Resume; pending old-round
-guesses cannot populate a later-round draft. Prior reveal selection leaves current
-commands and SQL standings unchanged. Real independent-client verification and
-the independent implementation review are complete, recorded in the
-[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). OS-assisted
-accessibility verification is now owned by S4 of the
-[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md). No presence, transfer or auto advance.
+Storage-unavailable, expired sign-in, failed commands, saved Start/request
+decisions, and connection failures have distinct subject/title/body notices.
+Solid borders denote action notices; dashed borders denote information. Controls
+follow the active plan's state table and session gates. Every Discard invokes a
+native confirmation dialog before removing saved local data; Cancel preserves it.
+Retry saved Start uses its original session-owned target, including after
+Home/Resume. No fresh intent substitutes for an unresolved request.
+
+Lobby shows the room code in a seal, code-only Copy and Share, the two-seat roster,
+this client's connection status, and creator-only Start. Start is hidden until
+two players are present and retains all existing command/recovery/expiry gates.
+The guest waits for the named host; ordinary creator absence waits without auto
+advance. Expired rooms show a closed-room notice.
+No readiness, public discovery, chat, opponent presence, or late joining is added.
+
+The started round finishes after account deletion, then the match shows incomplete
+with anonymized reveals and partial standings; unstarted rounds do not run.
+Real independent-client verification of the underlying gameplay and its original
+independent review are recorded in the
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). The optional
+two-client harness was not rerun for this presentation unit. OS-assisted
+accessibility verification belongs to S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md).
 
 ### Countdown and round
 
 The countdown is a dedicated three-second state driven from an absolute start
 timestamp. Backgrounding does not pause it; returning to the scene recomputes
 the displayed state from current time.
+
+Live rounds use a slim Round N of M header, timer and this client's connection
+indicator, one opponent progress line, six-row board, and a reserved keyboard slot.
+The slot changes to a sending, recovery, decision, deadline, or terminal waiting
+notice without exposing the answer before canonical reveal. Invalid/rejected words
+keep the draft and keyboard with an inline error. Default SE renders keep six rows
+and the slot visible; accessibility type uses whole-screen vertical scrolling and
+shared horizontal board/keyboard scrolling. Native renders do not prove actual
+VoiceOver, hardware input, OS settings, or hit-region usability; S4 retains them.
 
 The round keeps the local 5×6 board and keyboard primary. Surrounding text and
 controls support Dynamic Type, while the fixed letter grid remains legible in
@@ -198,13 +220,20 @@ With Reduce Motion enabled, skip staged transitions and present the answer, all
 rows, and the same summary immediately in the same semantic and VoiceOver order.
 Nothing is omitted, delayed behind animation, or communicated by color alone.
 
+Live reveal uses an answer seal, then separate whole-board accessibility containers
+in self/roster order, followed by summaries. Whole boards stack on narrow screens
+and appear side by side when their readable rows fit. Prior-round chips select
+preserved reveals without changing current commands or canonical standings.
+
 ### Results, rematch, history, and profile
 
-Phase 4 shows round placements followed by canonical match standings using the
+Live shows round placements followed by canonical match standings using the
 exact comparators in `game-rules.md`. A nonfinal reveal waits for creator Start
 next; final and incomplete results offer Home and preserved prior reveals.
-Incomplete standings remain partial. Rematch is later work: it will create a new
-match rather than reopen or mutate the completed one.
+Standings display the supplied placement, rounds solved, efficiency points and
+milliseconds without recalculating ranks. Winner and tied results use claret seals;
+incomplete uses an ink seal. Incomplete standings remain partial. Rematch is
+later work: it will create a new match rather than reopen or mutate the completed one.
 
 Competitive history remains later; Daily statistics/history stay available. Phase 2/3
 Profile manages display name, generated avatar,

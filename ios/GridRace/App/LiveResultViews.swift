@@ -26,99 +26,64 @@ struct LiveRevealView: View {
         "\(LiveMatchPresentation.roundIdentity(snapshot, number: displayedRound.number))-\(stableReveal)"
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                Text(LiveMatchPresentation.roundLabel(snapshot, number: displayedRound.number))
-                    .font(StampType.heading).accessibilityAddTraits(.isHeader)
-                if displayedRound.number != snapshot.round.number {
-                    Text("Viewing a prior reveal. Current match: \(LiveMatchPresentation.roundLabel(snapshot)).")
-                        .font(.callout).foregroundStyle(Color.secondaryInk).multilineTextAlignment(.center)
-                }
-                if let answer = displayedRound.answer, boards.count == snapshot.members.count {
-                    Text("Answer: \(answer.uppercased())")
-                        .font(StampType.title.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Color.card, in: Capsule())
-                        .accessibilityFocused($focus, equals: .answer)
+    private var presentation: LiveMatchPresentation.Presentation {
+        LiveMatchPresentation.map(.init(session: session))
+    }
 
-                    ForEach(Array(boards.enumerated()), id: \.element.member.id) { index, board in
-                        let preceding = boards.prefix(index).reduce(0) { $0 + $1.rows.count }
-                        let count = stableReveal
-                            ? board.rows.count
-                            : min(board.rows.count, max(0, visibleRows - preceding))
-                        VStack(alignment: .leading, spacing: 10) {
-                            let layout = dynamicTypeSize.isAccessibilitySize
-                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                                : AnyLayout(HStackLayout())
-                            layout {
-                                PlayerAvatarView(seed: board.member.avatarSeed, size: 42)
-                                    .accessibilityHidden(true)
-                                Text(board.member.isSelf ? "You" : board.member.displayName)
-                                    .font(StampType.heading)
-                                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-                                Text(LiveMatchPresentation.playerStateText(board.player.state).capitalized)
-                                    .font(StampType.caption.weight(.semibold))
-                            }
-                            ForEach(Array(board.rows.prefix(count).enumerated()), id: \.offset) { rowIndex, row in
-                                LiveRevealRowView(row: row, highContrast: highContrast)
-                                    .accessibilityFocused($focus, equals: .row(preceding + rowIndex))
-                            }
-                            if stableReveal || count == board.rows.count {
-                                Text(boardSummary(board))
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                        }
+    var body: some View {
+        VStack(spacing: 20) {
+            Text(LiveMatchPresentation.roundLabel(snapshot, number: displayedRound.number))
+                .font(StampType.heading).accessibilityAddTraits(.isHeader)
+            if let notice = presentation.priorRevealNotice {
+                Text("\(notice.title) · \(notice.body)")
+                    .font(StampType.caption).foregroundStyle(Color.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let answer = displayedRound.answer, boards.count == snapshot.members.count {
+                ScorecardSeal(title: "Answer: \(answer.uppercased())")
+                    .accessibilityFocused($focus, equals: .answer)
+
+                // The shared rows retain a readable minimum width. Narrow devices
+                // stack whole boards; wide devices show them beside each other.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) { revealBoards }
+                    VStack(spacing: 12) { revealBoards }
+                }
+
+                if stableReveal || visibleRows >= totalRows {
+                    Text("Round standings").font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
+                    Text(comparisonSummary)
+                        .font(StampType.heading)
+                        .multilineTextAlignment(.center)
                         .padding()
                         .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18).stroke(Color.line, lineWidth: 1.5)
-                        }
-                    }
-
-                    if stableReveal || visibleRows >= totalRows {
-                        Text("Round standings").font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
-                        Text(comparisonSummary)
-                            .font(StampType.heading)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
-                            .accessibilityFocused($focus, equals: .summary)
-                        matchResults
-                        if snapshot.revealedRounds.count > 1 {
-                            Picker("Revealed round", selection: Binding(
-                                get: { session.selectedRevealNumber ?? snapshot.round.number },
-                                set: { session.selectReveal(number: $0 == snapshot.round.number ? nil : $0) }
-                            )) {
+                        .accessibilityFocused($focus, equals: .summary)
+                    matchResults
+                    if presentation.permits(.selectReveal) {
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 8) {
                                 ForEach(snapshot.revealedRounds, id: \.number) { round in
-                                    Text("Round \(round.number)").tag(round.number)
+                                    Button("Round \(round.number)") {
+                                        session.selectReveal(number: round.number == snapshot.round.number ? nil : round.number)
+                                    }
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .buttonStyle(OutlinedInkButtonStyle())
+                                    .accessibilityAddTraits(displayedRound.number == round.number ? .isSelected : [])
                                 }
                             }
-                            .pickerStyle(.menu)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(minHeight: 44)
-                        }
-                        nextRoundAction
-                        Button("Home", action: goHome)
-                            .buttonStyle(InkButtonStyle())
-                            .controlSize(.large)
-                            .frame(minHeight: 44)
+                        }.accessibilityLabel("Revealed rounds")
                     }
-                } else {
-                    ContentUnavailableView(
-                        "Reveal unavailable",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("The complete canonical reveal has not arrived yet.")
-                    )
+                    nextRoundAction
+                    Button("Home", action: goHome)
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
                 }
+            } else {
+                if let notice = presentation.notice { LiveControlNotice(notice: notice, perform: { _ in }) }
             }
-            .frame(maxWidth: 560)
-            .padding(20)
-            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .animation(stableReveal ? nil : .easeOut(duration: 0.25), value: visibleRows)
         .task(id: revealID) {
             visibleRows = stableReveal ? totalRows : 0
@@ -140,62 +105,98 @@ struct LiveRevealView: View {
     }
 
     @ViewBuilder
+    private var revealBoards: some View {
+        ForEach(Array(boards.enumerated()), id: \.element.member.id) { index, board in
+            let preceding = boards.prefix(index).reduce(0) { $0 + $1.rows.count }
+            let count = stableReveal ? board.rows.count : min(board.rows.count, max(0, visibleRows - preceding))
+            VStack(alignment: .leading, spacing: 10) {
+                Text(board.member.isSelf ? "You" : board.member.displayName)
+                    .font(StampType.heading).accessibilityAddTraits(.isHeader)
+                ForEach(Array(board.rows.prefix(count).enumerated()), id: \.offset) { rowIndex, row in
+                    LiveRevealRowView(row: row, highContrast: highContrast)
+                        .accessibilityFocused($focus, equals: .row(preceding + rowIndex))
+                }
+                if stableReveal || count == board.rows.count {
+                    Text(boardSummary(board)).font(StampType.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading).paperCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("\(board.member.isSelf ? "Your" : board.member.displayName + "'s") revealed board")
+        }
+    }
+
+    @ViewBuilder
     private var matchResults: some View {
-        if snapshot.match.status == .incomplete {
-            Text("Match incomplete")
-                .font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
-            Text("A player account was deleted. Unstarted rounds cannot continue. Revealed rounds are preserved.")
-                .font(.callout).multilineTextAlignment(.center)
+        if let notice = presentation.notice {
+            LiveControlNotice(notice: notice, perform: { _ in })
         }
         if let standings = snapshot.standings {
             VStack(alignment: .leading, spacing: 12) {
                 Text(LiveMatchPresentation.standingsTitle(standings))
                     .font(StampType.title2.bold()).accessibilityAddTraits(.isHeader)
-                Text("Through \(standings.throughRound) of \(snapshot.match.roundCount) revealed rounds")
-                    .font(.callout).foregroundStyle(Color.secondaryInk)
-                ForEach(snapshot.members.sorted { $0.isSelf && !$1.isSelf }, id: \.id) { member in
-                    if let standing = standings.players.first(where: { $0.memberID == member.id }) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(member.isSelf ? "You" : member.displayName).font(StampType.heading)
-                            Text(LiveMatchPresentation.standingSummary(standing))
-                                .font(.system(.subheadline, design: .monospaced))
+                Text("Solved · points · time")
+                    .font(StampType.caption).foregroundStyle(Color.secondaryInk)
+                if dynamicTypeSize.isAccessibilitySize {
+                    ForEach(standings.players, id: \.memberID) { standing in
+                        if let member = snapshot.members.first(where: { $0.id == standing.memberID }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(member.isSelf ? "You" : member.displayName).font(StampType.heading)
+                                Text(LiveMatchPresentation.standingSummary(standing)).font(StampType.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }.accessibilityElement(children: .combine)
                         }
-                        .accessibilityElement(children: .combine)
+                    }
+                } else {
+                    Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 12) {
+                        GridRow {
+                            Text("Pos")
+                            Text("Player")
+                            Text("Solved")
+                            Text("Pts")
+                            Text("Time")
+                        }.font(StampType.caption).foregroundStyle(Color.secondaryInk)
+                        ForEach(standings.players, id: \.memberID) { standing in
+                            if let member = snapshot.members.first(where: { $0.id == standing.memberID }) {
+                                GridRow {
+                                    Text("\(standing.placement)")
+                                    Text(member.isSelf ? "You" : member.displayName)
+                                    Text("\(standing.roundsSolved)")
+                                    Text("\(standing.efficiencyPoints)")
+                                    Text("\(standing.totalSolveDurationMilliseconds)ms")
+                                }
+                                .font(StampType.caption)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(member.isSelf ? "You" : member.displayName), \(LiveMatchPresentation.standingSummary(standing))")
+                            }
+                        }
                     }
                 }
+                Text("Most solved, then points, then fastest time.")
+                    .font(StampType.caption).foregroundStyle(Color.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding().frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.card, in: RoundedRectangle(cornerRadius: 18))
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading).paperCard()
         }
     }
 
     @ViewBuilder
     private var nextRoundAction: some View {
-        if snapshot.match.status == .inProgress, snapshot.match.terminalReason == nil,
-           snapshot.match.currentRound < snapshot.match.roundCount {
-            if snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID {
-                Button("Start next round (\(snapshot.match.currentRound + 1) of \(snapshot.match.roundCount))") {
-                    session.startMatch()
-                }
-                .font(StampType.heading).buttonStyle(InkButtonStyle()).controlSize(.large).frame(minHeight: 48)
-                .disabled(session.phase != .ready || !LiveMatchPresentation.canStart(
-                    snapshot: snapshot,
-                    displayedServerTime: session.displayedServerTime ?? snapshot.serverTime,
-                    isCommandInFlight: session.isCommandInFlight,
-                    hasPendingIntent: session.pendingIntent != nil,
-                    hasPendingStart: session.hasPendingStart
-                ))
-            } else {
-                Text("Waiting for the room creator to start the next round.")
-                    .font(StampType.heading).multilineTextAlignment(.center)
+        if presentation.controls.contains(where: { $0.action == .start }) {
+            Button("Start \(LiveMatchPresentation.roundLabel(snapshot, number: snapshot.match.currentRound + 1).lowercased())") {
+                session.startMatch()
             }
+            .font(StampType.heading).buttonStyle(InkButtonStyle()).frame(minHeight: 44)
+            .disabled(!presentation.permits(.start))
         }
     }
 
     private func boardSummary(_ board: LiveRevealBoard) -> String {
         let guesses = board.player.acceptedGuessCount == 1 ? "1 guess" : "\(board.player.acceptedGuessCount) guesses"
         let placement = board.player.placement.map { "place \($0)" } ?? "placement unavailable"
-        return "\(guesses) used, round \(placement)."
+        let time = board.player.solveDurationMilliseconds.map { " · \($0)ms" } ?? ""
+        return "\(guesses) · \(placement)\(time)"
     }
 
     private var comparisonSummary: String {

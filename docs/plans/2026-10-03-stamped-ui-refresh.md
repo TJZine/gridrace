@@ -154,7 +154,7 @@ session/state machines, storage, backend, or share text.
 | S0a Mechanical split | worker | all App view files, `project.pbxproj` | activation commit | Complete | 52 declaration bodies unchanged; six access changes; full iOS 214 passed/two opt-in skips; clean Debug; controller differential audit |
 | S0b Foundation + contracts | worker | `DesignSystem.swift`, `BoardViews.swift`, color/type call sites in all view files, D6 stubs, `LiveMatchViewTests.swift` (token references only) | S0a commit | Complete | 214 passed/two opt-in skips; clean Debug; 56 measured contrast pairs; controller audit; D15 approved |
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Returned; audited; awaits S2 integration | `/tmp/gridrace-stamped-s1-result.json`; 219 total / 217 passed / two opt-in skips; SE/Pro native captures |
-| S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Dispatched | Sol 6.1 medium; D9 isolated worktree and frozen resolve |
+| S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | worker_luna | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Returned; bounded repair pending | `/tmp/gridrace-stamped-s3-result.json`; full suite/build green; target captures incomplete |
 | S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Not started | — |
 
@@ -424,11 +424,28 @@ reuses the released isolated worktree, SE clone and pre-resolved build path.
 “Release review still pending” remains in credits pending controller adjudication;
 legal text is preserved. No backend harness or actual OS acceptance claimed.
 
+S2: callback result `/tmp/gridrace-stamped-s2-result.json` and exact three-file
+binary patch/source hashes checked. Controller inspected the full product source,
+changed tests, all 45 default and AX5 contact captures plus critical AX bottom
+controls, and verified 141 protected tracked hashes and six unrelated hashes.
+Fifteen pre-existing presentation helper bodies and the reveal timing/focus task
+remain equivalent to S0b. No established source blocker. The exact patch is now
+on main; full suite exit0, 217 total / 215 passed / two expected opt-in integration
+skips / zero failures, with frozen flags and assigned SE/build path. Evidence:
+`/tmp/gridrace-stamped-s2-controller-main.log`, `.xcresult`; audit
+`/tmp/gridrace-stamped-s2-controller-audit.json`. Debug build evidence:
+`/tmp/gridrace-stamped-s2-controller-build.log`. Worker final live suites had 73
+passes; the main full run establishes final integrated bytes. Native fixture
+renders remain separate from S4 OS acceptance. Backend harness not run.
+`screen-flow.md` now describes shipped S2 surfaces while retaining the current
+pre-S1 Home/Account composition.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
 authorized starting HEAD `2d19d2c`. S0a mechanical split:
-`38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: this commit.
+`38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: `908aa9b932832d286e0582537b2b3a02ec0b4c99`.
+S2 Live integration: this commit.
 
 ## Blockers and stop conditions
 
@@ -440,9 +457,10 @@ authorized starting HEAD `2d19d2c`. S0a mechanical split:
 
 ## Next action
 
-S0b is committed as `908aa9b`. S1 is audited and waits for S2's callback;
-S2 remains dispatched. S3 needs the bounded correction packet and missing native
-screen/sheet evidence. Integration remains S2 → S1 → S3. Controller chat is
+S2 is integrated and proved on main. Integrate S1 next, proving the combined
+Home/Live entry and Account sheet composition before its commit. S3's bounded
+correction chat is active; its native screen/sheet evidence remains required.
+Integration remains S2 → S1 → S3. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
 End dispatch turns without waiting or polling.
 
