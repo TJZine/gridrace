@@ -484,6 +484,31 @@ human authorized temporarily unpinning this controller for managed cleanup and
 restoring its pinned position afterward. Credits retain the independent legal
 release-review pending notice; this UI implementation does not approve release.
 
+### S4 software verification
+
+S1/S2/S3 managed worktree cleanup completed after the human-authorized temporary
+unpin. App attachments confirm all three archived, with recoverable snapshots;
+all assigned original clones are deleted. The controller's fifth pinned position
+is restored. No unrelated worktree, simulator or data reset is included.
+
+S4 support packet owns only AccountView and SettingsHelpViews presentation plus
+syncMessage string literals in DailyAccountCoordinator. The fresh isolated tree
+starts at S3 `86695e0`; it has exclusive SE, Pro and native iPad simulators and
+three frozen-resolved build paths. The SE seed was booted, so a fresh equivalent
+SE profile was provisioned instead of shutting down the unrelated seed.
+
+| ID | Evidence / obligation | Bounded disposition |
+| --- | --- | --- |
+| C4-1 | AX5 account editor squeezes Cancel/Save into side-by-side narrow columns (`account-edit-light-AX5-bottom.png` in controller captures) | Stack naturally at accessibility sizes; preserve callbacks and validator |
+| C4-2 | Help example tiles use fixed 58/52pt frames while shared glyph type grows; endpoint screenshots do not establish the middle example rows | Inspect middle native AX5 states, scale tile dimensions and provide readable horizontal overflow for the five-letter row if needed |
+| C4-3 | The idle sync state is rendered as Synced even though idle does not establish a successful synchronization | Correct only the idle presentation string to Ready to sync; preserve the sync state machine |
+
+The packet requires actual native middle/endpoints and light/dark/default/AX5
+supporting-screen proof on owned devices. It covers part of S4, not the full
+matrix or actual OS acceptance. Hands-on checks remain deferred at the human's
+request. Final independent review, design/AGENTS implementation pointers and
+Historical closeout remain open.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -491,7 +516,7 @@ authorized starting HEAD `2d19d2c`. S0a mechanical split:
 `38b6ff1ca605477a8f44a1df5e44316cec7c9c11`. S0b foundation and contracts: `908aa9b932832d286e0582537b2b3a02ec0b4c99`.
 S2 Live integration: `be33aa15c14718a7d96de02e5da11abe66c1ade6`.
 S1 Daily/routing integration: `5004657bae2fbd64d943344aca6623bdb1e232b0`.
-S3 supporting integration: this commit.
+S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 
 ## Blockers and stop conditions
 
@@ -503,9 +528,10 @@ S3 supporting integration: this commit.
 
 ## Next action
 
-S2, S1 and S3 are integrated and proved in order. Complete managed cleanup with
-the authorized temporary unpin and restore this chat's pinned position. Run the
-S4 software matrix; route findings through bounded packets to owning files.
+S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
+and their assigned simulator clones deleted; this chat's pinned position is
+restored. Run the S4 software matrix and integrate the bounded supporting-screen
+follow-up after its callback; route further findings through owning-file packets.
 Hands-on OS checks wait at the human's request. Final independent review and
 closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
