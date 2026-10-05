@@ -9,6 +9,27 @@ owns the accepted presentation work and transferred Phase 4 A9 proof. The
 [Phase 4 Blind Race plan](plans/2026-10-02-phase-4-blind-race.md) and Phase 2/3
 plan are Historical evidence.
 
+## 2026-10-04 — Fit Stamped Gameplay in Short Phone Space
+
+**Decision:** At default type, phone landscape uses two columns chosen from
+available space: six-row board left, header/opponents and keyboard/notice/result
+slot right. Preserve orientation support and fit without default scrolling.
+Landscape tiles remain about48pt+, letter keys at least32×48pt, action targets44pt;
+timer and opponent information remain visible within navigation safe areas.
+AX sizes retain scrolling. SE portrait Practice uses both bots on one compact
+line with names, counts, coarse states and unchanged full spoken summaries,
+timer in the header, and measured error/status space reserved above the keyboard.
+Live's navigation title is sentence case, Live race.
+
+**Rationale:** Native S4 evidence reproduced unreachable Live landscape actions,
+Daily landscape separating the board from controls, and a Practice error below
+its upper viewport. The human approved this responsive repair instead of smaller
+controls, an orientation lock or a default scroll fallback.
+
+**Consequences/revisit:** Presentation changes preserve game behavior and privacy.
+Return to the human if fitting requires smaller tiles/keys/targets than these
+floors. The active plan owns implementation evidence and outstanding OS checks.
+
 ## 2026-10-03 — Converge Started Daily Attempts Over Empty Boards
 
 **Decision:** For the same immutable Daily puzzle, an attempt containing accepted

@@ -138,6 +138,7 @@ session/state machines, storage, backend, or share text.
 | D11 | Lobby: while only one player is present the host sees "Waiting for player two" with Copy and Share and no Start button; Start appears when player two joins and is disabled only for the existing in-flight, pending, expiry, and phase blockers. |
 | D12 | Contrast: light ink secondary is `#6B6352` (5.0:1 on page). Absent letters at ≥3:1 follow Apple's HIG minimum for bold text of any size; tile letters (`title2`, about 22pt) and key labels must stay bold. (WCAG large text would not cover 16pt bold keys; the HIG bold rule is the accepted bar.) Empty dashed rings are decorative at default (slot geometry and the solid draft row identify the board); Increased Contrast and the High-contrast feedback setting switch to one set: absent letter `#6B6352` / dark `#A39A86`, empty rings in ink secondary, present ring 3.5pt, correct unchanged. |
 | D15 | Human approved the compact standard QWERTY letter-key exception on 2026-10-03: about 32.3pt wide at SE default type, at least 48pt tall. Action controls retain at least 44×44pt targets. No overlapping targets or alternate default keyboard layout. S4 measures actual regions and confirms usability; other accessibility obligations remain. |
+| D16 | Human approved S4-F1–F3 repairs on 2026-10-04: default phone landscape uses two columns chosen from available space, board left and header/opponents/keyboard or notice/result slot right. Fit without default scrolling or orientation lock; AX retains scrolling. Landscape tiles about48pt+, letters at least32×48pt, actions44pt; timer/opponents visible and no overlap with navigation chrome. SE portrait Practice puts both bots on one compact line with names/counts/coarse state/full speech, timer in header, measured error/status above keyboard. Live title becomes Live race. Return to human if floors cannot fit. |
 
 ## Target file layout (S0a)
 
@@ -166,7 +167,7 @@ session/state machines, storage, backend, or share text.
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | implementation owner (historical Luna run) | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | Software matrix returned; three fit defects require human stop-condition disposition; hands-on checks deferred | Native four-device evidence audited; S4/A9 not accepted |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | S4-F1–F3 repair direction approved (D16); bounded shared/feature repairs in progress; hands-on checks deferred | Native four-device evidence audited; S4/A9 not accepted |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -615,6 +616,31 @@ Concrete repair proposal: `/tmp/gridrace-stamped-s4-layout-repair-proposal.md`.
 No product repair dispatched or written after the stop condition. S4 acceptance,
 final independent review and closeout remain open.
 
+The human resolved the S4-F1–F3 stop condition on 2026-10-04 with D16, approving
+the proposed two-column layout and specifying one compact bot line, readable
+48pt landscape tiles,32×48pt letter keys,44pt action targets and no default scroll
+fallback. The earlier pending disposition above is historical. Current checkpoint
+is workflow commit `5fdac01`, which changed instructions/profile, not product
+bytes. Controller prepares the shared compact-board option, then one bounded
+feature owner repairs Daily/Live/Practice as a coherent responsive presentation
+unit; stable source and exclusive simulator/output ownership apply. Hands-on OS
+checks stay deferred; no model/test-injection seam or backend work is included.
+
+Controller compact-board contract is proved before feature dispatch:
+`BoardView(..., compactLayout: true)` uses48pt minimum tiles and2pt row/column
+gaps, including the inner TileRowView; defaults remain44pt/6pt. Native iPad leaf
+fixture finds30 tile semantics in248×298pt. Raw minimum AX dimensions are
+47.999963×47.999927pt due normalized-frame conversion; a0.0001pt numeric
+tolerance cannot hide one device pixel. Regular-board negative control measures
+44.499945×44.472009pt and fails the48pt floor in that constrained space.
+Ten selected tests pass (one native leaf plus nine rule tests), clean Debug exit0,
+frozen packages unchanged. The initial exact-floating-point assertion failure is
+retained as tooling precision evidence, not a product defect or passing run.
+Artifacts: `/tmp/gridrace-stamped-s4-layout-foundation-v2.log`, `.xcresult`,
+`/tmp/gridrace-stamped-s4-layout-foundation-build.log` and exact test overlay in
+`/tmp/gridrace-stamped-s4-layout-foundation-evidence.json`. This is leaf proof;
+full feature/navigation fit is still the bounded repair owner's obligation.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -637,13 +663,13 @@ S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
 and their assigned simulator clones deleted; this chat's pinned position is
 restored. The bounded supporting-screen follow-up is integrated and proved.
-Resolve the human stop condition for accepted S4-F1–F3 using the concrete layout
-proposal, then issue owning-file repair packets and targeted proof. The software
-matrix callback is audited; no further product writes before that disposition.
+Implement approved D16 with bounded shared/feature repair packets and targeted
+native proof, including navigation safe areas and all specified size floors.
+Return to the human if fit needs smaller tiles, keys or action targets.
 Hands-on OS checks wait at the human's request. Final independent review and
 closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
-Continue only after the outstanding product decision; use supported host coordination.
+Use supported host coordination and preserve the recorded human callback authorization.
 
 ## Closeout checklist
 

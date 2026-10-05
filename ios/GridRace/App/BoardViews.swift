@@ -73,7 +73,7 @@ struct OpponentStrip: View {
 private struct BoardRowsLayout: Layout {
     let minimumTileSize: CGFloat
     let preferredTileSize: CGFloat
-    private let spacing: CGFloat = 6
+    let spacing: CGFloat
 
     private func tileSize(_ proposal: ProposedViewSize) -> CGFloat {
         let widthLimit = proposal.width.map { ($0 - spacing * 4) / 5 } ?? preferredTileSize
@@ -102,6 +102,9 @@ struct BoardView: View {
     let draft: String
     let isPlaying: Bool
     var highContrast = false
+    /// Short, wide game layouts keep a readable 48pt floor by reducing gaps,
+    /// rather than reducing the tile or its feedback glyphs.
+    var compactLayout = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var preferredTileSize: CGFloat = 54
@@ -120,7 +123,11 @@ struct BoardView: View {
     }
 
     private var board: some View {
-        BoardRowsLayout(minimumTileSize: minimumTileSize, preferredTileSize: preferredTileSize) {
+        BoardRowsLayout(
+            minimumTileSize: compactLayout ? max(48, minimumTileSize) : minimumTileSize,
+            preferredTileSize: preferredTileSize,
+            spacing: compactLayout ? 2 : 6
+        ) {
             ForEach(0..<6, id: \.self) { rowIndex in
                 let acceptedRow = rows.indices.contains(rowIndex) ? rows[rowIndex] : nil
                 let isDraftRow = rowIndex == rows.count && isPlaying
@@ -130,7 +137,8 @@ struct BoardView: View {
                     isDraft: isDraftRow,
                     rowNumber: rowIndex + 1,
                     highContrast: highContrast,
-                    scrollsAtAccessibilitySize: false
+                    scrollsAtAccessibilitySize: false,
+                    compactLayout: compactLayout
                 )
             }
         }
@@ -227,6 +235,7 @@ struct TileRowView: View {
     var rowNumber = 1
     var highContrast = false
     var scrollsAtAccessibilitySize = true
+    var compactLayout = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
 
@@ -242,7 +251,7 @@ struct TileRowView: View {
 
     private var tiles: some View {
         let letters = Array(word.uppercased())
-        return HStack(spacing: 6) {
+        return HStack(spacing: compactLayout ? 2 : 6) {
             ForEach(0..<5, id: \.self) { index in
                 TileView(
                     letter: letters.indices.contains(index) ? letters[index] : nil,
@@ -251,7 +260,10 @@ struct TileRowView: View {
                     emptyLabel: "Empty tile, row \(rowNumber), column \(index + 1)",
                     highContrast: highContrast
                 )
-                .frame(minWidth: minimumTileSize, minHeight: minimumTileSize)
+                .frame(
+                    minWidth: compactLayout ? max(48, minimumTileSize) : minimumTileSize,
+                    minHeight: compactLayout ? max(48, minimumTileSize) : minimumTileSize
+                )
             }
         }
     }

@@ -106,6 +106,17 @@ Rules:
 - Gameplay screens are a slim header, the board, and the keyboard. Opponent
   progress is one compact line (name and accepted count in stable roster order) so
   all six rows fit above the keyboard on every supported device.
+- S4 disposition approved 2026-10-04: short, wide phone game space uses two
+  columns at default type: six-row board left; slim header, compact opponent
+  line and keyboard/notice/result slot right. Choose from available space,
+  preserve navigation safe areas, and fit without default-type scrolling or an
+  orientation lock. AX sizes keep scrolling. Landscape tiles remain about
+  48pt or larger; letter keys remain at least32×48pt and action targets44pt.
+  Return to the human if these floors cannot fit.
+- SE portrait Practice uses one compact opponent line for both bots, preserving
+  names, accepted counts, coarse states and full spoken summaries. The timer
+  lives in the header row. Reserve measured error/status height above the
+  keyboard before allocating board height. Live's navigation title is Live race.
 
 ### Live race flow
 
