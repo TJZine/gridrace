@@ -126,7 +126,7 @@ struct BoardView: View {
         BoardRowsLayout(
             minimumTileSize: compactLayout ? max(48, minimumTileSize) : minimumTileSize,
             preferredTileSize: preferredTileSize,
-            spacing: compactLayout ? 2 : 6
+            spacing: compactLayout ? 1 : 6
         ) {
             ForEach(0..<6, id: \.self) { rowIndex in
                 let acceptedRow = rows.indices.contains(rowIndex) ? rows[rowIndex] : nil
@@ -251,7 +251,7 @@ struct TileRowView: View {
 
     private var tiles: some View {
         let letters = Array(word.uppercased())
-        return HStack(spacing: compactLayout ? 2 : 6) {
+        return HStack(spacing: compactLayout ? 1 : 6) {
             ForEach(0..<5, id: \.self) { index in
                 TileView(
                     letter: letters.indices.contains(index) ? letters[index] : nil,

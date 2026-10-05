@@ -641,6 +641,35 @@ Artifacts: `/tmp/gridrace-stamped-s4-layout-foundation-v2.log`, `.xcresult`,
 `/tmp/gridrace-stamped-s4-layout-foundation-evidence.json`. This is leaf proof;
 full feature/navigation fit is still the bounded repair owner's obligation.
 
+S4-layout worker returned three bounded feature files at base `b67e0d3`.
+Controller audit verifies140 protected tracked hashes, six unrelated hashes,
+returned file hashes, exact cumulative patch and unchanged worker HEAD/index.
+One-line Practice bot chrome, reserved visible error and sentence-case title are
+implemented; native SE portrait Practice default/full draft/error and AX proof
+passes. Main integration remains pending. Native Pro seven selected tests and
+iPad seven pass; Pro Max five render methods pass with public AX measurements
+unavailable. Existing108 selected tests pass at pre-final-column-padding source;
+final feature source has a clean Debug pass. Native Discard confirmation opens
+and preserves the pending request, but public activation cannot execute its
+confirm action; source callback is preserved and actual interaction stays open.
+Artifacts: `/tmp/gridrace-stamped-s4-layout-result.json`, source audit,
+test outcomes, release and `/tmp/gridrace-stamped-s4-layout-controller-first-audit.json`.
+
+SE landscape tests reproduce one remaining shared deficit: the actual navigation
+bar ends y78 in a375pt scene, leaving297pt; the initial compact contract requires
+298pt. All260 failed assertions are last-row containment; floor/keyboard/control
+checks pass. F1/F2 are not accepted yet. Controller changes compact row/column
+gaps from2pt to1pt, preserving48pt tiles and ordinary/scaled defaults. The new
+minimum is244×293pt. Native leaf proof with30 tile semantics and the noncompact
+negative control passes; clean Debug passes. Logs/results:
+`/tmp/gridrace-stamped-s4-layout-foundation-gap.log`, `.xcresult`, and
+`/tmp/gridrace-stamped-s4-layout-foundation-gap-build.log`. Exact test overlay,
+native frames and source identity are in the corresponding gap evidence JSON.
+This tightens gaps inside D16; it does not lower acceptance floors. Controller
+updates the isolated tree's shared contract, then the same worker runs focused
+SE closure and adjacent native checks under a new bounded lease. No new design
+approval or model/storage changes are needed. OS checks remain deferred.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
