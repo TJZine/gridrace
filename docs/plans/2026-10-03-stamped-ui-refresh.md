@@ -167,7 +167,7 @@ session/state machines, storage, backend, or share text.
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | implementation owner (historical Luna run) | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | S4-F1–F3 repair direction approved (D16); bounded shared/feature repairs in progress; hands-on checks deferred | Native four-device evidence audited; S4/A9 not accepted |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | D16 native layout closure and main composition passed; final review assigned; hands-on checks deferred | Corrected SE/Pro geometry and iPad compatibility passed; 108 main tests and clean Debug passed; ProMax AX/tap/OS gates remain open |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -670,6 +670,40 @@ updates the isolated tree's shared contract, then the same worker runs focused
 SE closure and adjacent native checks under a new bounded lease. No new design
 approval or model/storage changes are needed. OS checks remain deferred.
 
+Same-worker focused gap closure returned PASS at `06a9b91`, preserving the exact
+three feature hashes and changing no further product bytes. Controller audits
+140 protected hashes, six unrelated hashes, exact cumulative patch and empty
+worker index; all current main app Swift files after application equal the native
+artifact source. All 191 corrected image hashes match. Thirteen selected native
+tests pass: SE4, Pro3, iPad3, ProMax3, with 104 focused cases. SE viewport is
+(0,78,667,297); six rows now end at375.0. Measured minimum tile is
+48.499938×48.493732pt, letters32×48pt, actions at least44×44pt, no board/control
+overlap. Pro tile minimum49.635939×49.666613pt, letters36×48pt (raw height differs
+only below0.0001pt). Default fit is asserted before scrolling, including full
+boards, errors/Hard Mode, Daily terminal/persistent-error result and Live notices.
+SE portrait Practice full draft/error/default and AX reach proof passes; timer
+and compact bots remain visible. iPad orientations/AX remain compatible. ProMax
+render methods pass while its public AX tree stays empty; no measured-floor or
+activation acceptance is inferred. Prior 260 SE containment failures are superseded
+by the corrected exact-source run, retained honestly in historical evidence.
+
+Evidence: `/tmp/gridrace-stamped-s4-layout-gap-closure-result.json`, source audit,
+test outcomes, cases/regions and release; controller audit is
+`/tmp/gridrace-stamped-s4-layout-gap-closure-controller-audit.json`.
+All worker file/process leases are released. Exact-source main composition passed
+108 existing tests with zero failures or skips: Daily 18, rules 9, Live session 60,
+Live views 13 (including the canonical 45-state renderer), Practice 8. Clean Debug
+also passed with frozen package flags. Controller final evidence is
+`/tmp/gridrace-stamped-s4-layout-controller-final-evidence.json`; logs are
+`/tmp/gridrace-stamped-s4-layout-controller-main.log` and
+`/tmp/gridrace-stamped-s4-layout-controller-build.log`. The integrated commit
+contains only the three approved feature views and presentation/progress docs.
+Native confirmed Discard execution, real taps, toolbar target ownership, ProMax
+AX and outer Account callback/input gates remain separately recorded. OS-assisted
+VoiceOver/Reduce Motion/grayscale, hardware keyboard and haptics remain human-deferred.
+Final independent review follows the software integration checkpoint; this does
+not close S4/A9 or mark the design fully implemented at runtime.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -692,11 +726,12 @@ S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
 and their assigned simulator clones deleted; this chat's pinned position is
 restored. The bounded supporting-screen follow-up is integrated and proved.
-Implement approved D16 with bounded shared/feature repair packets and targeted
-native proof, including navigation safe areas and all specified size floors.
-Return to the human if fit needs smaller tiles, keys or action targets.
-Hands-on OS checks wait at the human's request. Final independent review and
-closeout remain pending. Controller chat is
+The D16 repair has passed native closure, main composition and clean Debug.
+The one fresh independent review is assigned the integrated software diff, proof
+and explicit outstanding-acceptance packet. Its exact source and chat identity
+are recorded in ignored controller run state; source stays frozen through review.
+Resolve accepted findings with targeted closure. Hands-on OS checks wait at the
+human's request. Final review adjudication and closeout remain pending. Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
 Use supported host coordination and preserve the recorded human callback authorization.
 

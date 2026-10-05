@@ -147,18 +147,46 @@ private struct RaceView: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 ScrollView {
-                    VStack(spacing: 0) {
-                        raceContent(boardHeight: nil)
+                    VStack(spacing: 10) {
+                        raceHeader
+                        PracticeOpponentStrip(opponents: model.opponents)
+                        boardView(boardHeight: nil)
+                        statusMessage
                         keyboard
                     }
+                    .padding(.vertical, 10)
                 }
             } else {
                 GeometryReader { proxy in
-                    VStack(spacing: 0) {
-                        ScrollView {
-                            raceContent(boardHeight: proposedBoardHeight(in: proxy.size.height))
+                    if proxy.size.width > proxy.size.height,
+                       proxy.size.height < 500, proxy.size.width >= 636 {
+                        HStack(spacing: 8) {
+                            board(compact: true)
+                                .frame(width: min(320, proxy.size.width - 388))
+                                .frame(maxHeight: .infinity)
+                            VStack(spacing: 6) {
+                                raceHeader
+                                PracticeOpponentStrip(opponents: model.opponents)
+                                statusMessage
+                                keyboard
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        keyboard
+                        .padding(.horizontal, 4)
+                    } else {
+                        VStack(spacing: 0) {
+                            VStack(spacing: 6) {
+                                raceHeader
+                                PracticeOpponentStrip(opponents: model.opponents)
+                            }
+                            .background(chromeMeasurement)
+                            boardView(boardHeight: proposedBoardHeight(in: proxy.size.height))
+                            statusMessage.background(chromeMeasurement)
+                            keyboard
+                        }
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: 620)
+                        .frame(maxWidth: .infinity)
                     }
                 }
             }
@@ -167,62 +195,38 @@ private struct RaceView: View {
         .onPreferenceChange(TutorialKeyboardHeightKey.self) { keyboardHeight = $0 }
     }
 
-    private func proposedBoardHeight(in availableHeight: CGFloat) -> CGFloat {
-        let measuredChrome = chromeHeight + 40
-        return max(minimumBoardHeight, availableHeight - measuredChrome - keyboardHeight)
-    }
-
-    @ViewBuilder
-    private func raceContent(boardHeight: CGFloat? = nil) -> some View {
-        VStack(spacing: 10) {
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Practice")
-                        .font(StampType.heading)
-                    Spacer()
-                    Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
-                        .font(StampType.figure)
-                        .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
-                }
-                .padding(.horizontal)
-
-                PracticeOpponentStrip(opponents: model.opponents)
-            }
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TutorialChromeHeightKey.self,
-                        value: proxy.size.height
-                    )
-                }
-            }
-
-            boardView(boardHeight: boardHeight)
-
-            statusMessage
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TutorialChromeHeightKey.self,
-                            value: proxy.size.height
-                        )
-                    }
-                }
+    private var raceHeader: some View {
+        HStack {
+            Text("Practice").font(StampType.heading)
+            Spacer()
+            Label("\(model.roundSecondsRemaining)s", systemImage: "timer")
+                .font(StampType.figure)
+                .accessibilityLabel("\(model.roundSecondsRemaining) seconds remaining")
         }
-        .padding(.vertical, 10)
-        .frame(maxWidth: 620)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
     }
 
-    private var boardBase: some View {
+    private var chromeMeasurement: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: TutorialChromeHeightKey.self, value: proxy.size.height)
+        }
+    }
+
+    private func proposedBoardHeight(in availableHeight: CGFloat) -> CGFloat {
+        // Reserve the measured status/error as well as the opponents and keys.
+        max(minimumBoardHeight, availableHeight - chromeHeight - keyboardHeight - 8)
+    }
+
+    private var boardBase: some View { board(compact: false).padding(.horizontal) }
+
+    private func board(compact: Bool) -> some View {
         BoardView(
             rows: model.board.rows,
             draft: model.board.draft,
-            isPlaying: model.board.status == .playing
+            isPlaying: model.board.status == .playing,
+            compactLayout: compact
         )
-        .padding(.horizontal)
-        // Subtle invalid-guess nudge; fully suppressed under Reduce Motion
-        // (banner + existing haptics only).
+        // Preserve the existing invalid-guess nudge and Reduce Motion owner.
         .offset(x: (model.errorMessage != nil && !reduceMotion) ? 6 : 0)
         .animation(reduceMotion ? nil : .snappy, value: model.errorMessage)
     }
@@ -274,23 +278,28 @@ private struct RaceView: View {
 private struct PracticeOpponentStrip: View {
     let opponents: [OpponentProgress]
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        VStack(spacing: 4) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             ForEach(opponents) { opponent in
-                OpponentLine(
-                    name: opponent.name,
-                    count: "\(opponent.acceptedGuessCount)/6",
-                    state: shortVisualState(for: opponent.state),
-                    stateSymbol: opponent.state == .playing ? "hourglass" : "flag.checkered",
-                    connection: nil,
-                    accessibilitySummary: opponent.accessibilityLabel
-                ) {
-                    Image(systemName: opponent.avatarSymbol)
-                        .font(StampType.caption.bold())
-                        .foregroundStyle(Color.ink)
+                HStack(spacing: 4) {
+                    Text(opponent.name).font(StampType.caption.bold())
+                    Text("\(opponent.acceptedGuessCount)/6").font(StampType.caption.bold())
+                    Text(shortVisualState(for: opponent.state))
+                        .font(StampType.caption).foregroundStyle(Color.secondaryInk)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(opponent.accessibilityLabel)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .paperCard()
         .padding(.horizontal)
     }
 

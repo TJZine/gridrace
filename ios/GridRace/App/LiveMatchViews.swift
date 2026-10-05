@@ -488,7 +488,7 @@ struct LiveMatchFlowView: View {
         } message: {
             Text("This removes the saved data from this device. It can't undo a guess or race already accepted.")
         }
-        .navigationTitle("Live Race")
+        .navigationTitle("Live race")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden()
         .toolbar {
@@ -828,6 +828,19 @@ private struct LiveRoundView: View {
         GeometryReader { geometry in
             if dynamicTypeSize.isAccessibilitySize {
                 ScrollView { roundContent.padding(.vertical, 8) }
+            } else if geometry.size.width > geometry.size.height,
+                      geometry.size.height < 500, geometry.size.width >= 636 {
+                HStack(spacing: 8) {
+                    roundBoard(compact: true)
+                        .frame(width: min(320, geometry.size.width - 388))
+                        .frame(maxHeight: .infinity)
+                    VStack(spacing: 6) {
+                        roundChrome
+                        controlSlot
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, 4)
             } else {
                 roundContent.frame(height: geometry.size.height)
             }
@@ -884,6 +897,19 @@ private struct LiveRoundView: View {
 
     private var roundContent: some View {
         VStack(spacing: 8) {
+            roundChrome
+            roundBoard(compact: false)
+                .padding(.horizontal, 12)
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? nil : .infinity)
+                .layoutPriority(-1)
+            controlSlot
+        }
+        .frame(maxWidth: 620).frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+
+    private var roundChrome: some View {
+        VStack(spacing: 6) {
             roundHeader
             if let notice = presentation.deletionNotice {
                 Text("\(notice.title). \(notice.body)")
@@ -899,33 +925,35 @@ private struct LiveRoundView: View {
                     }.padding(.horizontal, 12)
                 }
             }
-            BoardView(rows: rows, draft: draft, isPlaying: canInput, highContrast: highContrast)
-                .padding(.horizontal, 12)
-                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? nil : .infinity)
-                .layoutPriority(-1)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: rows.count)
-            KeyboardSlot {
-                if let notice = presentation.notice {
-                    LiveControlNotice(notice: notice, perform: perform)
-                        .padding(.horizontal, 12)
-                        .accessibilityFocused($slotFocus)
-                } else {
-                    VStack(spacing: 4) {
-                        if let message = presentation.inlineError {
-                            Text(message).font(StampType.caption.bold())
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, 12)
-                                .accessibilityFocused($errorFocus, equals: errorGeneration)
-                        }
-                        LetterKeyboardView(keyboard: keyboard, typeLetter: typeLetter, submit: submit,
-                            delete: deleteLetter, highContrast: highContrast)
+        }
+    }
+
+    private func roundBoard(compact: Bool) -> some View {
+        BoardView(rows: rows, draft: draft, isPlaying: canInput, highContrast: highContrast,
+                  compactLayout: compact)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: rows.count)
+    }
+
+    private var controlSlot: some View {
+        KeyboardSlot {
+            if let notice = presentation.notice {
+                LiveControlNotice(notice: notice, perform: perform)
+                    .padding(.horizontal, 12)
+                    .accessibilityFocused($slotFocus)
+            } else {
+                VStack(spacing: 4) {
+                    if let message = presentation.inlineError {
+                        Text(message).font(StampType.caption.bold())
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12)
+                            .accessibilityFocused($errorFocus, equals: errorGeneration)
                     }
+                    LetterKeyboardView(keyboard: keyboard, typeLetter: typeLetter, submit: submit,
+                        delete: deleteLetter, highContrast: highContrast)
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: 620).frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func opponentState(_ state: LivePlayerState) -> String {

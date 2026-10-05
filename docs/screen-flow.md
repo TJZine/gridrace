@@ -66,6 +66,16 @@ and rotating arrows; absent uses an unfilled dimmed bold letter and minus. The
 High-contrast feedback preference and Increased Contrast use the same strengthened
 marks. Daily, Live and supporting layouts now use the accepted stamped direction.
 
+Default gameplay uses two columns when the available space is short and wide:
+the complete six-row board on the left, slim header/opponent information and the
+keyboard or notice/result slot on the right. This keeps gameplay visible without
+default landscape scrolling. Compact boards use 1pt gaps while retaining 48pt
+tiles; letter keys retain at least 32×48pt and actions 44pt targets. Columns stay
+below navigation chrome; the Live navigation title is Live race. AX sizes retain
+the readable vertical/horizontal scrolling presentation. Orientation is supported
+without a lock. Software geometry proof and outstanding OS/tap acceptance are
+recorded separately in the active plan.
+
 ### Daily Classic home and play
 
 Home is a numbered program: 01 Daily classic, 02 Live race, 03 Practice.
@@ -150,9 +160,11 @@ still pending notice.
 
 Practice introduction identifies Alex and Sam as bots and explicitly distinguishes
 local practice from server-backed Live races. Play uses the shared countdown,
-six-row board, feedback keys and two readable progress rows; spoken opponent
-summaries retain their full meanings. Board sizing reserves the natural chrome and
-keyboard heights. Accessibility sizes scroll the whole play screen vertically and
+six-row board, feedback keys and one compact line containing both bots' names,
+accepted counts and coarse states; each bot's spoken summary retains its full
+meaning. The timer sits in the slim header. Board sizing reserves the measured
+status/error and keyboard heights so the error stays above the keys on SE portrait.
+Accessibility sizes reflow the bot summaries and scroll the whole play screen vertically and
 the board and keyboard horizontally. Reveal keeps the existing local sequence,
 result summaries, replay and finish behavior.
 

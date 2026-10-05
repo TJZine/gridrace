@@ -48,25 +48,32 @@ struct DailyGameView: View {
             Color.page.ignoresSafeArea()
             GeometryReader { geometry in
                 ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 6) {
-                            puzzleHeader
-                                .background(chromeMeasurement)
-                            BoardView(
-                                rows: model.game.rows,
-                                draft: model.game.draft,
-                                isPlaying: !model.game.isComplete,
-                                highContrast: model.settings.highContrastEnabled
-                            )
-                            .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : max(294, geometry.size.height - chromeHeight - 20))
-                            .accessibilitySortPriority(model.game.isComplete ? 1 : 0)
-                            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
-                            inputSlot
-                                .background(chromeMeasurement)
+                    Group {
+                        if usesColumns(in: geometry.size) {
+                            HStack(spacing: 8) {
+                                gameBoard(compact: true)
+                                    .frame(width: min(320, geometry.size.width - 388))
+                                    .frame(maxHeight: .infinity)
+                                VStack(spacing: 2) {
+                                    puzzleHeader
+                                    inputSlot
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .padding(.horizontal, 4)
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 6) {
+                                    puzzleHeader.background(chromeMeasurement)
+                                    gameBoard(compact: false)
+                                        .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : max(294, geometry.size.height - chromeHeight - 20))
+                                    inputSlot.background(chromeMeasurement)
+                                }
+                                .frame(maxWidth: 620)
+                                .padding(.vertical, 4)
+                                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                            }
                         }
-                        .frame(maxWidth: 620)
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                     }
                     .onChange(of: model.resultEvent) { _, _ in
                         guard model.game.isComplete else { return }
@@ -149,6 +156,23 @@ struct DailyGameView: View {
             // paths retain their existing single-owner behavior.
             if model.game.isComplete, model.errorMessage == nil { axFocus = .resultHeader }
         }
+    }
+
+    private func usesColumns(in size: CGSize) -> Bool {
+        !dynamicTypeSize.isAccessibilitySize && size.width > size.height
+            && size.height < 500 && size.width >= 636
+    }
+
+    private func gameBoard(compact: Bool) -> some View {
+        BoardView(
+            rows: model.game.rows,
+            draft: model.game.draft,
+            isPlaying: !model.game.isComplete,
+            highContrast: model.settings.highContrastEnabled,
+            compactLayout: compact
+        )
+        .accessibilitySortPriority(model.game.isComplete ? 1 : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.game.rows.count)
     }
 
     private var chromeMeasurement: some View {
