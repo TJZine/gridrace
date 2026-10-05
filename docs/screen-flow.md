@@ -79,6 +79,10 @@ recorded separately in the active plan.
 ### Daily Classic home and play
 
 Home is a numbered program: 01 Daily classic, 02 Live race, 03 Practice.
+
+During Daily play, an actionable error replaces the locked Hard Mode reminder
+above the keyboard. Editing clears the error and restores the reminder; the
+Hard Mode lock and guess validation remain in force.
 Daily shows puzzle number and unplayed/in-progress/solved/failed status with a
 Play, Continue, or Result stamp. Header icons open Statistics, Account, and
 Settings. A monospaced played/solved/streak line follows the program; duplicate

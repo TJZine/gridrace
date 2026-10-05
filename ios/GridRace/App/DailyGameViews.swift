@@ -244,10 +244,12 @@ struct DailyGameView: View {
 
     /// One-line Hard Mode lock reminder pinned immediately above the
     /// keyboard. Appears only after the first accepted guess; the generic
-    /// status-area line owns the pre-first-guess state instead.
+    /// status-area line owns the pre-first-guess state instead. An actionable
+    /// error takes this slot until editing clears it and restores the reminder.
     @ViewBuilder
     private var hardModeKeyboardHint: some View {
         if !model.game.isComplete,
+           model.errorMessage == nil,
            model.game.progress.hardModeEnabled,
            !model.game.rows.isEmpty {
             Text("Hard Mode locked: keep ✓ letters in place and reuse ↻ letters elsewhere.")

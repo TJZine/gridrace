@@ -167,7 +167,7 @@ session/state machines, storage, backend, or share text.
 | S1 Daily | worker | `AppRouting.swift`, `HomeView.swift`, `DailyGameViews.swift`, `StatisticsView.swift`, `DailyHomeStatus` in `DailyClassicModel.swift` (presentation properties only), `DailyClassicModelTests.swift` | S0b commit | Complete; integrated after S2 | 220 total / 218 passed / two opt-in skips on main; SE/Pro native captures; sheet reducer/lifecycle coverage |
 | S2 Live | worker | `LiveMatchViews.swift`, `LiveResultViews.swift`, `LiveMatchViewTests.swift` | S0b commit | Complete; integrated | 217 total / 215 passed / two opt-in skips on main; 45 native state fixtures; controller audit |
 | S3 Supporting | implementation owner (historical Luna run) | `SettingsHelpViews.swift`, `TutorialViews.swift`, `AccountView.swift`, string literals in `TutorialModel.swift`, `syncMessage` in `DailyAccountCoordinator.swift`, string assertions in `TutorialModelTests.swift` and `AccountTests.swift` | S0b commit | Complete; integrated after S1 | 220 total / 218 passed / two opt-in skips on main; clean Debug; SE/Pro native captures; controller pushed-route/account sheet proof |
-| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | D16 native layout closure and main composition passed; final review assigned; hands-on checks deferred | Corrected SE/Pro geometry and iPad compatibility passed; 108 main tests and clean Debug passed; ProMax AX/tap/OS gates remain open |
+| S4 Verification + A9 | controller with human | plan, evidence only; fixes go to the owning unit's files under a new packet | S1–S3 integrated | D16 repairs and final review adjudicated; software closure passed; hands-on checks deferred | Corrected SE/Pro geometry and iPad compatibility passed; 108 integration tests, final 35 Daily tests and clean Debug passed; ProMax AX/tap/OS gates remain open |
 
 Serialization: `project.pbxproj` only in S0a. After S0b, the controller alone
 owns `DesignSystem.swift` and `BoardViews.swift`; workers return change requests
@@ -704,6 +704,54 @@ VoiceOver/Reduce Motion/grayscale, hardware keyboard and haptics remain human-de
 Final independent review follows the software integration checkpoint; this does
 not close S4/A9 or mark the design fully implemented at runtime.
 
+### Independent final review and targeted closure
+
+The single fresh independent review inspected the net product diff from
+`2d19d2c5b8263fe176dc77af167fe7c19f588081` through
+`0fa2a13678aedd843556af1d47a2527eb9357fd9`, all 19 changed native paths,
+accepted D1–D16, composition proof and explicit risk/acceptance limits.
+Reviewer chat: `01a1099a-ff89-7ac1-99fb-c44928eef905`, Sol 6.1/medium worker
+preset assigned independent read-only review responsibility. No repository or
+runtime writes. Controller audited exact HEAD, empty index, 146 protected
+tracked hashes and six unrelated hashes. Report:
+`/tmp/gridrace-stamped-final-review-report.md`; result and release JSON retain
+scope/evidence. No other material correctness or recurring maintenance findings
+were established. This is software review, not OS or physical-input acceptance.
+
+| Finding | Adjudication | Targeted closure |
+| --- | --- | --- |
+| Final-F1, P2: Daily Hard Mode reminder and draft error can coexist beyond the default SE landscape control column | Accepted after native reproduction on unmodified `0fa2a13`: CIVIC accepted against ADORE, ZZZZZ rejected, actual full error plus reminder puts seven letter keys and Submit/Delete 2pt beyond y375. Nine containment assertions fail. Earlier empty-AX startup attempts are retained but do not establish this failure. | Hide only the redundant reminder while `errorMessage` is nonnil. Native Delete clears both invalid-word and actual missing-A clue errors and restores the reminder while Hard Mode stays locked. Full error/focus/intents/rules are preserved. |
+
+The same layout worker performed bounded closure in a fresh isolated worktree,
+with only `DailyGameViews.swift` changed. Controller audits 144 protected hashes,
+six unrelated hashes, exact patch, all 29 native app-source hashes and all 254
+retained image hashes. Final native SE three methods, Pro one method and dense
+AX reach one method pass with zero failures/skips. Fourteen primary cases include
+default SE landscape error/reminder/clearing, real CRANE→STONE missing-A
+violation, SE portrait and adjacent Pro. The finer AX run supersedes coarse
+reach sampling and proves all tiles/letters/actions and full wrapped error and
+restored reminder reachable. Default containment is asserted before scrolling;
+landscape tile/key/action floors and route chrome remain intact. Unmodified
+negative proof and final correction use identical fixture inputs.
+
+Affected Daily model/classic tests pass 35/35 with zero skips on the exact final
+worker source; clean Debug passes with frozen flags. Controller also passed the
+same 35 affected tests on integrated main, with zero failures/skips. Unaffected earlier
+108-test composition and prior unit proof are reused. There is no recursive
+review. Worker result: `/tmp/gridrace-stamped-final-f1-result.json`; controller
+audit: `/tmp/gridrace-stamped-final-f1-controller-audit.json`. Final main
+composition, commit and cleanup identities are recorded in
+`/tmp/gridrace-stamped-final-f1-controller-final-evidence.json` and ignored run
+state. No durable test collector or model seam was added.
+
+Remaining acceptance: human-deferred OS VoiceOver, actual OS Reduce Motion and
+grayscale, hardware keyboard and physical haptics; ProMax public AX geometry and
+activation; native Discard confirmation execution; ambiguous toolbar Cancel
+target; outer Account import/conflict callbacks and deletion input. Existing
+source/inner-callback/model evidence does not substitute for those missing
+observations. The optional two-client backend harness was not run. The plan
+stays Active and the design remains pending runtime acceptance; A9 is open.
+
 ### Commit record
 
 Activation docs checkpoint: `cf9d48d9f7fc11ff22dcddf4e6bb088b13744885`, from
@@ -726,12 +774,13 @@ S3 supporting integration: `86695e04cc47d92202881d4b68f976e88b436bcc`.
 S2, S1 and S3 are integrated and proved in order. Their worktrees are archived
 and their assigned simulator clones deleted; this chat's pinned position is
 restored. The bounded supporting-screen follow-up is integrated and proved.
-The D16 repair has passed native closure, main composition and clean Debug.
-The one fresh independent review is assigned the integrated software diff, proof
-and explicit outstanding-acceptance packet. Its exact source and chat identity
-are recorded in ignored controller run state; source stays frozen through review.
-Resolve accepted findings with targeted closure. Hands-on OS checks wait at the
-human's request. Final review adjudication and closeout remain pending. Controller chat is
+The D16 repairs and final review's one accepted finding have targeted software
+closure. Final independent review is adjudicated. Preserve the remaining
+acceptance list above; hands-on OS checks wait at the human's request. No worker
+remains active after cleanup. Resume those checks when the human is ready, using
+the recorded checklist and exact current source, before A9/design acceptance or
+closeout. Do not delete the kickoff/run state or mark Historical prematurely.
+Controller chat is
 `01a103c6-10bd-7a30-acc2-68334f0cd33a` on host `local`.
 Use supported host coordination and preserve the recorded human callback authorization.
 
@@ -739,7 +788,7 @@ Use supported host coordination and preserve the recorded human callback authori
 
 - [ ] All units checkpointed and committed, with evidence in the unit table
 - [ ] S4 matrix and A9 evidence recorded
-- [ ] Independent final review adjudicated
+- [x] Independent final review adjudicated
 - [ ] `screen-flow.md` describes the shipped presentation (updated per unit)
 - [ ] Design doc status set to Implemented; AGENTS.md pointer no longer says
       "not yet implemented"
