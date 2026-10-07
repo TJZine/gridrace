@@ -19,32 +19,6 @@ final class LiveMatchViewTests: XCTestCase {
         XCTAssertEqual(LiveMatchPresentation.countdownSeconds(startsAt: start, displayedServerTime: start), 0)
     }
 
-    func testStartRequiresCreatorFullCanonicalLobbyBeforeExpiryAndNoCommand() {
-        let snapshot = Self.snapshot(status: .lobby, roundState: .pending, selfSeat: 1)
-        let now = snapshot.serverTime
-
-        XCTAssertTrue(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: now,
-            isCommandInFlight: false
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: now,
-            isCommandInFlight: true
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: Self.snapshot(status: .lobby, roundState: .pending, selfSeat: 2),
-            displayedServerTime: now,
-            isCommandInFlight: false
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: snapshot.match.expiresAt,
-            isCommandInFlight: false
-        ))
-    }
-
     func testCountdownAccessibilityIncludesRoundAndDeletionBoundary() throws {
         let countdown = try Phase4LiveFixtures.snapshot("3-round-2-countdown")
         XCTAssertEqual(LiveMatchPresentation.countdownLabel(countdown, seconds: 2), "Round 2 of 3, Live race starts in 2")
@@ -131,29 +105,6 @@ final class LiveMatchViewTests: XCTestCase {
         signedOut.create()
         XCTAssertEqual(routes, [.account])
         XCTAssertNil(session.pendingIntent)
-    }
-
-    func testLaterStartIgnoresLobbyExpiryButRequiresCurrentRevealAndLiveRoster() throws {
-        let snapshot = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
-        let afterExpiry = snapshot.match.expiresAt.addingTimeInterval(100)
-        func canStart(_ value: LiveMatchSnapshot, pending: Bool = false, start: Bool = false) -> Bool {
-            LiveMatchPresentation.canStart(snapshot: value, displayedServerTime: afterExpiry,
-                                          isCommandInFlight: false, hasPendingIntent: pending, hasPendingStart: start)
-        }
-        XCTAssertTrue(canStart(snapshot))
-        XCTAssertFalse(canStart(snapshot, pending: true))
-        XCTAssertFalse(canStart(snapshot, start: true))
-        for label in ["3-round-2-countdown", "3-round-2-playing", "3-round-3-reveal",
-                      "deletion-active", "deletion-between", "deletion-active-revealed"] {
-            XCTAssertFalse(canStart(try Phase4LiveFixtures.snapshot(label)), label)
-        }
-        var guest = try Phase4LiveFixtures.object("3-round-1-reveal")
-        var members = try XCTUnwrap(guest["members"] as? [[String: Any]])
-        members[0]["is_self"] = false
-        members[1]["is_self"] = true
-        guest["members"] = members
-        XCTAssertFalse(canStart(try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(guest))))
-        XCTAssertFalse(canStart(try Phase4LiveFixtures.snapshot("3-lobby"))) // creator alone
     }
 
     func testRoundOwnedDraftCannotHydrateFromOldRoundOrOtherMatch() throws {
@@ -316,20 +267,14 @@ final class LiveMatchViewTests: XCTestCase {
     }
 
     @MainActor
-    func testPresentationGatesKeepDisabledActionsAndStorageAndStartPrecedence() async throws {
+    func testPresentationConsumesStartCapabilityAndPreservesStoragePrecedence() async throws {
         let fixture = try await makeScenario(.hostTwo)
         defer { fixture.session.leaveToHome() }
         var state = LiveMatchPresentation.State(session: fixture.session)
-        for block in 0..<4 {
-            var blocked = state
-            switch block {
-            case 0: blocked.isCommandInFlight = true
-            case 1: blocked.pendingIntent = .create(requestID: UUID(), roundCount: 3, clientBuild: 2)
-            case 2: blocked.hasPendingStart = true
-            default: blocked.phase = .unavailable
-            }
-            XCTAssertFalse(LiveMatchPresentation.map(blocked).permits(.start))
-        }
+        state.canStart = false
+        XCTAssertFalse(LiveMatchPresentation.map(state).permits(.start))
+        state.canStart = true
+        XCTAssertTrue(LiveMatchPresentation.map(state).permits(.start))
         state.phase = .storageUnavailable
         state.canRetryRecoveryStorage = false
         state.canDiscardRecovery = false

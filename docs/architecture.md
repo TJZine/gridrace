@@ -205,6 +205,12 @@ session owns live state; the Daily coordinator continues to own Daily/account
 synchronization. Reuse passive presentation and pure keyboard evidence from accepted
 rows, but never use a bundled evaluator/dictionary to decide live acceptance.
 
+The live session owns complete capabilities for new Start and guess input from
+canonical state, server-time display, and its current lifetime/pending work.
+Presentation projects those capabilities. Retrying a captured Start remains a
+separate operation targeting its original round; PostgreSQL still validates every
+command and owns acceptance.
+
 Opponent presence is deferred in this slice. Only local transport status is known;
 opponent inactivity or local socket connectivity is not an opponent online signal.
 

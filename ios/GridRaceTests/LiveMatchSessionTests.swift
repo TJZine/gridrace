@@ -1032,7 +1032,7 @@ final class LiveMatchSessionTests: XCTestCase {
     }
 
     func testSignalsCoalesceAndPreCommandSnapshotCannotOverwriteCommandRecovery() async throws {
-        let lobby = try Phase4LiveFixtures.snapshot("3-lobby")
+        let lobby = try Self.startSnapshot("3-lobby")
         let playing = try Phase4LiveFixtures.snapshot("3-round-2-playing")
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: lobby.match.id))
         let realtime = RealtimeHub()
@@ -2036,7 +2036,7 @@ final class LiveMatchSessionTests: XCTestCase {
 
     func testPendingStartRemainsObservableAcrossUnchangedSnapshotAndHomeResume() async throws {
         for (label, target) in [("3-lobby", 1), ("3-round-1-reveal", 2)] {
-            let initial = try Phase4LiveFixtures.snapshot(label)
+            let initial = try Self.startSnapshot(label)
             let original = LiveRecoveryState(matchID: initial.match.id)
             let store = MemoryLiveRecoveryStore(original)
             let realtime = RealtimeHub()
@@ -2065,6 +2065,7 @@ final class LiveMatchSessionTests: XCTestCase {
             } onChange: { changes.increment() }
             session.startMatch()
             XCTAssertTrue(session.hasPendingStart)
+            XCTAssertFalse(session.canStart)
             XCTAssertEqual(changes.value, 1)
             session.startMatch()
             await eventually { !session.isCommandInFlight && snapshots.value >= 2 && session.phase == .ready }
@@ -2078,11 +2079,13 @@ final class LiveMatchSessionTests: XCTestCase {
             session.leaveToHome()
             XCTAssertNil(session.snapshot)
             XCTAssertTrue(session.hasPendingStart)
+            XCTAssertFalse(session.canStart)
             XCTAssertFalse(session.canRetry)
             session.resumeSavedMatch(); realtime.send(.ready)
             await eventually { session.phase == .ready }
             XCTAssertNil(session.lastError)
             XCTAssertTrue(session.hasPendingStart)
+            XCTAssertFalse(session.canStart)
             XCTAssertTrue(session.canRetry)
             XCTAssertEqual(starts.values, [target], "Resume must fetch rather than dispatch Start")
             withObservationTracking {
@@ -2101,7 +2104,7 @@ final class LiveMatchSessionTests: XCTestCase {
     func testPendingStartClearsOnCanonicalAdvanceDefinitiveDenialAndAccountReset() async throws {
         for (label, target) in [("3-lobby", 1), ("3-round-1-reveal", 2)] {
             for resolution in ["target", "later", "denial", "accountReset"] {
-                let initial = try Phase4LiveFixtures.snapshot(label)
+                let initial = try Self.startSnapshot(label)
                 let canonical = LockedValues<LiveMatchSnapshot>()
                 canonical.append(initial)
                 let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id))
@@ -2123,6 +2126,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 session.startMatch()
                 await eventually { !session.isCommandInFlight && snapshots.value >= 2 && session.phase == .ready }
                 XCTAssertTrue(session.hasPendingStart)
+                XCTAssertFalse(session.canStart)
                 XCTAssertNil(session.lastError)
                 switch resolution {
                 case "target", "later":
@@ -2499,6 +2503,210 @@ final class LiveMatchSessionTests: XCTestCase {
         session.leaveToHome()
     }
 
+    nonisolated private static func startSnapshot(_ label: String) throws -> LiveMatchSnapshot {
+        guard label == "3-lobby" else { return try Phase4LiveFixtures.snapshot(label) }
+        var object = try Phase4LiveFixtures.object(label)
+        object["members"] = try Phase4LiveFixtures.object("3-round-1-countdown")["members"]
+        return try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(object))
+    }
+
+    func testNewStartCapabilityOwnsRosterCreatorExpiryAndRoundPolicy() async throws {
+        var cases: [(LiveMatchSnapshot, Bool)] = [
+            (try Self.startSnapshot("3-lobby"), true),
+            (try Phase4LiveFixtures.snapshot("3-lobby"), false),
+            (try Phase4LiveFixtures.snapshot("3-round-1-reveal"), true),
+        ]
+        for label in ["3-round-2-countdown", "3-round-2-playing", "3-round-3-reveal",
+                      "deletion-active", "deletion-between", "deletion-active-revealed"] {
+            cases.append((try Phase4LiveFixtures.snapshot(label), false))
+        }
+        for variant in ["guest", "expired", "deleted"] {
+            var object = try Phase4LiveFixtures.object("3-lobby")
+            var members = try XCTUnwrap(Phase4LiveFixtures.object("3-round-1-countdown")["members"] as? [[String: Any]])
+            if variant == "guest" {
+                members[0]["is_self"] = false
+                members[1]["is_self"] = true
+            }
+            object["members"] = members
+            var value = try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(object))
+            // Exercise defensive session policy directly for deletion, which wire validation
+            // rejects in a lobby. Canonical deletion fixtures above cover started rooms.
+            if variant == "deleted" {
+                value = LiveMatchSnapshot(serverTime: value.serverTime, match: value.match,
+                    members: value.members.map {
+                        LiveMatchMember(id: $0.id, seat: $0.seat, displayName: $0.displayName,
+                            avatarSeed: $0.avatarSeed, isSelf: $0.isSelf, isDeleted: !$0.isSelf)
+                    }, round: value.round)
+            } else if variant == "expired" {
+                value = LiveMatchSnapshot(serverTime: value.match.expiresAt, match: value.match,
+                    members: value.members, round: value.round)
+            }
+            cases.append((value, false))
+        }
+        var guestReveal = try Phase4LiveFixtures.object("3-round-1-reveal")
+        var guestMembers = try XCTUnwrap(guestReveal["members"] as? [[String: Any]])
+        guestMembers[0]["is_self"] = false
+        guestMembers[1]["is_self"] = true
+        guestReveal["members"] = guestMembers
+        // The former self board is private before reveal only; both are visible here.
+        cases.append((try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(guestReveal)), false))
+        for (snapshot, allowed) in cases {
+            let starts = LockedValues<Int>()
+            let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id))
+            let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+                starts.append(round)
+                return id
+            }), realtime: nil, store: store, uptime: { 0 })
+            XCTAssertFalse(session.canStart)
+            session.changeAccount(to: UUID())
+            await eventually { session.phase == .ready }
+            XCTAssertEqual(session.canStart, allowed)
+            if allowed {
+                session.backgrounded()
+                XCTAssertFalse(session.canStart)
+                session.startMatch()
+                XCTAssertTrue(starts.values.isEmpty)
+                session.foregrounded()
+                await eventually { session.phase == .ready }
+            }
+            session.startMatch()
+            if allowed {
+                XCTAssertFalse(session.canStart, "duplicate Start is gated during dispatch")
+                await eventually { !session.isCommandInFlight && starts.values.count == 1 }
+                XCTAssertEqual(starts.values, [snapshot.round.state == .pending ? 1 : snapshot.match.currentRound + 1])
+            } else {
+                XCTAssertFalse(session.isCommandInFlight)
+                XCTAssertTrue(starts.values.isEmpty)
+            }
+            session.leaveToHome()
+            XCTAssertFalse(session.canStart)
+        }
+        // A later-round Start uses round state, even after the old lobby expiry.
+        let reveal = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        let late = LiveMatchSnapshot(serverTime: reveal.match.expiresAt.addingTimeInterval(100),
+            match: reveal.match, members: reveal.members, round: reveal.round,
+            revealedRounds: reveal.revealedRounds, standings: reveal.standings)
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in late }), realtime: nil,
+            store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: late.match.id)), uptime: { 0 })
+        session.changeAccount(to: UUID())
+        await eventually { session.phase == .ready }
+        XCTAssertTrue(session.canStart)
+        session.leaveToHome()
+    }
+
+    func testPendingGuessBlocksNewStartAfterCanonicalRevealWithoutReplacingIdentity() async throws {
+        let snapshot = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+        let pending = LivePendingIntent.guess(matchID: snapshot.match.id, requestID: UUID(),
+            word: "CRANE", roundNumber: 1, clientBuild: 2)
+        let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id, pendingIntent: pending))
+        let starts = LockedValues<Int>()
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+            starts.append(round)
+            return id
+        }), realtime: nil, store: store,
+            timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]),
+            uptime: { 0 })
+        session.changeAccount(to: UUID())
+        await eventually { session.phase == .ready && !session.isCommandInFlight }
+        XCTAssertFalse(session.canStart)
+        XCTAssertFalse(session.canInput)
+        session.startMatch()
+        XCTAssertTrue(starts.values.isEmpty)
+        XCTAssertEqual(store.storedState.pendingIntent, pending)
+        session.leaveToHome()
+    }
+
+    func testCapturedStartRetryRemainsEligibleAfterLobbyExpiry() async throws {
+        let snapshot = try Self.startSnapshot("3-lobby")
+        let starts = LockedValues<Int>()
+        var clock: TimeInterval = 0
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+            starts.append(round)
+            if starts.values.count == 1 { throw LiveMatchServiceError.unavailable }
+            return id
+        }), realtime: nil, store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id)),
+            timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]),
+            uptime: { clock })
+        session.changeAccount(to: UUID())
+        await eventually { session.phase == .ready }
+        session.startMatch()
+        await eventually { !session.isCommandInFlight && session.phase == .ready }
+        XCTAssertTrue(session.hasPendingStart)
+        clock = snapshot.match.expiresAt.timeIntervalSince(snapshot.serverTime)
+        XCTAssertFalse(session.canStart)
+        XCTAssertTrue(session.canRetry, "new Start policy must not reject an original uncertain target")
+        session.startMatch()
+        XCTAssertEqual(starts.values, [1])
+        session.retry()
+        await eventually { !session.isCommandInFlight && starts.values.count == 2 }
+        XCTAssertEqual(starts.values, [1, 1])
+        session.leaveToHome()
+    }
+
+    func testInputCapabilityAndDispatchRequireActiveRequesterBeforeDeadline() async throws {
+        let matchID = UUID()
+        for state in [LivePlayerState.playing, .solved, .failed, .timedOut, .forfeited] {
+            for expired in [false, true] {
+                let snapshot = Self.snapshot(matchID: matchID, status: .inProgress, round: .playing,
+                    serverTime: Date(timeIntervalSince1970: expired ? 1_180 : 1_000), selfPlayerState: state)
+                let calls = LockedCounter()
+                let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
+                let session = makeSession(service: LiveServiceMock(submit: { _, _, _ in
+                    calls.increment()
+                    throw LiveMatchServiceError.server(.requestConflict)
+                }, snapshot: { _ in snapshot }), realtime: nil, store: store, uptime: { 0 })
+                session.changeAccount(to: UUID())
+                await eventually { session.phase == .ready }
+                let allowed = state == .playing && !expired
+                XCTAssertEqual(session.canInput, allowed)
+                if allowed {
+                    session.backgrounded()
+                    XCTAssertFalse(session.canInput)
+                    session.submitGuess("STONE")
+                    XCTAssertNil(store.storedState.pendingIntent)
+                    session.foregrounded()
+                    await eventually { session.phase == .ready }
+                }
+                session.submitGuess("STONE")
+                if allowed {
+                    XCTAssertFalse(session.canInput, "in-flight and durable pending guesses lock new input")
+                    await eventually { !session.isCommandInFlight && calls.value == 1 }
+                    XCTAssertNotNil(session.pendingIntent)
+                    XCTAssertFalse(session.canInput)
+                    XCTAssertFalse(session.canStart)
+                    let original = store.storedState.pendingIntent
+                    session.submitGuess("CRANE")
+                    XCTAssertEqual(store.storedState.pendingIntent, original)
+                    XCTAssertEqual(calls.value, 1)
+                } else {
+                    XCTAssertNil(store.storedState.pendingIntent)
+                    XCTAssertEqual(calls.value, 0)
+                }
+                session.leaveToHome()
+                XCTAssertFalse(session.canInput)
+            }
+        }
+    }
+
+    func testDeletionBlockedMatchStillPermitsSurvivorInputInActiveRound() async throws {
+        let initial = try Phase4LiveFixtures.snapshot("deletion-active")
+        let round = LiveRound(state: .playing, startsAt: initial.round.startsAt,
+            endsAt: initial.round.endsAt, completedAt: nil, answer: nil, players: initial.round.players,
+            number: initial.round.number)
+        let snapshot = LiveMatchSnapshot(serverTime: try XCTUnwrap(round.startsAt), match: initial.match,
+            members: initial.members, round: round, revision: initial.revision,
+            revealedRounds: initial.revealedRounds, standings: initial.standings)
+        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }), realtime: nil,
+            store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id)), uptime: { 0 })
+        session.changeAccount(to: UUID())
+        await eventually { session.phase == .ready }
+        XCTAssertTrue(session.canInput, "deletion blocks future Starts, while the survivor finishes this round")
+        XCTAssertFalse(session.canStart)
+        session.changeAccount(to: nil)
+        XCTAssertFalse(session.canInput)
+        XCTAssertFalse(session.canStart)
+    }
+
     private func makeSession(
         service: any LiveMatchServicing,
         realtime: (any LiveMatchRealtimeServicing)?,
@@ -2596,7 +2804,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 endsAt: state == .pending ? nil : endsAt,
                 completedAt: state == .revealed ? serverTime : nil,
                 answer: state == .revealed ? "stone" : nil,
-                players: selfPlayerState.map {
+                players: (selfPlayerState ?? (state == .playing ? .playing : nil)).map {
                     [
                         LiveRoundPlayer(
                             memberID: memberID,

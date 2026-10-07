@@ -76,6 +76,7 @@ enum LiveMatchPresentation {
         var canRetry = false
         var canRetryRecoveryStorage = false
         var canDiscardRecovery = false
+        var canStart = false
         var isInputLocked = true
         var error: LiveMatchServiceError?
         var retainedError: String?
@@ -95,6 +96,7 @@ enum LiveMatchPresentation {
             canRetry = session.canRetry
             canRetryRecoveryStorage = session.canRetryRecoveryStorage
             canDiscardRecovery = session.canDiscardRecovery
+            canStart = session.canStart
             isInputLocked = session.isInputLocked
             error = session.lastError
             self.retainedError = retainedError
@@ -189,9 +191,7 @@ enum LiveMatchPresentation {
         let host = snapshot.members.first { $0.id == snapshot.match.creatorMemberID }?.displayName ?? "the host"
         let opponent = snapshot.members.first { !$0.isSelf }?.displayName ?? "player two"
         let time = state.displayedTime ?? snapshot.serverTime
-        let canStart = state.phase == .ready && canStart(snapshot: snapshot, displayedServerTime: time,
-            isCommandInFlight: state.isCommandInFlight, hasPendingIntent: state.pendingIntent != nil,
-            hasPendingStart: state.hasPendingStart)
+        let canStart = state.canStart
         if snapshot.round.state != .playing, result.savedNotice == nil, let message {
             result.topNotice = Notice(subject: "Room", title: message, body: "", requiresAction: true,
                 controls: state.canRetry ? [retry] : [])
@@ -307,26 +307,6 @@ enum LiveMatchPresentation {
         let deletion = snapshot.match.terminalReason == nil ? ""
             : ", A player account was deleted. This round will finish; remaining rounds cannot start."
         return "\(roundLabel(snapshot)), \(start)\(deletion)"
-    }
-
-    static func canStart(
-        snapshot: LiveMatchSnapshot,
-        displayedServerTime: Date,
-        isCommandInFlight: Bool,
-        hasPendingIntent: Bool = false,
-        hasPendingStart: Bool = false
-    ) -> Bool {
-        guard !isCommandInFlight, !hasPendingIntent, !hasPendingStart,
-              snapshot.match.terminalReason == nil,
-              snapshot.members.count == 2,
-              snapshot.members.allSatisfy({ !$0.isDeleted }),
-              snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID
-        else { return false }
-        if snapshot.match.status == .lobby {
-            return snapshot.round.state == .pending && displayedServerTime < snapshot.match.expiresAt
-        }
-        return snapshot.match.status == .inProgress && snapshot.round.state == .revealed
-            && snapshot.match.currentRound < snapshot.match.roundCount
     }
 
     static func initialDraft(snapshot: LiveMatchSnapshot, pending: LivePendingIntent?, draft: String) -> String {
@@ -813,12 +793,7 @@ private struct LiveRoundView: View {
     }
     private var rows: [GuessRow] { LiveMatchPresentation.rows(for: selfPlayer) }
     private var keyboard: KeyboardState { LiveMatchPresentation.keyboard(for: selfPlayer) }
-    private var canInput: Bool {
-        selfPlayer?.state == .playing
-            && !session.isInputLocked
-            && !session.isCommandInFlight
-            && session.pendingIntent == nil
-    }
+    private var canInput: Bool { session.canInput }
 
     private var presentation: LiveMatchPresentation.Presentation {
         LiveMatchPresentation.map(.init(session: session, retainedError: retainedError))

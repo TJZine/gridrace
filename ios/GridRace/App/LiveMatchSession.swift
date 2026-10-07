@@ -94,6 +94,34 @@ final class LiveMatchSession {
         return snapshot.serverTime.addingTimeInterval(max(0, uptime() - snapshotUptime))
     }
 
+    /// Eligibility for a new Start. Retrying a captured target uses `canRetry` instead.
+    var canStart: Bool {
+        guard canBeginCommand, phase == .ready, isOpen, isForeground,
+              recovery.pendingIntent == nil, pendingStart == nil,
+              let snapshot, recovery.matchID == snapshot.match.id,
+              let displayedServerTime,
+              snapshot.match.terminalReason == nil,
+              snapshot.members.count == 2,
+              snapshot.members.allSatisfy({ !$0.isDeleted }),
+              snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID
+        else { return false }
+        if snapshot.match.status == .lobby {
+            return snapshot.round.state == .pending && displayedServerTime < snapshot.match.expiresAt
+        }
+        return snapshot.match.status == .inProgress && snapshot.round.state == .revealed
+            && snapshot.match.currentRound < snapshot.match.roundCount
+    }
+
+    var canInput: Bool {
+        guard canBeginCommand, isOpen, isForeground, pendingStart == nil,
+              !isInputLocked, let snapshot, recovery.matchID == snapshot.match.id,
+              snapshot.match.status == .inProgress,
+              let member = snapshot.members.first(where: \.isSelf), !member.isDeleted,
+              let player = snapshot.round.players.first(where: { $0.memberID == member.id })
+        else { return false }
+        return player.state == .playing
+    }
+
     var isInputLocked: Bool {
         guard phase == .ready,
               recovery.pendingIntent == nil,
@@ -237,12 +265,7 @@ final class LiveMatchSession {
     }
 
     func startMatch() {
-        guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil,
-              isOpen, isForeground, let snapshot,
-              snapshot.match.status == .lobby || (snapshot.match.status == .inProgress
-                && snapshot.round.state == .revealed && snapshot.match.currentRound < snapshot.match.roundCount),
-              snapshot.match.terminalReason == nil
-        else { return }
+        guard canStart, let snapshot else { return }
         let target = snapshot.round.state == .pending ? 1 : snapshot.match.currentRound + 1
         pendingStart = (snapshot.match.id, target)
         performStart()
@@ -292,16 +315,12 @@ final class LiveMatchSession {
     }
 
     func submitGuess(_ word: String) {
-        guard canBeginCommand,
-              !isInputLocked,
-              let matchID = recovery.matchID,
-              recovery.pendingIntent == nil
-        else { return }
+        guard canInput, let snapshot, let matchID = recovery.matchID else { return }
         let intent = LivePendingIntent.guess(
             matchID: matchID,
             requestID: makeUUID(),
             word: word,
-            roundNumber: snapshot!.match.currentRound,
+            roundNumber: snapshot.match.currentRound,
             clientBuild: 2
         )
         guessDraft = word
