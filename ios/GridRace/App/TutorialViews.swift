@@ -129,18 +129,31 @@ private struct RaceView: View {
     @Bindable var model: TutorialModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @FocusState private var acceptsHardwareInput: Bool
     // U-06 + R-01/F1: invalid/incomplete draft -> focus error banner
     // (announcement off). A per-submit generation mints a fresh focus value
     // so an identical-error resubmit refires (same-value assignment would
     // coalesce and never move focus).
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var errorGeneration = 0
+    @State private var lastFocusedError: String?
     @State private var chromeHeight: CGFloat = 0
     @State private var keyboardHeight: CGFloat = 0
     @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
 
     private var minimumBoardHeight: CGFloat {
         minimumTileSize * 6 + 6 * 5
+    }
+
+    private func noteSubmit() {
+        errorGeneration += 1
+        if let error = model.errorMessage {
+            errorFocus = errorGeneration
+            lastFocusedError = error
+        } else {
+            errorFocus = nil
+            lastFocusedError = nil
+        }
     }
 
     var body: some View {
@@ -193,6 +206,43 @@ private struct RaceView: View {
         }
         .onPreferenceChange(TutorialChromeHeightKey.self) { chromeHeight = $0 }
         .onPreferenceChange(TutorialKeyboardHeightKey.self) { keyboardHeight = $0 }
+        // The playing route is the sole hardware-input target. Explicitly
+        // release it for reveal/exit so a stale route cannot keep consuming
+        // Return, Delete, or letter presses after the terminal transition.
+        .focusable(model.phase == .playing)
+        .focused($acceptsHardwareInput)
+        .onAppear { acceptsHardwareInput = model.phase == .playing }
+        .onChange(of: model.phase) { _, phase in
+            acceptsHardwareInput = phase == .playing
+        }
+        .onDisappear { acceptsHardwareInput = false }
+        .onKeyPress(.return) {
+            model.submitGuess()
+            noteSubmit()
+            return .handled
+        }
+        .onKeyPress(.delete) {
+            model.deleteLetter()
+            return .handled
+        }
+        .onKeyPress(characters: .letters) { press in
+            guard let letter = press.characters.first else { return .ignored }
+            model.typeLetter(letter)
+            return .handled
+        }
+        .onChange(of: model.errorMessage) { _, message in
+            // Submit errors are focused in noteSubmit so repeated identical
+            // errors refire. This covers only other error sources and clears
+            // stale focus as editing removes the current error.
+            if message == nil {
+                errorFocus = nil
+                lastFocusedError = nil
+            } else if message != lastFocusedError {
+                errorGeneration += 1
+                errorFocus = errorGeneration
+                lastFocusedError = message
+            }
+        }
     }
 
     private var raceHeader: some View {
@@ -256,8 +306,7 @@ private struct RaceView: View {
 
     private var keyboard: some View {
         KeyboardView(model: model) {
-            errorGeneration += 1
-            errorFocus = model.errorMessage != nil ? errorGeneration : nil
+            noteSubmit()
         }
         .padding(.vertical, 8)
         .background(Color.page)

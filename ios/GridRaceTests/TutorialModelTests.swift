@@ -65,6 +65,44 @@ final class TutorialModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testTutorialEditingUsesLetterAndDeleteIntentsDuringPlay() {
+        let base = Date(timeIntervalSinceReferenceDate: 3_500)
+        let model = makeModel(now: { base })
+        defer { model.cancelSessionTasks() }
+        model.startTutorial()
+        model.update(at: base.addingTimeInterval(3))
+
+        for letter in "ston" { model.typeLetter(letter) }
+        XCTAssertEqual(model.board.draft, "STON")
+
+        model.deleteLetter()
+        XCTAssertEqual(model.board.draft, "STO")
+    }
+
+    func testTutorialInputIntentsAreIgnoredOutsidePlayingRoute() {
+        let base = Date(timeIntervalSinceReferenceDate: 3_600)
+        let model = makeModel(now: { base })
+        defer { model.cancelSessionTasks() }
+
+        model.typeLetter("s")
+        model.deleteLetter()
+        model.submitGuess()
+        XCTAssertEqual(model.phase, .introduction)
+        XCTAssertEqual(model.board.draft, "")
+
+        model.startTutorial()
+        model.update(at: base.addingTimeInterval(3))
+        for letter in "stone" { model.typeLetter(letter) }
+        model.submitGuess()
+        XCTAssertEqual(model.phase, .reveal)
+
+        model.typeLetter("a")
+        model.deleteLetter()
+        model.submitGuess()
+        XCTAssertEqual(model.phase, .reveal)
+        XCTAssertEqual(model.board.draft, "")
+    }
+
     func testReducedMotionRevealIsCompleteImmediatelyAndLocalFirst() {
         let base = Date(timeIntervalSinceReferenceDate: 4_000)
         let model = makeModel(now: { base })

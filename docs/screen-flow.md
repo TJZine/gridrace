@@ -171,6 +171,9 @@ status/error and keyboard heights so the error stays above the keys on SE portra
 Accessibility sizes reflow the bot summaries and scroll the whole play screen vertically and
 the board and keyboard horizontally. Reveal keeps the existing local sequence,
 result summaries, replay and finish behavior.
+During active play, hardware letters, Delete and Return use the same model intents
+and submission-error focus path as the on-screen keyboard. Hardware focus releases
+at reveal or route exit; actual attached-keyboard and OS acceptance remain S4 gates.
 
 ### Live entry and lobby
 
