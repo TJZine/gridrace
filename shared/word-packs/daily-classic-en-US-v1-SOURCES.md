@@ -139,10 +139,11 @@ python3 scripts/parent_revision_pass.py \
 all other `--build` inputs are likewise overridable flags defaulting to the
 original research paths.)
 
-The historical web2 generator `scripts/generate_daily_word_pack.py` built the
-pre-Wiktionary pack and no longer reproduces the checked-in pack; it is
-retained as history, not a gate. Ordinary app builds and CI must not download
-or extract Wiktionary.
+The historical web2 generator was retired after its answer denylist was moved
+into the current checker owner, `scripts/check_word_pack.py`. Git history
+preserves the pre-Wiktionary implementation and provenance; it is not a
+maintenance or CI entrypoint. Ordinary app builds and CI must not download or
+extract Wiktionary.
 
 ## Release gates (not clearance)
 

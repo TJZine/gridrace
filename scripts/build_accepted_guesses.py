@@ -401,8 +401,20 @@ def sense_targets(sense: dict) -> list[str]:
 
 
 def load_revision_index(path: Path) -> dict[str, dict]:
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise ValueError(f"revision index unavailable: {path}: {error}") from error
+    actual_checksum = sha256_bytes(raw)
+    if actual_checksum != FIVE_LETTER_INDEX_SHA256:
+        raise ValueError(
+            f"revision index drift: {path} sha256 {actual_checksum} != frozen "
+            f"{FIVE_LETTER_INDEX_SHA256}; refusing to parse or overwrite "
+            "(STOP condition)"
+        )
+
     index = {}
-    for line in path.open(encoding="utf-8"):
+    for line in raw.decode("utf-8").splitlines():
         line = line.strip()
         if line:
             row = json.loads(line)
@@ -411,6 +423,10 @@ def load_revision_index(path: Path) -> dict[str, dict]:
 
 
 def run(args: argparse.Namespace) -> dict:
+    # Verify the exact consumed revision-index bytes before reading the other
+    # corpus inputs, doing relationship analysis, or mutating any output.
+    index = load_revision_index(Path(args.revision_index))
+
     baseline_raw = Path(args.baseline).read_bytes()
     baseline = baseline_raw.decode("ascii").splitlines()
     actual_baseline_sha = sha256_bytes(baseline_raw)
@@ -609,7 +625,6 @@ def run(args: argparse.Namespace) -> dict:
                 )
     database.close()
 
-    index = load_revision_index(Path(args.revision_index))
     extra: dict = {}
     if args.extra_revisions and Path(args.extra_revisions).exists():
         extra = json.loads(Path(args.extra_revisions).read_text(encoding="utf-8")).get("found", {})

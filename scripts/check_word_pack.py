@@ -47,9 +47,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from generate_daily_word_pack import BANNED_ANSWERS
-
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "shared/word-packs"
 SCRIPTS = ROOT / "scripts"
@@ -70,6 +67,22 @@ ANSWERS_SHA256 = "31330cbe412018d0ea94991c321d032def17def40e725fcadc90363b11cebd
 
 RULES = ("standalone", "explicit_arg", "explicit_altsection", "explicit_reciprocal")
 REVISION_STATUSES = ("five_letter_index", "dump_parent", "unavailable")
+BANNED_ANSWERS = frozenset(
+    {
+        "bitch",
+        "chink",
+        "cunts",
+        "dykes",
+        "fagot",
+        "gooks",
+        "kikes",
+        "nigga",
+        "nigger",
+        "sluts",
+        "spics",
+        "whore",
+    }
+)
 PROVENANCE_KEYS = frozenset(
     {
         "normalized",
