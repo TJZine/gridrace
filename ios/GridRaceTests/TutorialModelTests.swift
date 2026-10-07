@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import GridRace
 
 @MainActor
@@ -164,6 +165,28 @@ final class TutorialModelTests: XCTestCase {
         XCTAssertFalse(model.countdownTaskIsActive)
         XCTAssertFalse(model.revealTaskIsActive)
         XCTAssertEqual(model.board.rows.count, 0)
+    }
+
+    func testPracticeGameplayContainmentAndAccessibilityReachability() async throws {
+        for accessibility in [false, true] {
+            for landscape in accessibility ? [false] : [false, true] {
+                let base = Date(timeIntervalSinceReferenceDate: 3_000)
+                let model = makeModel(now: { base.addingTimeInterval(3) })
+                model.startTutorial()
+                model.update(at: base.addingTimeInterval(6))
+                defer { model.cancelSessionTasks() }
+                let hosted = try await GameplayContainmentHost(
+                    GameplayRouteView(.tutorial) {
+                        TutorialView(model: model, hapticsEnabled: .constant(false))
+                    }, landscape: landscape, accessibility: accessibility)
+                defer { hosted.close() }
+                try hosted.assertGameplay(in: self, name: "practice-playing", opponents: 2, hasTimer: true)
+                for letter in "zzzzz" { model.typeLetter(letter) }
+                model.submitGuess()
+                try await hosted.settle()
+                try hosted.assertGameplay(in: self, name: "practice-error", notices: [try XCTUnwrap(model.errorMessage)], opponents: 2, hasTimer: true)
+            }
+        }
     }
 
     private func makeModel(

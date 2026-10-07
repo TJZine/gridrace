@@ -2,6 +2,7 @@ import Foundation
 import XCTest
 import SwiftUI
 import UIKit
+import Darwin
 @testable import GridRace
 
 @MainActor
@@ -34,7 +35,7 @@ final class DailyClassicModelTests: XCTestCase {
 
     /// Native target-runtime evidence with the real screen bounds and safe areas.
     /// AX captures include lower scroll content; OS VoiceOver remains an S4 gate.
-    func testDailyNativeScreensFitAndAccessibilityContentScrolls() async throws {
+    func testDailyNativeScreenCapturesAndAccessibilityScrollContent() async throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)
         let model = try fixture.model(now: { now })
@@ -68,7 +69,7 @@ final class DailyClassicModelTests: XCTestCase {
                 try await capture(home, scene: scene, name: "\(device)-home-\(state)-\(dark ? "dark" : "light")", dark: dark)
                 if ["unplayed", "progress", "solved", "failed", "hard-mode"].contains(state) {
                     try await capture(NavigationStack { DailyGameView(model: shown) }, scene: scene,
-                                      name: "\(device)-daily-\(state)-\(dark ? "dark" : "light")", dark: dark, mustFit: true)
+                                      name: "\(device)-daily-\(state)-\(dark ? "dark" : "light")", dark: dark)
                 }
                 if state == "solved" || state == "failed" {
                     try await capture(NavigationStack { DailyStatisticsView(model: shown) }, scene: scene,
@@ -82,8 +83,92 @@ final class DailyClassicModelTests: XCTestCase {
         try await capture(NavigationStack { DailyStatisticsView(model: model) }, scene: scene, name: "\(device)-stats-AX5", accessibility: true)
     }
 
+    func testDailyGameplayContainmentAndHardModeErrorRecovery() async throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        for landscape in [false, true] {
+            let model = try fixture.model(store: FailingStore(), now: { now })
+            model.updateHardMode(true)
+            fixture.type("civic", into: model)
+            model.submitGuess()
+            let hosted = try await GameplayContainmentHost(
+                GameplayRouteView(.daily) { DailyGameView(model: model) }, landscape: landscape)
+            defer { hosted.close() }
+            try hosted.assertGameplay(in: self, name: "daily-hard-mode", notices: [GameplayContainmentHost.hardModeReminder])
+            fixture.type("zzzzz", into: model)
+            model.submitGuess()
+            try await hosted.settle()
+            try hosted.assertGameplay(in: self, name: "daily-hard-mode-error", notices: [try XCTUnwrap(model.errorMessage)])
+            XCTAssertFalse(hosted.elements().contains { $0.label == GameplayContainmentHost.hardModeReminder })
+            model.deleteLetter()
+            try await hosted.settle()
+            try hosted.assertGameplay(in: self, name: "daily-hard-mode-edited", notices: [GameplayContainmentHost.hardModeReminder])
+            hosted.close()
+            let clueModel = try fixture.model(store: FailingStore(), now: { now })
+            clueModel.updateHardMode(true)
+            fixture.type("crane", into: clueModel)
+            clueModel.submitGuess()
+            fixture.type("stone", into: clueModel)
+            clueModel.submitGuess()
+            let clueHost = try await GameplayContainmentHost(GameplayRouteView(.daily) { DailyGameView(model: clueModel) }, landscape: landscape)
+            defer { clueHost.close() }
+            try clueHost.assertGameplay(in: self, name: "daily-clue-error", notices: [try XCTUnwrap(clueModel.errorMessage)])
+            clueHost.close()
+            // Appearance retries pending completion, so keep storage unavailable
+            // throughout the hosted fixture rather than failing only one write.
+            let terminalStore = FailingStore()
+            terminalStore.historySaveFailures = 100
+            terminalStore.progressSaveFailures = 100
+            let terminal = try fixture.model(store: terminalStore, now: { now })
+            fixture.type("adore", into: terminal)
+            terminal.submitGuess()
+            let resultHost = try await GameplayContainmentHost(GameplayRouteView(.daily) { DailyGameView(model: terminal) }, landscape: landscape)
+            defer { resultHost.close() }
+            try resultHost.assertGameplay(in: self, name: "daily-terminal-storage-error", notices: [try XCTUnwrap(terminal.errorMessage)],
+                                          expectsKeyboard: false, actions: ["Share result", "View statistics"])
+        }
+        let model = try fixture.model(store: FailingStore(), now: { now })
+        model.updateHardMode(true)
+        fixture.type("civic", into: model)
+        model.submitGuess()
+        fixture.type("zzzzz", into: model)
+        model.submitGuess()
+        let hosted = try await GameplayContainmentHost(GameplayRouteView(.daily) { DailyGameView(model: model) },
+                                                       landscape: false, accessibility: true)
+        defer { hosted.close() }
+        try hosted.assertGameplay(in: self, name: "daily-AX-error", notices: [try XCTUnwrap(model.errorMessage)])
+        model.deleteLetter()
+        try await hosted.settle()
+        try hosted.assertGameplay(in: self, name: "daily-AX-restored-reminder", notices: [GameplayContainmentHost.hardModeReminder])
+    }
+
+    func testContainmentGateRejectsActualClippedBoardAndPassesRestoredFixture() async throws {
+        for clipped in [false, true, false] {
+            let hosted = try await GameplayContainmentHost(NavigationStack {
+                HStack(spacing: 8) {
+                    BoardView(rows: [], draft: "", isPlaying: true, compactLayout: true)
+                        .frame(width: 244, height: 293)
+                        .offset(y: clipped ? 24 : 0)
+                        .clipped()
+                    LetterKeyboardView(keyboard: KeyboardState(), typeLetter: { _ in }, submit: {}, delete: {})
+                }
+                .navigationTitle("Containment fixture").navigationBarTitleDisplayMode(.inline)
+            }, landscape: true)
+            defer { hosted.close() }
+            if clipped {
+                let options = XCTExpectedFailure.Options()
+                options.issueMatcher = { $0.compactDescription.contains("outside") }
+                try XCTExpectFailure("An actual clipped last row must fail the same containment gate", options: options) {
+                    try hosted.assertGameplay(in: self, name: "negative-clipped-board")
+                }
+            } else {
+                try hosted.assertGameplay(in: self, name: "restored-board")
+            }
+        }
+    }
+
     private func capture<V: View>(_ view: V, scene: UIWindowScene, name: String, dark: Bool = false,
-                                  accessibility: Bool = false, mustFit: Bool = false) async throws {
+                                  accessibility: Bool = false) async throws {
         let host = UIHostingController(rootView: view.tint(Color.ink).foregroundStyle(Color.ink)
             .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
         host.overrideUserInterfaceStyle = dark ? .dark : .light
@@ -95,11 +180,6 @@ final class DailyClassicModelTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(350))
         host.view.layoutIfNeeded()
         let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
-        if mustFit {
-            for scroll in scrolls where scroll.bounds.height > 100 {
-                XCTAssertLessThanOrEqual(scroll.contentSize.height, scroll.bounds.height + 1, "Default screen must fit: \(name)")
-            }
-        }
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
         func attach(_ suffix: String) {
             let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
@@ -545,4 +625,302 @@ private struct DailyScreenLiveService: LiveMatchServicing {
         throw LiveMatchServiceError.unavailable
     }
     func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { throw LiveMatchServiceError.unavailable }
+}
+
+/// Shared by the three gameplay fixtures. Frames come from the hosted UIKit
+/// accessibility hierarchy, never from the SwiftUI layout formula under test.
+@MainActor
+final class GameplayContainmentHost {
+    static let hardModeReminder = "Hard Mode locked. Keep correct-position letters in place and reuse present letters in another position."
+    struct Element {
+        let label: String
+        let frame: CGRect
+        let context: String
+        let button: Bool
+        let clips: [CGRect]
+    }
+    let window: UIWindow
+    let host: UIViewController
+    let accessibility: Bool
+    let requestedLandscape: Bool
+    private let scene: UIWindowScene
+    private let automation: GameplayAccessibilityAutomation
+
+    init<V: View>(_ view: V, landscape: Bool, accessibility: Bool = false) async throws {
+        scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        automation = try GameplayAccessibilityAutomation()
+        self.accessibility = accessibility
+        requestedLandscape = landscape
+        host = UIHostingController(rootView: view.tint(Color.ink)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
+        window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: landscape ? .landscapeRight : .portrait))
+        try await settle()
+        window.frame = scene.coordinateSpace.bounds
+        try await settle()
+        XCTAssertEqual(scene.interfaceOrientation.isLandscape, landscape, "OS scene must honor the requested orientation")
+    }
+
+    func settle() async throws {
+        try await Task.sleep(for: .milliseconds(2500))
+        window.layoutIfNeeded()
+        host.view.layoutIfNeeded()
+    }
+
+    func close() {
+        window.isHidden = true
+        window.rootViewController = nil
+        automation.restore()
+    }
+
+    var viewport: CGRect {
+        var rect = window.convert(window.bounds.inset(by: window.safeAreaInsets), to: nil)
+        for bar in views(window).compactMap({ $0 as? UINavigationBar }) where !bar.isHidden {
+            let frame = bar.convert(bar.bounds, to: nil)
+            if frame.intersects(rect) {
+                rect = CGRect(x: rect.minX, y: max(rect.minY, frame.maxY), width: rect.width,
+                              height: max(0, rect.maxY - max(rect.minY, frame.maxY)))
+            }
+        }
+        return rect
+    }
+
+    private func views(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { views($0) }
+    }
+
+    func elements() -> [Element] {
+        var seen: Set<ObjectIdentifier> = []
+        var result: [Element] = []
+        func visit(_ object: NSObject, context: String, clips: [CGRect]) {
+            guard seen.insert(ObjectIdentifier(object)).inserted else { return }
+            var clipping = clips
+            if let view = object as? UIView {
+                guard !view.isHidden, view.alpha > 0 else { return }
+                if view.clipsToBounds { clipping.append(view.convert(view.bounds, to: nil)) }
+            }
+            let label = object.accessibilityLabel ?? ""
+            let nextContext = ["Your six-row game board", "Letter keyboard"].contains(label) ? label : context
+            if !label.isEmpty {
+                result.append(Element(label: label, frame: object.accessibilityFrame, context: context,
+                                      button: object.accessibilityTraits.contains(.button),
+                                      clips: clipping + physicalClips(of: object)))
+            }
+            if let children = object.accessibilityElements {
+                for child in children {
+                    if let child = child as? NSObject { visit(child, context: nextContext, clips: clipping) }
+                }
+            }
+            let count = object.accessibilityElementCount()
+            if count > 0, count < 1000 {
+                for index in 0..<count {
+                    if let child = object.accessibilityElement(at: index) as? NSObject {
+                        visit(child, context: nextContext, clips: clipping)
+                    }
+                }
+            }
+            if let view = object as? UIView {
+                for child in view.subviews { visit(child, context: nextContext, clips: clipping) }
+            }
+        }
+        visit(host.view, context: "", clips: [])
+        return result
+    }
+
+    private func physicalClips(of object: NSObject) -> [CGRect] {
+        var cursor: NSObject? = object
+        var visited: Set<ObjectIdentifier> = []
+        var clips: [CGRect] = []
+        while let current = cursor, visited.insert(ObjectIdentifier(current)).inserted {
+            if let view = current as? UIView {
+                if view.clipsToBounds { clips.append(view.convert(view.bounds, to: nil)) }
+                cursor = view.superview
+            } else if let element = current as? UIAccessibilityElement {
+                cursor = element.accessibilityContainer as? NSObject
+            } else {
+                cursor = nil
+            }
+        }
+        return clips
+    }
+
+    // 0.0001pt accommodates normalized AX-frame roundoff, far below one pixel.
+    func isVisible(_ element: Element) -> Bool {
+        guard element.frame.width > 0, element.frame.height > 0 else { return false }
+        return ([viewport] + element.clips).allSatisfy {
+            $0.insetBy(dx: -0.0001, dy: -0.0001).contains(element.frame)
+        }
+    }
+
+    private func tile(_ element: Element) -> Bool {
+        element.context == "Your six-row game board" &&
+            (element.label.hasPrefix("Empty tile,") || element.label.hasPrefix("Letter "))
+    }
+
+    private func key(_ element: Element) -> Bool {
+        element.context == "Letter keyboard" && element.button
+    }
+
+    func assertGameplay(in test: XCTestCase, name: String, notices: [String] = [], expectsKeyboard: Bool = true,
+                        actions: [String] = [], opponents: Int = 0, hasTimer: Bool = false,
+                        file: StaticString = #filePath, line: UInt = #line) throws {
+        let bars = views(window).compactMap { $0 as? UINavigationBar }.filter { !$0.isHidden }
+        XCTAssertFalse(bars.isEmpty, "Navigation chrome must be hosted", file: file, line: line)
+        for bar in bars {
+            XCTAssertTrue(window.convert(window.bounds, to: nil).contains(bar.convert(bar.bounds, to: nil)),
+                          "Navigation chrome outside scene", file: file, line: line)
+        }
+        let initial = elements()
+        let tiles = initial.filter(tile)
+        let keys = initial.filter(key)
+        XCTAssertEqual(tiles.count, 30, "All six rows must be observed: \(name)", file: file, line: line)
+        XCTAssertEqual(keys.count, expectsKeyboard ? 28 : 0, "26 letters plus Submit/Delete must be observed: \(name)", file: file, line: line)
+        let opponentElements = initial.filter { $0.label.hasPrefix("Opponent ") }
+        let timerElements = initial.filter { $0.label.contains("seconds remaining") }
+        XCTAssertEqual(opponentElements.count, opponents, "Opponent chrome missing", file: file, line: line)
+        if hasTimer { XCTAssertEqual(timerElements.count, 1, "Timer missing", file: file, line: line) }
+        let wanted = tiles + keys + initial.filter {
+            actions.contains($0.label) || notices.contains($0.label) || $0.label.hasPrefix("Opponent ") || $0.label.contains("seconds remaining")
+        }
+        for notice in notices + actions {
+            XCTAssertTrue(initial.contains { $0.label == notice }, "Complete notice missing: \(notice)", file: file, line: line)
+        }
+        var reached: Set<Int> = []
+        var reachEvidence: [Int: String] = [:]
+        func observe() {
+            let current = elements()
+            // Semantic occurrence preserves duplicate letters/feedback tiles.
+            for (index, expected) in wanted.enumerated() {
+                let occurrence = wanted[..<index].filter { $0.label == expected.label && $0.context == expected.context }.count
+                let matches = current.filter { $0.label == expected.label && $0.context == expected.context }
+                if matches.indices.contains(occurrence), isVisible(matches[occurrence]) {
+                    reached.insert(index)
+                    if reachEvidence[index] == nil {
+                        let offsets = views(host.view).compactMap { $0 as? UIScrollView }.map { "\($0.contentOffset)" }
+                        reachEvidence[index] = "\(expected.label): visibleFrame=\(matches[occurrence].frame), scrollOffsets=\(offsets)"
+                    }
+                }
+            }
+        }
+        observe()
+        if accessibility {
+            let scrolls = views(host.view).compactMap { $0 as? UIScrollView }
+            let vertical = scrolls.filter { $0.contentSize.height > $0.bounds.height + 1 }
+            let horizontal = scrolls.filter { $0.contentSize.width > $0.bounds.width + 1 }
+            func offsets(_ maximum: CGFloat, viewport: CGFloat) -> [CGFloat] {
+                let steps = max(1, Int(ceil(maximum / max(1, viewport / 4))))
+                return (0...steps).map { maximum * CGFloat($0) / CGFloat(steps) }
+            }
+            // Sweep vertical content densely, then each board/keyboard horizontal
+            // scroll at that position. Each required full frame must be visible
+            // in at least one real scroll position, not just intersect the image.
+            for scroll in vertical {
+                let original = scroll.contentOffset
+                let minimum = -scroll.adjustedContentInset.top
+                let maximum = max(minimum, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                for distance in offsets(maximum - minimum, viewport: scroll.bounds.height) {
+                    scroll.setContentOffset(CGPoint(x: original.x, y: minimum + distance), animated: false)
+                    host.view.layoutIfNeeded()
+                    observe()
+                    for cross in horizontal {
+                        let originalCross = cross.contentOffset
+                        let minimumX = -cross.adjustedContentInset.left
+                        let maximumX = max(minimumX, cross.contentSize.width - cross.bounds.width + cross.adjustedContentInset.right)
+                        for distanceX in offsets(maximumX - minimumX, viewport: cross.bounds.width) {
+                            cross.setContentOffset(CGPoint(x: minimumX + distanceX, y: originalCross.y), animated: false)
+                            host.view.layoutIfNeeded()
+                            observe()
+                        }
+                        cross.setContentOffset(originalCross, animated: false)
+                    }
+                }
+                scroll.setContentOffset(original, animated: false)
+            }
+        }
+        for (index, element) in wanted.enumerated() {
+            XCTAssertTrue(reached.contains(index), "\(name): \(element.label) \(element.frame) outside \(viewport) or clipped by \(element.clips)", file: file, line: line)
+        }
+        if !accessibility {
+            // D16's tile floor is landscape-only. Portrait empty dashed-shape
+            // AX bounds are not an independently established layout-size oracle.
+            for element in requestedLandscape ? tiles : [] {
+                let floor: CGFloat = 48
+                XCTAssertGreaterThanOrEqual(element.frame.width + 0.0001, floor, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(element.frame.height + 0.0001, floor, file: file, line: line)
+            }
+            for action in initial.filter({ actions.contains($0.label) }) {
+                XCTAssertGreaterThanOrEqual(action.frame.width + 0.0001, 44, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(action.frame.height + 0.0001, 44, file: file, line: line)
+            }
+            for element in keys {
+                let action = ["Submit guess", "Delete letter"].contains(element.label)
+                XCTAssertGreaterThanOrEqual(element.frame.width + 0.0001, action ? 44 : 32, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(element.frame.height + 0.0001, 48, file: file, line: line)
+            }
+            for tile in tiles {
+                XCTAssertFalse(keys.contains { tile.frame.intersection($0.frame).width > 0.0001 && tile.frame.intersection($0.frame).height > 0.0001 },
+                               "Board overlaps keyboard", file: file, line: line)
+            }
+        }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let imageAttachment = XCTAttachment(image: image)
+        imageAttachment.name = name
+        imageAttachment.lifetime = .keepAlways
+        test.add(imageAttachment)
+        let report = "\(name): scene=\(scene.coordinateSpace.bounds), orientation=\(scene.interfaceOrientation.rawValue) (OS), safeArea=\(window.safeAreaInsets), viewport=\(viewport), DynamicType=\(accessibility ? "AX5" : "large") (injected)\n" + initial.map { "\($0.context) | \($0.label) | \($0.frame)" }.joined(separator: "\n") + "\nReachability observations:\n" + reachEvidence.sorted { $0.key < $1.key }.map(\.value).joined(separator: "\n")
+        let attachment = XCTAttachment(string: report)
+        attachment.name = name + "-hierarchy"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+    }
+}
+
+/// UIKit lazily synthesizes SwiftUI's AX tree only for an accessibility client.
+/// Use the system's automation switch in the test process, then restore its prior
+/// value. This private runtime bootstrap is test-only; observations below it use
+/// public UIKit container/label/frame APIs. Unsupported runtimes fail explicitly.
+private final class GameplayAccessibilityAutomation {
+    private let handle: UnsafeMutableRawPointer
+    private let setEnabled: @convention(c) (Int32) -> Void
+    private let previous: Int32
+    private var restored = false
+
+    init() throws {
+        let root = ProcessInfo.processInfo.environment["IPHONE_SIMULATOR_ROOT"] ?? ""
+        handle = try XCTUnwrap(dlopen(root + "/usr/lib/libAccessibility.dylib", RTLD_NOW),
+                              "System accessibility automation runtime unavailable")
+        let getter = try XCTUnwrap(dlsym(handle, "_AXSAutomationEnabled"))
+        let setter = try XCTUnwrap(dlsym(handle, "_AXSSetAutomationEnabled"))
+        let getEnabled = unsafeBitCast(getter, to: (@convention(c) () -> Int32).self)
+        setEnabled = unsafeBitCast(setter, to: (@convention(c) (Int32) -> Void).self)
+        previous = getEnabled()
+        setEnabled(1)
+    }
+
+    deinit { restore() }
+
+    func restore() {
+        guard !restored else { return }
+        setEnabled(previous)
+        dlclose(handle)
+        restored = true
+    }
+}
+
+/// Push the same AppRoute as the product so UIKit supplies actual Back chrome;
+/// no synthetic safe-area padding or navigation-height constants are injected.
+struct GameplayRouteView<Content: View>: View {
+    let route: AppRoute
+    let content: Content
+    init(_ route: AppRoute, @ViewBuilder content: () -> Content) {
+        self.route = route
+        self.content = content()
+    }
+    var body: some View {
+        NavigationStack(path: .constant([route])) {
+            Color.page.navigationDestination(for: AppRoute.self) { _ in content }
+        }
+    }
 }

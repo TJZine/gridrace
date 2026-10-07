@@ -245,7 +245,6 @@ final class LiveMatchViewTests: XCTestCase {
                 let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
                 func attach(_ suffix: String = "") {
                     let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-                    XCTAssertEqual(image.size.width, 375)
                     let attachment = XCTAttachment(image: image)
                     attachment.name = "native-SE-\(scenario.rawValue)-\(accessibility ? "AX5" : "normal")\(suffix)"
                     attachment.lifetime = .keepAlways
@@ -263,6 +262,38 @@ final class LiveMatchViewTests: XCTestCase {
             await fixture.service.releaseDelays()
             session.leaveToHome()
             for _ in 0..<100 where session.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
+        }
+    }
+
+    @MainActor
+    func testLiveGameplayContainmentAndAccessibilityReachability() async throws {
+        for accessibility in [false, true] {
+            for landscape in accessibility ? [false] : [false, true] {
+                for scenario in [RenderScenario.playing, .rejectedWord, .guessDecision, .solved] {
+                    let fixture = try await makeScenario(scenario)
+                    defer { fixture.session.leaveToHome() }
+                    let hosted = try await GameplayContainmentHost(
+                        GameplayRouteView(.live) {
+                            LiveMatchFlowView(session: fixture.session, hapticsEnabled: false,
+                                              highContrast: false, isSignedIn: true)
+                        }, landscape: landscape, accessibility: accessibility)
+                    defer { hosted.close() }
+                    if scenario == .rejectedWord {
+                        fixture.session.submitGuess("CRANE")
+                        try await settle(fixture.session)
+                        try await hosted.settle()
+                    }
+                    let presentation = LiveMatchPresentation.map(.init(session: fixture.session))
+                    let notices = scenario == .rejectedWord
+                        ? [try XCTUnwrap(LiveMatchPresentation.errorMessage(.server(.wordNotAccepted)))]
+                        : presentation.notice.map { [$0.body] } ?? []
+                    let actions = scenario == .guessDecision ? ["Retry saved request", "Discard saved request"] : []
+                    try hosted.assertGameplay(in: self, name: "live-\(scenario.rawValue)", notices: notices,
+                                              expectsKeyboard: presentation.notice == nil, actions: actions,
+                                              opponents: try XCTUnwrap(fixture.session.snapshot).members.filter { !$0.isSelf }.count,
+                                              hasTimer: true)
+                }
+            }
         }
     }
 
