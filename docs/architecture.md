@@ -34,6 +34,11 @@ deleting an account swaps away from that directory before another account can re
 it. Supabase Auth sessions use the SDK's Apple-platform Keychain storage and never
 enter Daily Classic files or `UserDefaults`.
 
+`AccountModel` applies authentication identity changes without waiting for profile
+transport. It owns a cancellable profile task with identity and request-generation
+guards, so a replaced account or profile retry rejects older success and failure.
+Profile availability does not gate authenticated sign-out or account deletion.
+
 After sign-in, a small sync coordinator pulls owner-private state and continues using
 the account's local files for gameplay. It marks the current compact snapshot pending
 after an accepted row or completion and retries on sign-in, foreground, and explicit
@@ -42,6 +47,11 @@ completion always dominates active progress; a longer exact-prefix active attemp
 advances; divergent active attempts and distinct terminal results are shown as choices
 rather than silently combined. Statistics are always recalculated from the merged
 immutable results.
+
+A pending guest-history import belongs to its account and sync-engine lifecycle.
+Replacing that lifecycle clears the pending decision; successful synchronization
+for another account cannot mark it imported. Staged conflicts require an explicit
+attempt choice, and durable decision-write failures remain retryable.
 
 Hard Mode is attempt configuration, separate from immutable puzzle identity. A
 started attempt (accepted guesses) takes precedence over an empty board with a

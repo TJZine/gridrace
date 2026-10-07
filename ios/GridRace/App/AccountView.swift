@@ -34,13 +34,13 @@ struct AccountView: View {
         List {
             if !model.isConfigured {
                 Section { unavailableCard }
+            } else if model.isSignedIn {
+                signedInContent
             } else if model.isRestoring {
                 Section {
                     ProgressView("Restoring account")
                         .frame(maxWidth: .infinity, minHeight: 180)
                 }
-            } else if model.isSignedIn {
-                signedInContent
             } else {
                 signedOutContent
             }
@@ -224,38 +224,43 @@ struct AccountView: View {
                 }
                 .listRowBackground(Color.card)
             }
-
-            Section {
-                Button { run { await model.signOut() } } label: {
-                    Text("Sign out")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .disabled(model.isWorking)
-                Button(role: .destructive) {
-                    showingDeleteConfirmation = true
-                } label: {
-                    Text("Delete account")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .disabled(model.isWorking)
-            }
-            .listRowBackground(Color.card)
         } else {
             Section("Profile") {
                 VStack(spacing: 14) {
-                    ProgressView()
-                    Text("Loading your profile")
+                    if model.isLoadingProfile {
+                        ProgressView()
+                        Text("Loading your profile")
+                    } else {
+                        Text("Your profile is unavailable")
+                    }
                     Button { run { await model.retryProfile() } } label: {
                         Text("Try again")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(OutlinedInkButtonStyle())
-                    .disabled(model.isWorking)
+                    .disabled(model.isWorking || model.isLoadingProfile)
                 }
                 .frame(maxWidth: .infinity, minHeight: 180)
             }
             .listRowBackground(Color.card)
         }
+        Section {
+            Button { run { await model.signOut() } } label: {
+                Text("Sign out")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .accessibilityIdentifier("account-sign-out")
+            .disabled(model.isWorking)
+            Button(role: .destructive) {
+                showingDeleteConfirmation = true
+            } label: {
+                Text("Delete account")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .accessibilityIdentifier("account-delete")
+            .disabled(model.isWorking)
+        }
+        .listRowBackground(Color.card)
     }
 
     // Exact signed-in reassurance, shared by the viewing, initial-setup,

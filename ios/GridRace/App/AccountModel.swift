@@ -11,11 +11,15 @@ final class AccountModel {
     private let didDeleteAccount: @MainActor (UUID) async throws -> Void
     private var authObservation: Task<Void, Never>?
     private var started = false
+    private var profileTask: Task<Void, Never>?
+    private var sessionGeneration = 0
+    private var profileGeneration = 0
 
     private(set) var session: AccountSession?
     private(set) var profile: PlayerProfile?
     private(set) var isRestoring = false
     private(set) var isWorking = false
+    private(set) var isLoadingProfile = false
     private(set) var errorMessage: String?
     // Per-error event seam: incremented on every error assignment (even when
     // the message string repeats, e.g. retryProfile → loadProfile failing
@@ -43,6 +47,7 @@ final class AccountModel {
 
     isolated deinit {
         authObservation?.cancel()
+        profileTask?.cancel()
     }
 
     func start() async {
@@ -52,7 +57,7 @@ final class AccountModel {
         authObservation = Task { [weak self] in
             for await session in changes {
                 guard !Task.isCancelled else { return }
-                await self?.receive(session)
+                self?.receive(session)
             }
         }
         await restoreSession()
@@ -60,27 +65,33 @@ final class AccountModel {
 
     func restoreSession() async {
         guard let service else { return }
+        let generation = sessionGeneration
         isRestoring = true
         errorMessage = nil
         defer { isRestoring = false }
         do {
             let restored = try await service.restoreSession()
             try Task.checkCancellation()
-            await receive(restored)
+            guard sessionGeneration == generation else { return }
+            receive(restored)
         } catch is CancellationError {
         } catch {
+            guard sessionGeneration == generation else { return }
             presentError("Your account could not be restored. You can keep playing and retry.")
         }
     }
 
     func refreshSession() async {
         guard let service, session != nil else { return }
+        let generation = sessionGeneration
         do {
             let refreshed = try await service.refreshSession()
             try Task.checkCancellation()
-            await receive(refreshed)
+            guard sessionGeneration == generation else { return }
+            receive(refreshed)
         } catch is CancellationError {
         } catch {
+            guard sessionGeneration == generation else { return }
             presentError("Your account connection needs attention. Try again when you're online.")
         }
     }
@@ -91,7 +102,7 @@ final class AccountModel {
         do {
             let session = try await service.signInWithApple(idToken: idToken, rawNonce: rawNonce)
             try Task.checkCancellation()
-            await receive(session)
+            receive(session)
         } catch is CancellationError {
         } catch {
             presentError("Sign in didn't finish. Try again.")
@@ -105,7 +116,7 @@ final class AccountModel {
         do {
             let session = try await service.signInForLocalTesting(email: email, password: password)
             try Task.checkCancellation()
-            await receive(session)
+            receive(session)
         } catch is CancellationError {
         } catch {
             presentError("Local sign in didn't finish. Check the local account and try again.")
@@ -115,7 +126,8 @@ final class AccountModel {
 
     func retryProfile() async {
         guard let session else { return }
-        await loadProfile(for: session)
+        startProfileLoad(for: session)
+        await profileTask?.value
     }
 
     func randomizeAvatar() {
@@ -129,6 +141,8 @@ final class AccountModel {
             isWorking = false
             return
         }
+        invalidateProfileLoad()
+        let generation = sessionGeneration
         defer { isWorking = false }
         do {
             let saved = try await service.updateProfile(
@@ -137,10 +151,11 @@ final class AccountModel {
                 avatarSeed: avatarSeedDraft
             )
             try Task.checkCancellation()
-            guard self.session?.userID == saved.userID else { return }
+            guard sessionGeneration == generation, self.session?.userID == saved.userID else { return }
             apply(saved)
         } catch is CancellationError {
         } catch {
+            guard sessionGeneration == generation else { return }
             presentError("Your profile couldn't be saved. Try again.")
         }
     }
@@ -204,37 +219,65 @@ final class AccountModel {
         return true
     }
 
-    private func receive(_ nextSession: AccountSession?) async {
+    private func receive(_ nextSession: AccountSession?) {
         guard let nextSession else {
             clearAccountState()
             didChangeSession(nil)
             return
         }
-        let needsLoad = session?.userID != nextSession.userID || profile == nil
-        if session?.userID != nextSession.userID {
+        let changedIdentity = session?.userID != nextSession.userID
+        if changedIdentity {
+            invalidateProfileLoad()
+            sessionGeneration += 1
             profile = nil
+            errorMessage = nil
             displayNameDraft = ""
             avatarSeedDraft = UUID().uuidString.lowercased()
         }
         session = nextSession
         didChangeSession(nextSession.userID)
-        if needsLoad { await loadProfile(for: nextSession) }
+        if changedIdentity || (profile == nil && profileTask == nil) {
+            startProfileLoad(for: nextSession)
+        }
     }
 
-    private func loadProfile(for session: AccountSession) async {
+    private func startProfileLoad(for session: AccountSession) {
         guard let service else { return }
-        do {
-            let loaded = try await service.loadProfile(userID: session.userID)
-            try Task.checkCancellation()
-            guard self.session?.userID == loaded.userID else { return }
-            apply(loaded)
-            errorMessage = nil
-        } catch is CancellationError {
-        } catch {
-            guard self.session?.userID == session.userID else { return }
-            profile = nil
-            presentError("Your profile couldn't be loaded. Try again.")
+        invalidateProfileLoad()
+        let generation = profileGeneration
+        isLoadingProfile = true
+        errorMessage = nil
+        profileTask = Task { [weak self] in
+            do {
+                let loaded = try await service.loadProfile(userID: session.userID)
+                try Task.checkCancellation()
+                guard let self, self.profileGeneration == generation,
+                      self.session?.userID == session.userID else { return }
+                if loaded.userID == session.userID {
+                    self.apply(loaded)
+                    self.errorMessage = nil
+                } else {
+                    self.profile = nil
+                    self.presentError("Your profile couldn't be loaded. Try again.")
+                }
+            } catch is CancellationError {
+            } catch {
+                guard let self, self.profileGeneration == generation,
+                      self.session?.userID == session.userID else { return }
+                self.profile = nil
+                self.presentError("Your profile couldn't be loaded. Try again.")
+            }
+            guard let self, self.profileGeneration == generation else { return }
+            self.isLoadingProfile = false
+            self.profileTask = nil
         }
+    }
+
+    private func invalidateProfileLoad() {
+        profileGeneration += 1
+        profileTask?.cancel()
+        profileTask = nil
+        isLoadingProfile = false
     }
 
     private func apply(_ profile: PlayerProfile) {
@@ -244,6 +287,9 @@ final class AccountModel {
     }
 
     private func clearAccountState() {
+        invalidateProfileLoad()
+        sessionGeneration += 1
+        errorMessage = nil
         session = nil
         profile = nil
         displayNameDraft = ""

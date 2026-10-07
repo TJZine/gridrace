@@ -121,6 +121,9 @@ sign-in transition, a loaded profile, completed account work and finished profil
 setup. A sheet opened while already signed in (including expired authentication)
 stays open; sign-out/deletion or import/conflict updates alone do not dismiss it.
 Coordinator ownership of account cleanup, guest history and callbacks is unchanged.
+Authentication changes switch account state before profile loading finishes.
+While a profile is loading or unavailable, authenticated Sign out and Delete account
+remain reachable; a profile failure offers retry without trapping the guest fallback.
 First sign-in asks before adding guest history; skipping/importing does not delete
 guest files. Sheet interaction and actual VoiceOver acceptance remain S4 gates.
 

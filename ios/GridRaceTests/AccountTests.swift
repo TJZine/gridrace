@@ -1,5 +1,7 @@
 import Foundation
 import XCTest
+import SwiftUI
+import UIKit
 @testable import GridRace
 
 final class AppleNonceTests: XCTestCase {
@@ -389,6 +391,217 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         }
     }
 
+    func testAuthStreamSwitchesDailyCacheBeforeSuspendedProfileReturns() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let a = UUID(), b = UUID()
+        let service = AccountServiceMock()
+        service.restoredSession = AccountSession(userID: a, expiresAt: .distantFuture)
+        var suspended: CheckedContinuation<PlayerProfile, Error>?
+        var returned = false
+        service.profileLoader = { userID in
+            if userID == a {
+                defer { returned = true }
+                return try await withCheckedThrowingContinuation { suspended = $0 }
+            }
+            return PlayerProfile(userID: b, displayName: "Blair", avatarSeed: "b", createdAt: .distantPast, updatedAt: .distantPast)
+        }
+        let remotes = [a: CoordinatorDailyRemote(userID: a), b: CoordinatorDailyRemote(userID: b)]
+        let coordinator = try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main), tutorialPack: WordPack.load(bundle: .main),
+            guestStore: fixture.guestStore, accountService: nil, accountModelService: service,
+            dailyRemoteFactory: { remotes[$0]! },
+            accountStoreFactory: { AccountDailyClassicStore(rootDirectory: fixture.root, userID: $0) },
+            liveStoreFactory: { _ in AccountLifecycleLiveStore(LiveRecoveryState()) }
+        )
+        coordinator.daily.typeLetter("G")
+        await coordinator.start()
+        await waitForAccountCondition { suspended != nil }
+        coordinator.daily.typeLetter("A")
+        service.emit(nil)
+        await waitForAccountCondition { coordinator.account.session == nil }
+        XCTAssertEqual(coordinator.daily.game.draft, "G")
+        service.emit(AccountSession(userID: b, expiresAt: .distantFuture))
+        await waitForAccountCondition { coordinator.account.profile?.userID == b }
+        XCTAssertEqual(coordinator.daily.game.draft, "")
+        XCTAssertTrue(coordinator.isDailyPlayable)
+        suspended?.resume(throwing: TestError.failed)
+        await waitForAccountCondition { returned }
+        XCTAssertEqual(coordinator.account.session?.userID, b)
+        XCTAssertEqual(coordinator.account.profile?.displayName, "Blair")
+        XCTAssertNil(coordinator.account.errorMessage)
+        XCTAssertEqual(coordinator.daily.game.draft, "")
+        XCTAssertEqual(try fixture.guestStore.loadProgress()?.draft, "G")
+    }
+
+    func testSuspendedAImportCannotMarkBImportedOrHideBOffer() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let a = UUID(), b = UUID()
+        let remoteA = CoordinatorDailyRemote(userID: a)
+        let remoteB = CoordinatorDailyRemote(userID: b)
+        let coordinator = try importCoordinator(fixture, remotes: [a: remoteA, b: remoteB])
+        coordinator.sessionChanged(to: a)
+        await assertInitialSync(coordinator, remote: remoteA)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+        await remoteA.suspendNextPull()
+        coordinator.importGuestHistory()
+        await waitForAccountCondition { await remoteA.isSuspended }
+        let storeA = AccountDailyClassicStore(rootDirectory: fixture.root, userID: a)
+        XCTAssertNil(try storeA.loadSyncMetadata().guestImportDecision)
+        XCTAssertEqual(try storeA.loadHistory().completedResults, [fixture.guestResult])
+
+        coordinator.sessionChanged(to: b)
+        await assertInitialSync(coordinator, remote: remoteB)
+        let storeB = AccountDailyClassicStore(rootDirectory: fixture.root, userID: b)
+        XCTAssertNil(try storeB.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+        XCTAssertTrue(try storeB.loadHistory().completedResults.isEmpty)
+        await remoteA.releasePull()
+        await waitForAccountCondition { await remoteA.releasedPullReturned }
+        XCTAssertNil(try storeB.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+        XCTAssertNil(try storeA.loadSyncMetadata().guestImportDecision)
+        XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults, [fixture.guestResult])
+    }
+
+    func testCanceledImportStagingDoesNotCreatePendingDecisionForReplacement() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let a = UUID(), b = UUID()
+        let remotes = [a: CoordinatorDailyRemote(userID: a), b: CoordinatorDailyRemote(userID: b)]
+        let coordinator = try importCoordinator(fixture, remotes: remotes)
+        coordinator.sessionChanged(to: a)
+        await assertInitialSync(coordinator, remote: remotes[a]!)
+        coordinator.importGuestHistory()
+        // Replace the account before the scheduled staging task can run.
+        coordinator.sessionChanged(to: b)
+        await assertInitialSync(coordinator, remote: remotes[b]!)
+        let storeA = AccountDailyClassicStore(rootDirectory: fixture.root, userID: a)
+        let storeB = AccountDailyClassicStore(rootDirectory: fixture.root, userID: b)
+        XCTAssertTrue(try storeA.loadHistory().completedResults.isEmpty)
+        XCTAssertNil(try storeA.loadSyncMetadata().guestImportDecision)
+        XCTAssertNil(try storeB.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+    }
+
+    func testImportRetryForSameAccountFinishesDecisionAfterNetworkFailure() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let userID = UUID()
+        let remote = CoordinatorDailyRemote(userID: userID)
+        let coordinator = try importCoordinator(fixture, remotes: [userID: remote])
+        coordinator.sessionChanged(to: userID)
+        await assertInitialSync(coordinator, remote: remote)
+        await remote.failNextPull()
+        coordinator.importGuestHistory()
+        await waitForAccountCondition { if case .failed = coordinator.syncStatus { true } else { false } }
+        let store = AccountDailyClassicStore(rootDirectory: fixture.root, userID: userID)
+        XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+        coordinator.retrySync()
+        await waitForAccountCondition { !coordinator.canImportGuestHistory }
+        XCTAssertEqual(try store.loadSyncMetadata().guestImportDecision, .imported)
+        XCTAssertEqual(try store.loadHistory().completedResults, [fixture.guestResult])
+        XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults, [fixture.guestResult])
+    }
+
+    func testGuestImportConflictKeepsDecisionPendingUntilExplicitResolution() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let userID = UUID()
+        let accountResult = try importResult(priorWords: ["civic"])
+        let store = AccountDailyClassicStore(rootDirectory: fixture.root, userID: userID)
+        var history = DailyClassicHistory()
+        XCTAssertTrue(history.record(accountResult))
+        try store.save(history)
+        let remote = CoordinatorDailyRemote(userID: userID, result: accountResult)
+        let coordinator = try importCoordinator(fixture, remotes: [userID: remote])
+        coordinator.sessionChanged(to: userID)
+        await assertInitialSync(coordinator, remote: remote)
+        coordinator.importGuestHistory()
+        await waitForAccountCondition { !coordinator.conflicts.isEmpty }
+        XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+        coordinator.retrySync()
+        // This retry must not bypass the still-unresolved import choice.
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertFalse(coordinator.conflicts.isEmpty)
+        XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
+        coordinator.resolveFirstConflict(useCloud: true)
+        await waitForAccountCondition { !coordinator.canImportGuestHistory }
+        XCTAssertEqual(try store.loadSyncMetadata().guestImportDecision, .imported)
+        XCTAssertTrue(coordinator.conflicts.isEmpty)
+        XCTAssertEqual(try store.loadHistory().completedResults, [accountResult])
+        XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults, [fixture.guestResult])
+    }
+
+    func testFailedGuestStagingCannotBeMarkedImportedByLaterSync() async throws {
+        let fixture = try makeImportFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let userID = UUID()
+        let remote = CoordinatorDailyRemote(userID: userID)
+        let coordinator = try importCoordinator(fixture, remotes: [userID: remote])
+        coordinator.sessionChanged(to: userID)
+        await assertInitialSync(coordinator, remote: remote)
+        try Data("{".utf8).write(to: fixture.guestStore.directory.appending(path: "daily-history-v1.json"))
+        coordinator.importGuestHistory()
+        await waitForAccountCondition { coordinator.syncStatus == .failed(.invalidData) }
+        coordinator.retrySync()
+        await waitForAccountCondition { if case .synced = coordinator.syncStatus { true } else { false } }
+        let store = AccountDailyClassicStore(rootDirectory: fixture.root, userID: userID)
+        XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
+        XCTAssertTrue(coordinator.canImportGuestHistory)
+    }
+
+    private func makeImportFixture() throws -> (root: URL, guestStore: DailyClassicStore, guestResult: DailyCompletedResult) {
+        let root = FileManager.default.temporaryDirectory.appending(path: "GridRaceCoordinatorImport-\(UUID().uuidString)")
+        let guestStore = DailyClassicStore(directory: root.appending(path: "Guest"))
+        let result = try importResult()
+        var history = DailyClassicHistory()
+        XCTAssertTrue(history.record(result))
+        try guestStore.save(history)
+        return (root, guestStore, result)
+    }
+
+    private func importCoordinator(
+        _ fixture: (root: URL, guestStore: DailyClassicStore, guestResult: DailyCompletedResult),
+        remotes: [UUID: CoordinatorDailyRemote]
+    ) throws -> DailyAccountCoordinator {
+        try DailyAccountCoordinator(
+            dailyPack: DailyWordPack.load(bundle: .main), tutorialPack: WordPack.load(bundle: .main),
+            guestStore: fixture.guestStore, accountService: nil,
+            dailyRemoteFactory: { remotes[$0]! },
+            accountStoreFactory: { AccountDailyClassicStore(rootDirectory: fixture.root, userID: $0) },
+            liveStoreFactory: { _ in AccountLifecycleLiveStore(LiveRecoveryState()) }
+        )
+    }
+
+    private func importResult(priorWords: [String] = []) throws -> DailyCompletedResult {
+        let pack = try DailyWordPack.load(bundle: .main)
+        let date = Date(timeIntervalSince1970: TimeInterval(pack.epochDay * 86_400))
+        let puzzle = try DailyPuzzleSchedule.puzzle(at: date, in: pack)
+        var game = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(pack.acceptedGuesses))
+        for (index, word) in (priorWords + [puzzle.answer]).enumerated() {
+            for letter in word { game.type(letter) }
+            let submitted = game.submit(at: date.addingTimeInterval(TimeInterval(index + 1)))
+            XCTAssertNil(submitted.error)
+        }
+        return try XCTUnwrap(game.completedResult)
+    }
+
+    private func assertInitialSync(_ coordinator: DailyAccountCoordinator, remote: CoordinatorDailyRemote) async {
+        await waitForAccountCondition { if case .synced = coordinator.syncStatus { true } else { false } }
+        let uploads = await remote.progressUploads
+        let canonical = await remote.canonicalProgress
+        XCTAssertEqual(uploads.count, 1, "Activation must synchronize its real blank active progress")
+        XCTAssertNil(uploads.first?.expectedRevision)
+        XCTAssertEqual(canonical?.userID, remote.userID)
+        XCTAssertEqual(canonical?.puzzleID, coordinator.daily.puzzle.id)
+        XCTAssertEqual(canonical?.guesses, [])
+        XCTAssertEqual(canonical?.revision, 1)
+    }
+
     private func makeLifecycleFixture() throws -> LifecycleFixture {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "GridRaceAccountLifecycleTests-\(UUID().uuidString)")
@@ -468,6 +681,7 @@ final class AccountModelTests: XCTestCase {
         let model = AccountModel(service: service)
 
         await model.start()
+        await waitForAccountCondition { !model.isLoadingProfile }
 
         XCTAssertEqual(model.session?.userID, userID)
         XCTAssertEqual(model.profile?.displayName, "Alex")
@@ -482,6 +696,7 @@ final class AccountModelTests: XCTestCase {
         let model = AccountModel(service: service)
 
         await model.signInWithApple(idToken: "identity-token", rawNonce: "raw-nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
 
         XCTAssertEqual(service.appleCredentials?.idToken, "identity-token")
         XCTAssertEqual(service.appleCredentials?.nonce, "raw-nonce")
@@ -496,6 +711,7 @@ final class AccountModelTests: XCTestCase {
         service.loadedProfile = profile(userID: userID, name: "Alex")
         let model = AccountModel(service: service)
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
         model.displayNameDraft = "A"
 
         await model.saveProfile()
@@ -512,6 +728,7 @@ final class AccountModelTests: XCTestCase {
         service.loadedProfile = profile(userID: userID, name: "Alex")
         let model = AccountModel(service: service)
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
         let oldSeed = model.avatarSeedDraft
         model.displayNameDraft = "Sam-2"
         model.randomizeAvatar()
@@ -540,6 +757,7 @@ final class AccountModelTests: XCTestCase {
             didDeleteAccount: { deletedUserID = $0 }
         )
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
 
         service.deleteError = TestError.failed
         await model.deleteAccount()
@@ -562,6 +780,7 @@ final class AccountModelTests: XCTestCase {
             didDeleteAccount: { _ in throw TestError.failed }
         )
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
 
         await model.deleteAccount()
 
@@ -580,6 +799,7 @@ final class AccountModelTests: XCTestCase {
             return true
         })
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
 
         await model.signOut()
 
@@ -610,6 +830,7 @@ final class AccountModelTests: XCTestCase {
         let model = AccountModel(service: service)
 
         await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+        await waitForAccountCondition { !model.isLoadingProfile }
         XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
         let firstEvent = model.errorEvent
 
@@ -617,6 +838,147 @@ final class AccountModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Your profile couldn't be loaded. Try again.")
         XCTAssertEqual(model.errorEvent, firstEvent + 1)
+    }
+
+    func testSuspendedProfileDoesNotBlockNilAndReplacementIdentityOrApplyLateResults() async {
+        for lateFailure in [false, true] {
+            let a = UUID(), b = UUID()
+            let service = AccountServiceMock()
+            service.restoredSession = session(a)
+            var suspended: CheckedContinuation<PlayerProfile, Error>?
+            var completedA = false
+            let bProfile = profile(userID: b, name: "Blair")
+            service.profileLoader = { userID in
+                if userID == b { return bProfile }
+                defer { completedA = true }
+                return try await withCheckedThrowingContinuation { suspended = $0 }
+            }
+            var identities: [UUID?] = []
+            let model = AccountModel(service: service, didChangeSession: { identities.append($0) })
+            await model.start()
+            await waitForAccountCondition { suspended != nil }
+            XCTAssertEqual(model.session?.userID, a)
+            XCTAssertTrue(model.isLoadingProfile)
+            XCTAssertFalse(model.isWorking)
+
+            service.emit(nil)
+            await waitForAccountCondition { model.session == nil }
+            XCTAssertNil(model.profile)
+            XCTAssertEqual(model.displayNameDraft, "")
+            service.emit(session(b))
+            await waitForAccountCondition { model.profile == bProfile }
+            let errorEvent = model.errorEvent
+            if lateFailure { suspended?.resume(throwing: TestError.failed) }
+            else { suspended?.resume(returning: profile(userID: a, name: "Alex")) }
+            await waitForAccountCondition { completedA }
+            XCTAssertEqual(identities, [a, nil, b])
+            XCTAssertEqual(model.session?.userID, b)
+            XCTAssertEqual(model.profile, bProfile)
+            XCTAssertEqual(model.displayNameDraft, "Blair")
+            XCTAssertNil(model.errorMessage)
+            XCTAssertEqual(model.errorEvent, errorEvent)
+            XCTAssertFalse(model.isLoadingProfile)
+        }
+    }
+
+    func testSameUserRefreshKeepsPendingProfileAndReadyProfile() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.restoredSession = session(userID)
+        service.refreshedSession = session(userID)
+        var suspended: CheckedContinuation<PlayerProfile, Error>?
+        service.profileLoader = { _ in
+            try await withCheckedThrowingContinuation { suspended = $0 }
+        }
+        let model = AccountModel(service: service)
+        await model.start()
+        await waitForAccountCondition { suspended != nil }
+        await model.refreshSession()
+        XCTAssertEqual(service.loadedUserIDs, [userID])
+        XCTAssertTrue(model.isLoadingProfile)
+        suspended?.resume(returning: profile(userID: userID, name: "Alex"))
+        await waitForAccountCondition { !model.isLoadingProfile }
+        await model.refreshSession()
+        XCTAssertEqual(service.loadedUserIDs, [userID])
+        XCTAssertEqual(model.profile?.displayName, "Alex")
+    }
+
+    func testRetrySupersedesLateFailureWithinSameAccount() async {
+        let userID = UUID()
+        let service = AccountServiceMock()
+        service.restoredSession = session(userID)
+        var suspended: CheckedContinuation<PlayerProfile, Error>?
+        var returned = false
+        let ready = profile(userID: userID, name: "Alex")
+        service.profileLoader = { _ in
+            if suspended != nil { return ready }
+            defer { returned = true }
+            return try await withCheckedThrowingContinuation { suspended = $0 }
+        }
+        let model = AccountModel(service: service)
+        await model.start()
+        await waitForAccountCondition { suspended != nil }
+        await model.retryProfile()
+        XCTAssertEqual(model.profile, ready)
+        suspended?.resume(throwing: TestError.failed)
+        await waitForAccountCondition { returned }
+        XCTAssertEqual(model.profile, ready)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isLoadingProfile)
+    }
+
+    func testProfileFailureDoesNotPreventSignOutOrDeletion() async {
+        for deleting in [false, true] {
+            let service = AccountServiceMock()
+            let userID = UUID()
+            service.appleSession = session(userID)
+            let model = AccountModel(service: service)
+            await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+            await waitForAccountCondition { !model.isLoadingProfile }
+            XCTAssertNotNil(model.errorMessage)
+            XCTAssertFalse(model.isWorking)
+            if deleting { await model.deleteAccount() } else { await model.signOut() }
+            XCTAssertNil(model.session)
+            XCTAssertNil(model.profile)
+            XCTAssertEqual(deleting ? service.deleteCount : service.signOutCount, 1)
+        }
+    }
+
+    /// Hosted accessibility hierarchy and screenshot evidence; OS VoiceOver is a separate gate.
+    func testProfileFailedAccountRendersReachableLifecycleControls() async throws {
+        let service = AccountServiceMock()
+        service.restoredSession = session(UUID())
+        let model = AccountModel(service: service)
+        await model.start()
+        await waitForAccountCondition { !model.isLoadingProfile }
+        XCTAssertNotNil(model.errorMessage)
+        let hosted = try await GameplayContainmentHost(NavigationStack { AccountView(model: model) }, landscape: false)
+        defer { hosted.close() }
+        let controls = accountAccessibilityElements(hosted.host.view)
+        let elements = hosted.elements()
+        let hierarchy = controls.map {
+            "label=\($0.accessibilityLabel ?? "") id=\(accountAccessibilityIdentifier($0) ?? "") traits=\($0.accessibilityTraits.rawValue) frame=\($0.accessibilityFrame)"
+        }.joined(separator: "\n")
+        let hierarchyAttachment = XCTAttachment(string: hierarchy)
+        hierarchyAttachment.name = "Account-profile-failed-public-accessibility-tree"
+        hierarchyAttachment.lifetime = .keepAlways
+        add(hierarchyAttachment)
+        for (identifier, label) in [("account-sign-out", "Sign out"), ("account-delete", "Delete account")] {
+            let control = try XCTUnwrap(controls.first { accountAccessibilityIdentifier($0) == identifier })
+            XCTAssertTrue(control.accessibilityTraits.contains(.button))
+            XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
+            let matches = elements.filter { $0.label == label && $0.button }
+            XCTAssertEqual(matches.count, 1)
+            let element = try XCTUnwrap(matches.first)
+            XCTAssertTrue(hosted.isVisible(element), "\(label) must have its full frame inside the usable viewport and clipping ancestors")
+        }
+        let image = UIGraphicsImageRenderer(bounds: hosted.window.bounds).image { _ in
+            hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Account-profile-failed-lifecycle-controls"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func session(_ userID: UUID) -> AccountSession {
@@ -647,6 +1009,7 @@ private final class AccountServiceMock: AccountServicing {
     var refreshedSession: AccountSession?
     var appleSession: AccountSession?
     var loadedProfile: PlayerProfile?
+    var profileLoader: (@MainActor (UUID) async throws -> PlayerProfile)?
     var updatedProfile: PlayerProfile?
     var deleteError: Error?
     var signInDelay: Duration?
@@ -682,6 +1045,7 @@ private final class AccountServiceMock: AccountServicing {
 
     func loadProfile(userID: UUID) async throws -> PlayerProfile {
         loadedUserIDs.append(userID)
+        if let profileLoader { return try await profileLoader(userID) }
         guard let loadedProfile else { throw TestError.failed }
         return loadedProfile
     }
@@ -933,5 +1297,117 @@ private actor UnavailableDailyRemote: DailySyncRemote {
 
     func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {
         throw DailySyncRemoteError.unavailable
+    }
+}
+
+@MainActor
+private func waitForAccountCondition(
+    file: StaticString = #filePath, line: UInt = #line,
+    _ condition: @MainActor () async -> Bool
+) async {
+    for _ in 0..<200 {
+        if await condition() { return }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    XCTFail("Timed out waiting for account state", file: file, line: line)
+}
+
+@MainActor
+private func accountAccessibilityIdentifier(_ object: NSObject) -> String? {
+    // SwiftUI's synthesized AX nodes can expose the public getter without
+    // declaring Objective-C protocol conformance on the proxy class.
+    guard object.responds(to: #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)) else { return nil }
+    return object.value(forKey: "accessibilityIdentifier") as? String
+}
+
+@MainActor
+private func accountAccessibilityElements(_ root: NSObject) -> [NSObject] {
+    var visited = Set<ObjectIdentifier>()
+    func collect(_ object: NSObject) -> [NSObject] {
+        guard visited.insert(ObjectIdentifier(object)).inserted else { return [] }
+        var elements = [object]
+        if let children = object.accessibilityElements {
+            for child in children {
+                if let child = child as? NSObject { elements += collect(child) }
+            }
+        }
+        let count = object.accessibilityElementCount()
+        if count > 0, count != NSNotFound {
+            for index in 0..<count {
+                if let child = object.accessibilityElement(at: index) as? NSObject {
+                    elements += collect(child)
+                }
+            }
+        }
+        if let view = object as? UIView { elements += view.subviews.flatMap(collect) }
+        return elements
+    }
+    return collect(root)
+}
+
+private actor CoordinatorDailyRemote: DailySyncRemote {
+    let userID: UUID
+    private var results: [String: DailyImportedResultDTO] = [:]
+    private(set) var canonicalProgress: DailyProgressDTO?
+    private(set) var progressUploads: [DailyProgressUploadDTO] = []
+    private var shouldSuspend = false
+    private var shouldFail = false
+    private var suspendedPull: CheckedContinuation<Void, Never>?
+    private(set) var releasedPullReturned = false
+    var isSuspended: Bool { suspendedPull != nil }
+
+    init(userID: UUID, result: DailyCompletedResult? = nil) {
+        self.userID = userID
+        if let result { results[result.puzzleID] = Self.dto(DailyImportedResultUploadDTO(result), userID: userID) }
+    }
+
+    func suspendNextPull() { shouldSuspend = true }
+    func failNextPull() { shouldFail = true }
+    func releasePull() {
+        suspendedPull?.resume()
+        suspendedPull = nil
+    }
+    func pull() async throws -> DailyCloudSnapshot {
+        if shouldSuspend {
+            shouldSuspend = false
+            await withCheckedContinuation { suspendedPull = $0 }
+            releasedPullReturned = true
+        }
+        if shouldFail {
+            shouldFail = false
+            throw DailySyncRemoteError.unavailable
+        }
+        return DailyCloudSnapshot(progress: canonicalProgress, importedResults: results.values.sorted { $0.puzzleID < $1.puzzleID })
+    }
+    func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {
+        progressUploads.append(progress)
+        let current = canonicalProgress.flatMap { $0.puzzleID == progress.puzzleID ? $0 : nil }
+        if let current {
+            guard progress.expectedRevision == current.revision else { return .serverAhead(current) }
+            guard progress.guesses.starts(with: current.guesses), progress.hardModeEnabled == current.hardModeEnabled else {
+                return .conflict(.progress(current))
+            }
+        }
+        let stored = DailyProgressDTO(
+            userID: userID, puzzleID: progress.puzzleID, puzzleNumber: progress.puzzleNumber,
+            puzzleDay: progress.puzzleDay, wordPackID: progress.wordPackID, scheduleVersion: progress.scheduleVersion,
+            hardModeEnabled: progress.hardModeEnabled, guesses: progress.guesses,
+            revision: (current?.revision ?? 0) + 1, serverUpdatedAt: .now
+        )
+        canonicalProgress = stored
+        return .stored(stored)
+    }
+    func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {
+        let stored = Self.dto(result, userID: userID)
+        results[stored.puzzleID] = stored
+        return .stored(stored)
+    }
+    private static func dto(_ result: DailyImportedResultUploadDTO, userID: UUID) -> DailyImportedResultDTO {
+        DailyImportedResultDTO(
+            userID: userID, puzzleID: result.puzzleID, puzzleNumber: result.puzzleNumber,
+            puzzleDay: result.puzzleDay, wordPackID: result.wordPackID, scheduleVersion: result.scheduleVersion,
+            hardModeEnabled: result.hardModeEnabled, guesses: result.guesses, outcome: result.outcome,
+            guessCount: result.guessCount, clientCompletedAt: result.clientCompletedAt, serverImportedAt: .now
+        )
     }
 }
