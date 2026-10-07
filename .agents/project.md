@@ -20,7 +20,7 @@ Shared skills own general orchestration and quality procedures. This file owns G
 
 Start with relevant sections. Do not load all product documents and historical plans for every edit. Active progress belongs in its task record; NOW or backlog pages may link to it but should not duplicate mutable checkpoint details.
 
-The Stamped UI plan is already Active. S0a/S0b and S2/S1/S3 are integrated; S4 owns Phase 4's transferred A9. The plan's current checkpoint owns the pending layout decision, human-deferred OS checks, final review and closeout. Phase 4 is Historical with software, repaired-scan and review evidence intact. This maintenance does not resume or close that product task.
+The Stamped UI plan is already Active. S0a/S0b and S2/S1/S3 are integrated; S4 owns Phase 4's transferred A9. The plan's current checkpoint records D16's resolved layout approval and the adjudicated independent final review; OS/device acceptance remains human-deferred and closeout remains open. Phase 4 is Historical with software, repaired-scan and review evidence intact. This maintenance does not resume or close that product task.
 
 The kickoff is a continuation entrypoint, not a command to replay completed activation. Preserve D6 prerequisites, D9 isolation and S2-before-S1 integration when interpreting the recorded units. Historical model choices, callback protocols and machine paths describe prior runs; they are not reusable workflow requirements. Existing review-context caches use the selected profile and source state for freshness; do not treat a pre-migration cache as current authority.
 
@@ -245,7 +245,7 @@ The psql path reflects the inspected macOS harness. Confirm that path and the sc
 
 The prior command record identifies Deno 2.9.5, lockfile-pinned Supabase CLI 2.116.0, Node 20.20.2 in CI and the native target above. Recheck executable configuration before a run. No Swift formatter/linter gate is established by this profile; introduce one only for a demonstrated benefit with configured tooling and observed execution.
 
-The historical `scripts/generate_daily_word_pack.py` is not the current corpus gate. The current portable check validates the frozen baseline, ordered answers, provenance/revision references and hash chain. The source gate additionally regenerates from pinned intermediates into temporary output and compares artifacts. Ordinary builds do not fetch the corpus.
+The obsolete `scripts/generate_daily_word_pack.py` entrypoint has been retired; its denylist validation now belongs to `scripts/check_word_pack.py`. The current portable check validates the frozen baseline, ordered answers, provenance/revision references and hash chain. The source gate additionally regenerates from pinned intermediates into temporary output and compares artifacts. Ordinary builds do not fetch the corpus.
 
 Preserve raw-answer/guess privacy in production logs, environment separation, and the accepted no-initial-spend decision in `docs/DECISIONS.md`. Product scope, remote deployment, distribution and paid commitments do not expand merely because workflow instructions are rewritten.
 

@@ -32,6 +32,7 @@ jobs:
       - name: Verify generated data
         run: |
           python3 scripts/check_word_pack.py --checked-in-only
+          python3 -B scripts/test_build_accepted_guesses.py
           npm run check:seed
       - name: Verify shared rules
         run: |
@@ -78,10 +79,16 @@ jobs:
       - name: Test
         run: >-
           xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace
+          -disableAutomaticPackageResolution
+          -onlyUsePackageVersionsFromResolvedFile
+          -skipPackageUpdates
           -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
           -derivedDataPath "$RUNNER_TEMP/GridRaceDerivedData-test" test
       - name: Clean build
         run: >-
           xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace -configuration Debug
+          -disableAutomaticPackageResolution
+          -onlyUsePackageVersionsFromResolvedFile
+          -skipPackageUpdates
           -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
           -derivedDataPath "$RUNNER_TEMP/GridRaceDerivedData-build" clean build
