@@ -174,6 +174,8 @@ final class TutorialModel {
     }
 
     func submitGuess() {
+        let submittedAt = now()
+        update(at: submittedAt)
         guard phase == .playing, let submission = board.submitDraft() else { return }
         if let error = submission.validationError {
             errorMessage = error.message
