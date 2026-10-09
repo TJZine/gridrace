@@ -87,6 +87,9 @@ struct ConfirmedAccountDeletion: Sendable {
 
 @MainActor
 protocol AccountServicing: AnyObject {
+    // Each subscription immediately buffers the current state as its first value,
+    // followed by future changes in publication order. Consumers must process the
+    // initial snapshot before applying the result of a newer Auth command.
     var authStateChanges: AsyncStream<AccountAuthState> { get }
 
     func restoreSession() async throws -> AccountSession?

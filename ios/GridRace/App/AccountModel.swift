@@ -94,10 +94,21 @@ final class AccountModel {
         }
         started = true
         let changes = service.authStateChanges
-        authObservation = Task { [weak self] in
-            for await state in changes {
-                guard !Task.isCancelled else { return }
-                self?.receiveAuthState(state)
+        // The subscription's initial snapshot predates this restore. Consume it
+        // before a successful restore can install a newer account identity.
+        let initialGeneration = sessionGeneration
+        await withCheckedContinuation { (initialized: CheckedContinuation<Void, Never>) in
+            authObservation = Task { [weak self] in
+                var iterator = changes.makeAsyncIterator()
+                if let initial = await iterator.next(isolation: MainActor.shared),
+                   !Task.isCancelled, self?.sessionGeneration == initialGeneration {
+                    self?.receiveAuthState(initial)
+                }
+                initialized.resume()
+                while let state = await iterator.next(isolation: MainActor.shared) {
+                    guard !Task.isCancelled else { return }
+                    self?.receiveAuthState(state)
+                }
             }
         }
         return await restoreSession()

@@ -160,6 +160,32 @@ final class SupabaseAccountConfigurationTests: XCTestCase {
 
 @MainActor
 final class DailyAccountCoordinatorTests: XCTestCase {
+    func testImmediateColdRestoreAndLaterAccountSwitchPreserveInactiveGuestFiles() async throws {
+        let fixture = try GuestStartupFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let before = try fixture.guestBytes()
+        let service = AccountServiceMock()
+        let restored = AccountSession(userID: UUID(), expiresAt: .distantFuture)
+        service.restoration = {
+            // The real service publishes its commit before returning it. Its
+            // subscription also buffers an initial nil before this command.
+            service.emit(restored)
+            return restored
+        }
+        let coordinator = try fixture.coordinator(service: service)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+        await coordinator.start()
+        XCTAssertEqual(coordinator.account.session, restored)
+        let next = AccountSession(userID: UUID(), expiresAt: .distantFuture)
+        service.emit(next)
+        await waitForAccountCondition { coordinator.account.session == next }
+        // Observing the later identity proves the preceding buffered values were
+        // consumed; checking only start()'s return would miss the transient guest.
+        XCTAssertEqual(coordinator.account.session, next)
+        XCTAssertEqual(coordinator.daily.game.progress.puzzleDay, Int(fixture.current.timeIntervalSince1970 / 86_400))
+        XCTAssertEqual(try fixture.guestBytes(), before)
+    }
+
     func testSignedInColdStartupNeverWritesInactiveGuestBeforeOrAfterHeldRestoration() async throws {
         let fixture = try GuestStartupFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -1274,6 +1300,27 @@ final class AccountModelTests: XCTestCase {
         XCTAssertTrue(sheet.observe(isSignedIn: model.isSignedIn, profileReady: profileReady(model)))
     }
 
+    func testInitialSnapshotPrecedesImmediateRestoreAndLaterNilRemainsAuthoritative() async {
+        let service = AccountServiceMock()
+        let restored = session(UUID())
+        service.restoration = {
+            service.emit(restored)
+            return restored
+        }
+        var identities: [UUID?] = []
+        let model = AccountModel(service: service, didChangeSession: { identities.append($0) })
+        let outcome = await model.start()
+        await waitForAccountCondition { identities.filter { $0 != nil }.count == 2 }
+        XCTAssertEqual(outcome, .settled(restored.userID))
+        XCTAssertEqual(identities, [nil, restored.userID, restored.userID])
+        XCTAssertEqual(model.session, restored)
+
+        service.emit(nil)
+        await waitForAccountCondition { identities.count == 4 }
+        XCTAssertEqual(identities, [nil, restored.userID, restored.userID, nil])
+        XCTAssertNil(model.session, "Only the initial snapshot is ordered before restore; future nil still signs out")
+    }
+
     func testRestorationOutcomesDistinguishProvisionalNilAndSupersededRetry() async throws {
         let service = AccountServiceMock()
         var holds: [CheckedContinuation<AccountSession?, Error>] = []
@@ -1288,7 +1335,7 @@ final class AccountModelTests: XCTestCase {
         let duplicate = await model.start()
         XCTAssertEqual(duplicate, .alreadyStarted)
         service.emit(nil)
-        await waitForAccountCondition { nilNotifications == 1 }
+        await waitForAccountCondition { nilNotifications == 2 }
         XCTAssertTrue(completions.isEmpty, "A provisional stream nil is not restoration settlement")
         let retry = Task { await model.restoreSession() }
         await waitForAccountCondition { holds.count == 2 }
@@ -1529,7 +1576,7 @@ final class AccountModelTests: XCTestCase {
             if lateFailure { suspended?.resume(throwing: TestError.failed) }
             else { suspended?.resume(returning: profile(userID: a, name: "Alex", setupCompleted: true)) }
             await waitForAccountCondition { completedA }
-            XCTAssertEqual(identities, [a, nil, b])
+            XCTAssertEqual(identities, [nil, a, nil, b])
             XCTAssertEqual(model.session?.userID, b)
             XCTAssertEqual(model.profile, bProfile)
             XCTAssertEqual(model.displayNameDraft, "Blair")
@@ -1707,8 +1754,8 @@ private final class GuestStartupFixture {
 @MainActor
 // Shared with DailySyncTests for faithful coordinator cold-restoration coverage.
 final class AccountServiceMock: AccountServicing {
-    private let stream: AsyncStream<AccountAuthState>
-    private let continuation: AsyncStream<AccountAuthState>.Continuation
+    private var currentState = AccountAuthState(session: nil)
+    private var continuation: AsyncStream<AccountAuthState>.Continuation?
 
     var restoration: (@MainActor () async throws -> AccountSession?)?
     private(set) var restoreCallCount = 0
@@ -1729,30 +1776,35 @@ final class AccountServiceMock: AccountServicing {
     var deleteCount = 0
     var lastProfileUpdate: (name: String, seed: String)?
 
-    init() {
-        let pair = AsyncStream<AccountAuthState>.makeStream()
-        stream = pair.stream
-        continuation = pair.continuation
+    var authStateChanges: AsyncStream<AccountAuthState> {
+        AsyncStream { continuation in
+            self.continuation = continuation
+            continuation.yield(currentState)
+        }
     }
-
-    var authStateChanges: AsyncStream<AccountAuthState> { stream }
 
     func restoreSession() async throws -> AccountSession? {
         restoreCallCount += 1
-        if let restoration { return try await restoration() }
-        return restoredSession
+        let restored = if let restoration { try await restoration() } else { restoredSession }
+        currentState = AccountAuthState(session: restored)
+        return restored
     }
-    func refreshSession() async throws -> AccountSession? { refreshedSession }
+    func refreshSession() async throws -> AccountSession? {
+        currentState = AccountAuthState(session: refreshedSession)
+        return refreshedSession
+    }
 
     func signInWithApple(idToken: String, rawNonce: String) async throws -> AccountSession {
         appleCredentials = (idToken, rawNonce)
         if let signInDelay { try await Task.sleep(for: signInDelay) }
         guard let appleSession else { throw TestError.failed }
+        currentState = AccountAuthState(session: appleSession)
         return appleSession
     }
 
     func signInForLocalTesting(email: String, password: String) async throws -> AccountSession {
         guard let appleSession else { throw TestError.failed }
+        currentState = AccountAuthState(session: appleSession)
         return appleSession
     }
 
@@ -1776,23 +1828,29 @@ final class AccountServiceMock: AccountServicing {
 
     func signOut() async -> AccountSignOutOutcome {
         signOutCount += 1
+        currentState = AccountAuthState(session: nil)
         return AccountSignOutOutcome(localRecovery: nil, remoteLogoutFailed: false)
     }
 
     func deleteAccount() async throws -> ConfirmedAccountDeletion {
         deleteCount += 1
         if let deleteError { throw deleteError }
+        currentState = AccountAuthState(session: nil, recovery: deletionRecovery)
         return ConfirmedAccountDeletion(localRecovery: deletionRecovery)
     }
     func retrySignedOutCleanup() async -> AccountAuthState {
         cleanupRetryCount += 1
-        return AccountAuthState(session: nil)
+        currentState = AccountAuthState(session: nil)
+        return currentState
     }
 
-    func emitState(_ state: AccountAuthState) { continuation.yield(state) }
+    func emitState(_ state: AccountAuthState) {
+        currentState = state
+        continuation?.yield(state)
+    }
 
     func emit(_ session: AccountSession?) {
-        continuation.yield(AccountAuthState(session: session))
+        emitState(AccountAuthState(session: session))
     }
 }
 
