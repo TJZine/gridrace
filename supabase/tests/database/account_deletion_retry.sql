@@ -88,6 +88,21 @@ reset role;
 
 set local role service_role;
 select is(
+  public.complete_account_deletion(null) #>> '{error,code}',
+  'internal_error',
+  'null completion token is rejected'
+);
+select is(
+  public.complete_account_deletion(repeat('A', 64)) #>> '{error,code}',
+  'internal_error',
+  'noncanonical completion digest is rejected'
+);
+select is(
+  public.complete_account_deletion(repeat('c', 64)) #>> '{error,code}',
+  'request_conflict',
+  'unknown completion token cannot authorize a deletion'
+);
+select is(
   public.account_deletion_status(repeat('a', 64)) #>> '{data,status}',
   'missing',
   'unknown token hash has no receipt'
@@ -157,6 +172,9 @@ select is(
   'hard Auth deletion removes every receipt-to-user mapping'
 );
 
+insert into private.account_deletion_receipts (token_hash, deletion_id)
+values (repeat('c', 64), '40000000-0000-0000-0000-000000000002');
+
 set local role service_role;
 select is(
   public.complete_account_deletion(repeat('b', 64)) #>> '{data,status}',
@@ -179,11 +197,24 @@ select is(
   (
     select count(*)
     from private.account_deletion_receipts
-    where status <> 'completed' or user_id is not null or completed_at is null
+    where token_hash <> repeat('c', 64)
+      and (status <> 'completed' or user_id is not null or completed_at is null)
   ),
   0::bigint,
   'completion terminalizes every rotated receipt without retaining a user link'
 );
+select is(
+  (select status from private.account_deletion_receipts where token_hash = repeat('c', 64)),
+  'pending',
+  'completion leaves a separate deletion operation untouched'
+);
+set local role service_role;
+select is(
+  public.complete_account_deletion(repeat('c', 64)) #>> '{data,status}',
+  'completed',
+  'a separate operation can complete independently'
+);
+reset role;
 select ok(
   (
     select bool_and(token_hash ~ '^[0-9a-f]{64}$')
