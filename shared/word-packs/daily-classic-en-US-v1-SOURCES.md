@@ -145,6 +145,27 @@ preserves the pre-Wiktionary implementation and provenance; it is not a
 maintenance or CI entrypoint. Ordinary app builds and CI must not download or
 extract Wiktionary.
 
+## Evidence boundaries
+
+The portable gate compares every `dump_parent` page ID, revision ID and
+timestamp with its parent sidecar entry, including multiple spellings from
+one parent. `unavailable` provenance retains null revision fields; it is
+not assigned invented sidecar evidence. Checksums alone do not establish
+that these two artifacts agree.
+
+The parent streaming pass hashes the entire compressed dump against the
+published SHA-256 before parsing, even when all requested titles appear
+early. A hash mismatch leaves the output unchanged.
+
+The preserved September 8 source manifest and extraction summaries record
+the candidate record multiset, five-letter revision index and selected
+SQLite title/body projection. Their historical claims do not automatically
+cover the later relationship-target JSONL and coverage-title lists. Source
+regeneration proves deterministic agreement with retained inputs, not
+historical origin for every consumed input or execution of the fixed tool
+commits recorded in the generated manifest. Complete input attestation
+remains a remediation gate; no new verified-origin claim is made here.
+
 ## Release gates (not clearance)
 
 Wiktionary data-terms attribution for the app surface, unresolved baseline

@@ -663,15 +663,7 @@ def validate_chain(
         isinstance(found, dict) and isinstance(missing_sidecar, list),
         "parent-revisions sidecar must carry found/missing maps",
     )
-    dump_parent_pages = {
-        str(row["page"]) for row in rows if row["revision_status"] == "dump_parent"
-    }
-    uncovered = dump_parent_pages - set(found.keys())
-    require(
-        not uncovered,
-        "every dump_parent provenance page must be covered by the parent-revisions sidecar: "
-        f"{len(uncovered)} pages uncovered",
-    )
+    validate_parent_revisions(rows, found, missing_sidecar)
     manifest_line = (
         "word-pack chain OK: pack sha256 "
         f"{sha256(pack_raw)} agrees across pack and provenance manifests; "
@@ -690,6 +682,32 @@ def validate_one(
     counts = validator(pack)
     expected = manifest_bytes(pack, raw, counts[0], counts[1])
     return pack, raw, expected, counts
+
+
+def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> None:
+    """Compare cross-evidence tuples; a matching file checksum is insufficient."""
+    require(
+        all(isinstance(title, str) and title for title in missing)
+        and len(missing) == len(set(missing)),
+        "parent-revisions missing titles must be unique nonempty strings",
+    )
+    require(not set(found).intersection(missing), "parent-revisions found/missing titles overlap")
+    for row in rows:
+        if row["revision_status"] != "dump_parent":
+            continue
+        page = row["page"]
+        parent = found.get(page)
+        require(isinstance(parent, dict), f"dump_parent page {page!r} is absent from sidecar")
+        require(parent.get("title") == page, f"parent-revisions title contradicts page {page!r}")
+        for field, sidecar_field in (
+            ("page_id", "pageId"), ("revision_id", "revisionId"), ("timestamp", "timestamp")
+        ):
+            # The builder represents empty/missing dump fields as null. The
+            # provenance schema validates which statuses can carry nulls.
+            require(
+                row[field] == (parent.get(sidecar_field) or None),
+                f"dump_parent page {page!r} {field} contradicts parent-revisions sidecar",
+            )
 
 
 def builder_intermediate_paths() -> dict[str, Path]:
