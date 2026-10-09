@@ -499,6 +499,138 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertEqual(model.previousDisplayedStreak, 1)
     }
 
+    func testSettingsStorageNoticeAndRetryAreRenderedUnderHardModeSaveFailure() async throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(store: store, now: { now })
+        store.progressSaveFailures = 100
+        model.updateHardMode(true)
+        let hosted = try await GameplayContainmentHost(
+            NavigationStack { DailySettingsView(model: model) }, landscape: false)
+        defer { hosted.close() }
+        let elements = hosted.elements()
+        XCTAssertTrue(elements.contains { $0.label == model.storageMessage })
+        let retry = try XCTUnwrap(elements.first { $0.label == "Retry saving" && $0.button })
+        XCTAssertTrue(hosted.isVisible(retry))
+        let image = UIGraphicsImageRenderer(bounds: hosted.window.bounds).image { _ in
+            hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Settings-Hard-Mode-storage-retry"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        store.progressSaveFailures = 0
+        XCTAssertTrue(model.retryPersistence())
+        try await hosted.settle()
+        XCTAssertFalse(hosted.elements().contains { $0.label == "Retry saving" })
+        XCTAssertTrue(try fixture.model(store: store, now: { now }).game.progress.hardModeEnabled)
+    }
+
+    func testPriorDayTerminalFallbackSurvivesRepeatedRelaunchAndRetry() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(store: store, now: { now })
+        fixture.type("adore", into: model)
+        store.historySaveFailures = 10
+        model.submitGuess()
+        let terminal = try XCTUnwrap(store.savedProgress)
+        XCTAssertNotNil(terminal.completion)
+        XCTAssertNotNil(model.storageMessage)
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        for _ in 0..<2 {
+            model = try fixture.model(store: store, now: { now })
+            XCTAssertEqual(model.puzzle.day, fixture.epochDay)
+            XCTAssertTrue(model.game.isComplete)
+            XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+            XCTAssertEqual(store.savedProgress, terminal)
+            XCTAssertNil(store.savedHistory)
+        }
+        store.historySaveFailures = 0
+        XCTAssertTrue(model.retryPersistence())
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(store.savedHistory?.statistics.gamesPlayed, 1)
+        model = try fixture.model(store: store, now: { now })
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+        XCTAssertFalse(model.game.isComplete)
+    }
+
+    func testAccountTerminalFallbackRolloverPreservesOtherAccountAndGuestFiles() throws {
+        let fixture = try Fixture()
+        let store = AccountDailyClassicStore(rootDirectory: fixture.directory, userID: UUID())
+        let other = AccountDailyClassicStore(rootDirectory: fixture.directory, userID: UUID())
+        let guest = DailyClassicStore(directory: fixture.directory.appending(path: "Guest"))
+        let yesterday = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(store: store, now: { yesterday })
+        try other.save(model.game.progress)
+        try guest.save(model.game.progress)
+        let otherBefore = try other.loadProgress(), guestBefore = try guest.loadProgress()
+        try store.save(DailyClassicHistory())
+        let historyURL = store.directory.appending(path: "daily-history-v1.json")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: historyURL.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: historyURL.path) }
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        let terminal = model.game.progress
+        let today = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        model = try fixture.model(store: store, now: { today })
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay)
+        XCTAssertEqual(try store.loadProgress(), terminal)
+        XCTAssertTrue(try store.loadHistory().completedResults.isEmpty)
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: historyURL.path)
+        XCTAssertTrue(model.retryPersistence())
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(try store.loadHistory().statistics.gamesPlayed, 1)
+        XCTAssertEqual(try other.loadProgress(), otherBefore)
+        XCTAssertEqual(try guest.loadProgress(), guestBefore)
+    }
+
+    func testPriorDayInvalidFallbackIsNotImportedAndImmutableHistoryWins() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let yesterday = fixture.date(day: fixture.epochDay, seconds: 100)
+        let finished = try fixture.model(store: store, now: { yesterday })
+        fixture.type("adore", into: finished)
+        finished.submitGuess()
+        let terminal = finished.game.progress
+        let today = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        let restored = try fixture.model(store: store, now: { today })
+        XCTAssertEqual(restored.history.completedResults, finished.history.completedResults)
+        XCTAssertEqual(restored.puzzle.day, fixture.epochDay + 1)
+        store.savedHistory = nil
+        var bad = terminal
+        bad.acceptedGuesses = []
+        store.savedProgress = bad
+        let invalid = try fixture.model(store: store, now: { today })
+        XCTAssertTrue(invalid.history.completedResults.isEmpty)
+        XCTAssertEqual(invalid.puzzle.day, fixture.epochDay + 1)
+    }
+
+    func testAcceptedProgressAndModeRetainSeparateStorageRetryAfterValidationError() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(store: store, now: { now })
+        store.progressSaveFailures = 100
+        model.updateHardMode(true)
+        XCTAssertTrue(model.game.progress.hardModeEnabled)
+        XCTAssertNotNil(model.storageMessage)
+        fixture.type("zzzzz", into: model)
+        model.submitGuess()
+        XCTAssertNotNil(model.storageMessage)
+        XCTAssertTrue(model.hasUnsavedProgress)
+        store.progressSaveFailures = 0
+        XCTAssertTrue(model.retryPersistence())
+        XCTAssertNil(model.storageMessage)
+        XCTAssertNotNil(model.errorMessage, "Saving must not clear a word-validation error")
+        let relaunched = try fixture.model(store: store, now: { now })
+        XCTAssertTrue(relaunched.game.progress.hardModeEnabled)
+    }
+
     func testTerminalPersistenceRetriesAfterBothWritesFail() throws {
         let fixture = try Fixture()
         let store = FailingStore()

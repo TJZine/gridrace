@@ -228,6 +228,21 @@ enum DailySyncConflict: Error, Equatable, Sendable {
     )
 }
 
+/// A preview binds consent to the account side, regardless of presentation order.
+struct DailySyncChoice: Equatable, Sendable, Identifiable {
+    let id: UUID
+    let conflict: DailySyncConflict
+    let accountProgress: DailyClassicProgress?
+    let accountResult: DailyCompletedResult?
+    let isGuestImport: Bool
+}
+
+enum DailySyncResolutionOutcome: Equatable, Sendable {
+    case applied
+    case refreshed(DailySyncChoice)
+    case noLongerApplicable
+}
+
 enum DailyProgressConflictResolution: Equatable, Sendable {
     case useCloud
     case keepDevice
@@ -648,7 +663,75 @@ final class DailySyncEngine {
             : .conflict(importConflicts)
     }
 
-    func resolve(
+    func choice(for conflict: DailySyncConflict, isGuestImport: Bool = false) throws -> DailySyncChoice {
+        let puzzleID: String
+        switch conflict {
+        case .progress(let id, _, _), .completedResult(let id, _, _): puzzleID = id
+        }
+        return DailySyncChoice(id: UUID(), conflict: conflict,
+            accountProgress: try store.loadProgress(),
+            accountResult: try store.loadHistory().result(for: puzzleID), isGuestImport: isGuestImport)
+    }
+
+    private var interruptedChoices: [UUID: DailySyncChoice] = [:]
+
+    @discardableResult
+    func resolve(_ preview: DailySyncChoice, with resolution: DailyProgressConflictResolution) throws -> DailySyncResolutionOutcome {
+        try Task.checkCancellation()
+        let basis = interruptedChoices[preview.id] ?? preview
+        let current = try store.loadProgress()
+        let puzzleID: String
+        switch preview.conflict {
+        case .progress(let id, _, _), .completedResult(let id, _, _): puzzleID = id
+        }
+        let currentResult = try store.loadHistory().result(for: puzzleID)
+        let basisChanged: Bool
+        switch preview.conflict {
+        case .progress: basisChanged = current != basis.accountProgress || currentResult != basis.accountResult
+        case .completedResult: basisChanged = currentResult != basis.accountResult
+        }
+        if basisChanged {
+            let refreshed: DailySyncConflict
+            switch preview.conflict {
+            case .progress(_, let local, let cloud):
+                guard let current, current.puzzleID == puzzleID else { return .noLongerApplicable }
+                refreshed = .progress(puzzleID: puzzleID,
+                    local: preview.isGuestImport ? local : current,
+                    cloud: preview.isGuestImport ? current : cloud)
+            case .completedResult(_, let local, let cloud):
+                guard let currentResult else { return .noLongerApplicable }
+                refreshed = .completedResult(puzzleID: puzzleID,
+                    local: preview.isGuestImport ? local : currentResult,
+                    cloud: preview.isGuestImport ? currentResult : cloud)
+            }
+            interruptedChoices.removeValue(forKey: preview.id)
+            return .refreshed(try choice(for: refreshed, isGuestImport: preview.isGuestImport))
+        }
+        do {
+            try apply(preview.conflict, with: resolution)
+            interruptedChoices.removeValue(forKey: preview.id)
+            return .applied
+        } catch {
+            // Retain the successfully written part as the retry basis. A later
+            // accepted edit still invalidates it and requires fresh consent.
+            interruptedChoices[preview.id] = try? DailySyncChoice(id: preview.id,
+                conflict: preview.conflict, accountProgress: store.loadProgress(),
+                accountResult: store.loadHistory().result(for: puzzleID), isGuestImport: preview.isGuestImport)
+            throw error
+        }
+    }
+
+    /// Only immutable completions may supersede an accepted unsaved attempt.
+    func authoritativeCompletion(for progress: DailyClassicProgress) async throws -> DailyCompletedResult? {
+        let cloud = try await remote.pull()
+        try Task.checkCancellation()
+        guard !lifecycle.isInvalidated, owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
+        return cloud.importedResults.map(\.domain).first {
+            DailySyncReconciler.sameIdentity(progress, $0)
+        }
+    }
+
+    private func apply(
         _ conflict: DailySyncConflict,
         with resolution: DailyProgressConflictResolution
     ) throws {
@@ -662,7 +745,7 @@ final class DailySyncEngine {
                       DailySyncReconciler.sameImportedPayload(current, completed) else {
                     throw DailySyncError.invalidLocalData
                 }
-                try lifecycle.performThrowingIfValid { try store.save(local) }
+                try saveResolvedProgress(local)
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.insert(puzzleID)
                 metadata.ignoredResults.remove(puzzleID)
@@ -678,7 +761,7 @@ final class DailySyncEngine {
                     throw DailySyncError.invalidCloudData
                 }
                 try lifecycle.performThrowingIfValid { try store.save(history) }
-                try lifecycle.performThrowingIfValid { try store.save(cloud) }
+                try saveResolvedProgress(cloud)
                 metadata.pendingProgress = false
                 metadata.pendingResultPuzzleIDs.remove(puzzleID)
                 metadata.ignoredProgress.remove(puzzleID)
@@ -686,12 +769,12 @@ final class DailySyncEngine {
             } else {
                 switch resolution {
                 case .useCloud:
-                    try lifecycle.performThrowingIfValid { try store.save(cloud) }
+                    try saveResolvedProgress(cloud)
                     metadata.pendingProgress = false
                     metadata.ignoredProgress.remove(puzzleID)
                     metadata.ignoredResults.remove(puzzleID)
                 case .keepDevice:
-                    try lifecycle.performThrowingIfValid { try store.save(local) }
+                    try saveResolvedProgress(local)
                     metadata.pendingProgress = false
                     metadata.ignoredProgress.insert(puzzleID)
                 }
@@ -720,6 +803,11 @@ final class DailySyncEngine {
         try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
+    private func saveResolvedProgress(_ selected: DailyClassicProgress) throws {
+        if let current = try store.loadProgress(), current.puzzleID != selected.puzzleID { return }
+        try lifecycle.performThrowingIfValid { try store.save(selected) }
+    }
+
     func status() throws -> DailySyncStatus {
         let metadata = try store.loadSyncMetadata()
         if metadata.hasPendingChanges { return .pending }
@@ -741,7 +829,7 @@ final class DailySyncEngine {
                     !existingMetadata.ignoredResults.contains($0.puzzleID)
                 }
             )
-            guard owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
+            guard !lifecycle.isInvalidated, owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
 
             let localProgressBefore = try store.loadProgress()
             let localHistoryBefore = try store.loadHistory()

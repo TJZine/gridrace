@@ -52,6 +52,82 @@ values
 
 select is((select count(*) from private.words), 100::bigint, 'seed contains exactly 100 words');
 select is((select count(*) from public.profiles), 3::bigint, 'auth trigger creates profiles');
+select is((select count(*) from public.profiles where setup_completed), 0::bigint, 'new generated profiles start incomplete');
+select ok(has_column_privilege('authenticated', 'public.profiles', 'setup_completed', 'select'), 'owner can read explicit setup state');
+select ok(not has_column_privilege('authenticated', 'public.profiles', 'setup_completed', 'update'), 'client cannot toggle setup state');
+select ok(not has_column_privilege('anon', 'public.profiles', 'setup_completed', 'select'), 'anonymous client cannot read setup state');
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+select is((select setup_completed from public.profiles), false, 'ordinary owner read does not complete setup');
+select lives_ok(
+  $$update public.profiles set avatar_seed = 'changed-avatar' where id = '10000000-0000-0000-0000-000000000001'$$,
+  'old-client avatar-only update remains allowed'
+);
+select is((select setup_completed from public.profiles), false, 'avatar-only update does not complete setup');
+select throws_ok(
+  $$update public.profiles set display_name = 'Invalid  Name' where id = '10000000-0000-0000-0000-000000000001'$$,
+  '23514', null, 'invalid name Save fails existing validation'
+);
+select is((select setup_completed from public.profiles), false, 'failed Save leaves setup incomplete');
+select throws_ok(
+  $$update public.profiles set setup_completed = true where id = '10000000-0000-0000-0000-000000000001'$$,
+  '42501', 'permission denied for table profiles', 'owner cannot bypass successful name Save'
+);
+select lives_ok(
+  $$update public.profiles set display_name = display_name, avatar_seed = avatar_seed where id = '10000000-0000-0000-0000-000000000001'$$,
+  'old-client same-value name and avatar Save remains allowed'
+);
+select is((select setup_completed from public.profiles), true, 'same-value Save durably completes generated-name setup');
+select lives_ok(
+  $$update public.profiles set display_name = 'Player abcdef' where id = '10000000-0000-0000-0000-000000000001'$$,
+  'placeholder-shaped permitted name remains allowed'
+);
+select is((select display_name from public.profiles), 'Player abcdef', 'Save preserves the chosen placeholder-shaped name');
+select is((select setup_completed from public.profiles), true, 'completion is independent of chosen name');
+select lives_ok(
+  $$update public.profiles set avatar_seed = 'another-avatar' where id = '10000000-0000-0000-0000-000000000001'$$,
+  'completed profile retains avatar editing'
+);
+select is((select setup_completed from public.profiles), true, 'avatar edit retains durable completion');
+select lives_ok(
+  $$update public.profiles set display_name = 'Other Player' where id = '10000000-0000-0000-0000-000000000002'$$,
+  'another owner profile is filtered by RLS'
+);
+select throws_ok(
+  $$update public.profiles set setup_completed = false where id = '10000000-0000-0000-0000-000000000001'$$,
+  '42501', 'permission denied for table profiles', 'client cannot revoke completion'
+);
+reset role;
+select is(
+  (select setup_completed from public.profiles where id = '10000000-0000-0000-0000-000000000002'),
+  false, 'forbidden-user name update does not complete another profile'
+);
+select is(
+  (select display_name from public.profiles where id = '10000000-0000-0000-0000-000000000002'),
+  'Player 100000', 'forbidden-user update preserves another player name'
+);
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+select throws_ok(
+  $$update public.profiles set display_name = 'Custom Name', avatar_seed = '' where id = '10000000-0000-0000-0000-000000000002'$$,
+  '23514', null, 'invalid avatar rejects the complete old-client Save atomically'
+);
+select is((select setup_completed from public.profiles), false, 'failed combined Save leaves setup incomplete');
+select lives_ok(
+  $$update public.profiles set display_name = 'Custom Name' where id = '10000000-0000-0000-0000-000000000002'$$,
+  'ordinary custom-name Save remains allowed'
+);
+select is((select setup_completed from public.profiles), true, 'custom-name Save completes setup');
+reset role;
 select ok(
   (select bool_and(display_name ~ '^[A-Za-z0-9][A-Za-z0-9 ''-]*[A-Za-z0-9]$') from public.profiles),
   'generated profile names satisfy the frozen character contract'

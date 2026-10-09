@@ -206,8 +206,10 @@ The guest waits for the named host; ordinary creator absence waits without auto
 advance. Expired rooms show a closed-room notice.
 No readiness, public discovery, chat, opponent presence, or late joining is added.
 
-The started round finishes after account deletion, then the match shows incomplete
-with anonymized reveals and partial standings; unstarted rounds do not run.
+The started round finishes after account deletion. If unstarted rounds remain,
+the match shows incomplete with anonymized reveals and partial standings;
+unstarted rounds do not run. Deletion during the configured final round preserves
+ordinary final completion, and deletion after completion preserves final results.
 Real independent-client verification of the underlying gameplay and its original
 independent review are recorded in the
 [Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). The optional

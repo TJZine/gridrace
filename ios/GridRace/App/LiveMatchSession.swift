@@ -33,16 +33,19 @@ final class LiveMatchSession {
     typealias StoreFactory = @MainActor (UUID) throws -> any LiveMatchRecoveryStoring
     typealias AuthRefresh = @MainActor @Sendable (UUID) async -> Bool
 
-    private let service: (any LiveMatchServicing)?
-    private let realtime: (any LiveMatchRealtimeServicing)?
+    private var service: (any LiveMatchServicing)?
+    private var realtime: (any LiveMatchRealtimeServicing)?
     private let storeFactory: StoreFactory
-    private let refreshAuth: AuthRefresh
+    private var refreshAuth: AuthRefresh
     private let timing: LiveMatchSessionTiming
     private let sleep: @Sendable (Duration) async throws -> Void
     private let uptime: @MainActor () -> TimeInterval
     private let makeUUID: @MainActor () -> UUID
 
     private var accountID: UUID?
+    private var transport: LiveAccountTransport?
+    private var requestedTransport: LiveAccountTransport?
+    private var usesAccountTransport = false
     private var requestedAccountID: UUID?
     private var hasRequestedAccountChange = false
     private var store: (any LiveMatchRecoveryStoring)?
@@ -165,8 +168,50 @@ final class LiveMatchSession {
     }
 
     @discardableResult
+    func changeAccount(to userID: UUID?, transport next: LiveAccountTransport?) -> LiveAccountChangeOutcome {
+        usesAccountTransport = true
+        if accountID == userID, transport?.userID == userID, transport?.isValid() == true {
+            return .completed
+        }
+        service = nil
+        realtime = nil
+        refreshAuth = { _ in false }
+        transport = nil
+        requestedTransport = next
+        return changeAccount(to: userID)
+    }
+
+    func hasPendingAccountCleanup(for userID: UUID) -> Bool {
+        accountID == userID && hasRequestedAccountChange
+    }
+
+    private func installRequestedTransport(for userID: UUID?) -> Bool {
+        guard usesAccountTransport else { return true }
+        guard let userID else {
+            requestedTransport = nil
+            return true
+        }
+        guard let target = requestedTransport, target.userID == userID, target.isValid() else {
+            requestedTransport = nil
+            phase = .needsSignIn
+            return false
+        }
+        transport = target
+        service = target.service
+        realtime = target.realtime
+        refreshAuth = target.refresh
+        requestedTransport = nil
+        return true
+    }
+
+    @discardableResult
     func changeAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
         guard accountID != userID else {
+            if usesAccountTransport, service == nil {
+                resetRuntime()
+                guard installRequestedTransport(for: userID) else { return .completed }
+                loadRecovery()
+            }
             if hasRequestedAccountChange {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
@@ -191,6 +236,7 @@ final class LiveMatchSession {
         requestedAccountID = nil
         hasRequestedAccountChange = false
         accountID = userID
+        guard installRequestedTransport(for: userID) else { return .completed }
         loadRecovery()
         return .completed
     }
@@ -206,6 +252,7 @@ final class LiveMatchSession {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
                 self.accountID = userID
+                guard installRequestedTransport(for: userID) else { return }
                 loadRecovery()
             } else {
                 self.store = store
@@ -662,11 +709,12 @@ final class LiveMatchSession {
         _ operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
         let requestGeneration = generation
+        let boundRefresh = refreshAuth
         do {
             return try await timed(operation)
         } catch LiveMatchServiceError.server(.notAuthenticated) {
             guard let accountID,
-                  try await timed({ await self.refreshAuth(accountID) }),
+                  try await timed({ await boundRefresh(accountID) }),
                   generation == requestGeneration,
                   self.accountID == accountID
             else { throw LiveMatchServiceError.server(.notAuthenticated) }

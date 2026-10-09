@@ -8,10 +8,11 @@ struct AccountView: View {
     var canImportGuestHistory = false
     var importGuestHistory: (() -> Void)?
     var skipGuestHistory: (() -> Void)?
-    var useCloudAttempt: (() -> Void)?
-    var keepDeviceAttempt: (() -> Void)?
     var conflictCount = 0
     var conflict: DailySyncConflict? = nil
+    var conflictID: UUID? = nil
+    var resolveAttempt: ((UUID, Bool) -> Void)? = nil
+    @State private var displayedConflictID: UUID?
 
     @State private var rawAppleNonce: String?
     @State private var editingProfile = false
@@ -32,6 +33,38 @@ struct AccountView: View {
 
     var body: some View {
         List {
+            if let recovery = model.authRecovery {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(recovery.action == .restore ? "Account restoration needs attention" : "Saved account credentials need cleanup")
+                            .font(StampType.heading)
+                        Text("Daily Classic remains available on this device.")
+                            .foregroundStyle(Color.secondaryInk)
+                        Button(recovery.action == .restore ? "Retry account restore" : "Retry account cleanup") {
+                            run { await model.retryAuthRecovery() }
+                        }
+                        .buttonStyle(OutlinedInkButtonStyle())
+                        .disabled(model.isWorking)
+                        .frame(minHeight: 44)
+                        if recovery.action == .restore {
+                            Button("Sign out on this device") { run { await model.signOut() } }
+                                .buttonStyle(OutlinedInkButtonStyle())
+                                .disabled(model.isWorking)
+                                .frame(minHeight: 44)
+                        }
+                    }
+                }
+                .listRowBackground(Color.card)
+            }
+            if model.canRetryDeletedDailyData {
+                Section {
+                    Button("Retry Daily cleanup") { run { await model.retryDeletedDailyData() } }
+                        .buttonStyle(OutlinedInkButtonStyle())
+                        .disabled(model.isWorking)
+                        .frame(minHeight: 44)
+                }
+                .listRowBackground(Color.card)
+            }
             if !model.isConfigured {
                 Section { unavailableCard }
             } else if model.isSignedIn {
@@ -61,8 +94,8 @@ struct AccountView: View {
             if let conflict {
                 ConflictResolutionSheet(
                     conflict: conflict,
-                    useCloudAttempt: useCloudAttempt,
-                    keepDeviceAttempt: keepDeviceAttempt
+                    useCloudAttempt: conflictAction(useCloud: true),
+                    keepDeviceAttempt: conflictAction(useCloud: false)
                 )
             }
         }
@@ -95,9 +128,25 @@ struct AccountView: View {
                 errorFocus = nil
             }
         }
+        .onChange(of: showingConflictSheet) { _, shown in
+            displayedConflictID = shown ? conflictID : nil
+        }
+        .onChange(of: conflictID) { _, id in
+            if showingConflictSheet { displayedConflictID = id }
+        }
         .onChange(of: conflictCount) { _, count in
             if count == 0 { showingConflictSheet = false }
         }
+    }
+
+    private func conflictAction(useCloud: Bool) -> (() -> Void)? {
+        if let resolveAttempt, let id = displayedConflictID {
+            return {
+                guard showingConflictSheet, displayedConflictID == id else { return }
+                resolveAttempt(id, useCloud)
+            }
+        }
+        return nil
     }
 
     private var unavailableCard: some View {
@@ -137,7 +186,7 @@ struct AccountView: View {
                 }
                 .signInWithAppleButtonStyle(.black)
                 .frame(height: 50)
-                .disabled(model.isWorking)
+                .disabled(model.isWorking || model.authRecovery != nil)
                 .accessibilityHint("Signs in to save and synchronize your personal GridRace progress")
 
                 Text("Your email is never shown to other players.")
@@ -169,7 +218,7 @@ struct AccountView: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(OutlinedInkButtonStyle())
-                    .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking)
+                    .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking || model.authRecovery != nil)
                 }
                 .textFieldStyle(.roundedBorder)
                 .padding(.top, 8)
@@ -352,7 +401,7 @@ struct AccountView: View {
                     .buttonStyle(OutlinedInkButtonStyle())
                 }
             }
-            if conflict != nil, useCloudAttempt != nil, keepDeviceAttempt != nil {
+            if conflict != nil, conflictID != nil, resolveAttempt != nil {
                 Button {
                     showingConflictSheet = true
                 } label: {

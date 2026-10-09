@@ -130,12 +130,10 @@ struct DailyAppView: View {
             canImportGuestHistory: app.canImportGuestHistory,
             importGuestHistory: { app.importGuestHistory() },
             skipGuestHistory: { app.skipGuestHistory() },
-            useCloudAttempt: app.conflicts.isEmpty
-                ? nil : { app.resolveFirstConflict(useCloud: true) },
-            keepDeviceAttempt: app.conflicts.isEmpty
-                ? nil : { app.resolveFirstConflict(useCloud: false) },
             conflictCount: app.conflicts.count,
-            conflict: app.conflicts.first
+            conflict: app.conflicts.first,
+            conflictID: app.firstConflictID,
+            resolveAttempt: { id, useCloud in app.resolveConflict(id: id, useCloud: useCloud) }
         )
     }
 }

@@ -3033,3 +3033,52 @@ private final class UptimeBox {
 }
 
 private enum TestFailure: Error { case failed }
+
+@MainActor
+extension LiveMatchSessionTests {
+    func testAccountBoundTransportRemainsFencedDuringCleanupAndInstallsOnlyRequestedTarget() async {
+        for discard in [false, true] {
+            let a = UUID(), b = UUID(), callsA = LockedCounter(), callsB = LockedCounter()
+            let oldStore = MemoryLiveRecoveryStore(), newStore = MemoryLiveRecoveryStore()
+            let session = LiveMatchSession(service: nil, realtime: nil,
+                storeFactory: { $0 == a ? oldStore : newStore })
+            let transportA = LiveAccountTransport(userID: a, service: LiveServiceMock(create: { _ in
+                callsA.increment(); throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, refresh: { _ in false }, isValid: { true })
+            let transportB = LiveAccountTransport(userID: b, service: LiveServiceMock(create: { _ in
+                callsB.increment(); throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, refresh: { _ in false }, isValid: { true })
+            session.changeAccount(to: a, transport: transportA)
+            oldStore.rejectsClears = true
+            XCTAssertEqual(session.changeAccount(to: b, transport: transportB), .recoveryCleanupPending)
+            session.createMatch()
+            XCTAssertEqual(callsA.value, 0); XCTAssertEqual(callsB.value, 0)
+            XCTAssertTrue(session.hasPendingAccountCleanup(for: a))
+            oldStore.rejectsClears = false
+            if discard { session.discardRecovery() } else { session.retry() }
+            XCTAssertFalse(session.hasPendingAccountCleanup(for: a))
+            session.createMatch()
+            await eventually { callsB.value == 1 && !session.isCommandInFlight }
+            XCTAssertEqual(callsA.value, 0)
+            session.changeAccount(to: nil, transport: nil)
+            session.createMatch()
+            XCTAssertEqual(callsB.value, 1)
+        }
+    }
+
+    func testUnavailableTargetBindingCannotReuseOldTransportAfterCleanup() async {
+        let a = UUID(), b = UUID(), calls = LockedCounter(), oldStore = MemoryLiveRecoveryStore()
+        let session = LiveMatchSession(service: nil, realtime: nil, storeFactory: { _ in oldStore })
+        let old = LiveAccountTransport(userID: a, service: LiveServiceMock(create: { _ in
+            calls.increment(); throw LiveMatchServiceError.unavailable
+        }), realtime: nil, refresh: { _ in false }, isValid: { true })
+        session.changeAccount(to: a, transport: old)
+        oldStore.rejectsClears = true
+        session.changeAccount(to: b, transport: nil)
+        oldStore.rejectsClears = false
+        session.discardRecovery()
+        XCTAssertEqual(session.phase, .needsSignIn)
+        session.createMatch(); await Task.yield()
+        XCTAssertEqual(calls.value, 0)
+    }
+}

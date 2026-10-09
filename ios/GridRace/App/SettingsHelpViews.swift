@@ -39,6 +39,16 @@ struct DailySettingsView: View {
                         .listRowBackground(Color.card)
                 }
             }
+            if let message = model.storageMessage {
+                Section {
+                    Text(message)
+                        .font(StampType.caption)
+                        .foregroundStyle(Color.secondaryInk)
+                    Button("Retry saving") { model.retryPersistence() }
+                        .accessibilityIdentifier("daily-settings-retry-saving")
+                }
+                .listRowBackground(Color.card)
+            }
             Section("Learn") {
                 NavigationLink(value: AppRoute.help) {
                     Label("How to play", systemImage: "questionmark.circle")

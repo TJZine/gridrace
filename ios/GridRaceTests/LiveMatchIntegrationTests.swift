@@ -37,13 +37,13 @@ final class LiveMatchIntegrationTests: XCTestCase {
         XCTAssertTrue([1, 3, 5].contains(count))
         XCTAssertTrue((1...count).contains(target))
         let service = MeasuredLiveMatchService(
-            account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
+            try account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
             target: target, waitForAdvance: role == "advance-guest"
         )
         let realtime: (any LiveMatchRealtimeServicing)? =
             environment["GRIDRACE_LIVE_DISABLE_REALTIME"] == "1"
             ? nil
-            : FaultedRealtimeService(base: account.makeLiveRealtimeService())
+            : FaultedRealtimeService(base: try account.makeLiveRealtimeService())
         let session = LiveMatchSession(service: service, realtime: realtime)
         session.changeAccount(to: signedIn.userID)
         if session.pendingIntent != nil { XCTAssertTrue(session.isInputLocked) }

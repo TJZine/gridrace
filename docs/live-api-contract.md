@@ -427,6 +427,16 @@ Display names are 2–16 ASCII characters: letters or digits at both ends, with
 letters, digits, single spaces, apostrophes, and hyphens internally. Consecutive
 spaces are rejected. Email never enters the public profile or match domain.
 
+The owner-private profile includes required Boolean `setup_completed`. New profiles
+start false. A successful permitted display-name update marks it true, including
+same-value Save of a name such as `Player abcdef`; the name remains ordinary user
+content. Profile reads and avatar-only updates leave the flag unchanged. Owners
+may select this field but cannot directly update it. Native profile decoding requires
+its explicit value, and the returned profile owns setup readiness across restoration.
+Migration `202610080002` preserves every legacy name and timestamp, using the
+human-approved existing-name classification recorded in the remediation plan.
+Backend schema support must precede native consumption; no hosted rollout is claimed.
+
 Release authentication is Sign in with Apple through Supabase. Debug builds may
 show a local email/password sign-in for test accounts; that implementation and its
 labels compile out of Release. Credentials and service keys are never bundled.

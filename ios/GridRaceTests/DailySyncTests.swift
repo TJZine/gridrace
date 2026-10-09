@@ -238,7 +238,7 @@ final class DailySyncTests: XCTestCase {
         let pendingStatus = try await engine.status()
         XCTAssertEqual(pendingStatus, .pending)
 
-        try await engine.resolve(conflict, with: .useCloud)
+        try await engine.resolve(try engine.choice(for: conflict), with: .useCloud)
         XCTAssertEqual(try fixture.store.loadProgress(), cloud)
         let resolvedStatus = try await engine.status()
         XCTAssertEqual(resolvedStatus, .idle)
@@ -357,7 +357,7 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(existing, cloud)
         XCTAssertEqual(try fixture.store.loadHistory().completedResults, [local])
 
-        try await fixture.engine(remote: remote).resolve(conflicts[0], with: .useCloud)
+        try await fixture.engine(remote: remote).resolve(try fixture.engine(remote: remote).choice(for: conflicts[0]), with: .useCloud)
         let resolved = try fixture.store.loadHistory()
         XCTAssertEqual(resolved.completedResults, [cloud])
         XCTAssertEqual(resolved.statistics, DailyStatistics.calculate(from: [cloud]))
@@ -376,7 +376,7 @@ final class DailySyncTests: XCTestCase {
         guard case .conflict(let conflicts) = try await engine.synchronize() else {
             return XCTFail("Expected a conflict")
         }
-        try await engine.resolve(try XCTUnwrap(conflicts.first), with: .keepDevice)
+        try await engine.resolve(try engine.choice(for: XCTUnwrap(conflicts.first)), with: .keepDevice)
 
         XCTAssertEqual(try fixture.store.loadProgress(), local)
         let retryStatus = try await engine.synchronize()
@@ -437,7 +437,7 @@ final class DailySyncTests: XCTestCase {
         }
         XCTAssertEqual(try fixture.store.loadHistory().completedResults, [local])
 
-        try await engine.resolve(conflicts[0], with: .useCloud)
+        try await engine.resolve(try engine.choice(for: conflicts[0]), with: .useCloud)
         XCTAssertEqual(try fixture.store.loadHistory().completedResults, [cloud])
         XCTAssertEqual(try fixture.store.loadProgress(), DailyClassicProgress(result: cloud))
         let retryStatus = try await engine.synchronize()
@@ -579,7 +579,7 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(shownDevice, device)
         XCTAssertEqual(shownSynced, account)
 
-        try await engine.resolve(conflicts[0], with: .keepDevice)
+        try await engine.resolve(try engine.choice(for: conflicts[0], isGuestImport: true), with: .keepDevice)
         XCTAssertEqual(try store.loadHistory().completedResults, [device])
         _ = try await engine.synchronize()
         XCTAssertEqual(try store.loadHistory().completedResults, [device])
@@ -659,8 +659,8 @@ final class DailySyncTests: XCTestCase {
         let first = SyncFixture(userID: firstSession.userID)
         let second = SyncFixture(userID: secondSession.userID)
         defer { first.remove(); second.remove() }
-        let firstEngine = first.engine(remote: firstService.makeDailySyncRemote())
-        let secondEngine = second.engine(remote: secondService.makeDailySyncRemote())
+        let firstEngine = first.engine(remote: try firstService.makeDailySyncRemote())
+        let secondEngine = second.engine(remote: try secondService.makeDailySyncRemote())
         let empty = progress(words: [])
         try first.store.save(empty)
         try firstEngine.markProgressPending()
@@ -710,7 +710,7 @@ final class DailySyncTests: XCTestCase {
             return XCTFail("Divergent real-client progress did not produce a conflict")
         }
 
-        try await firstService.deleteAccount()
+        _ = try await firstService.deleteAccount()
         try first.store.deleteAccountCache()
         try second.store.deleteAccountCache()
     }
@@ -892,7 +892,7 @@ final class DailySyncTests: XCTestCase {
         guard case .conflict(let conflicts) = try await engine.synchronize() else {
             return XCTFail("Expected an immutable-result conflict")
         }
-        try await engine.resolve(conflicts[0], with: .keepDevice)
+        try await engine.resolve(try engine.choice(for: conflicts[0]), with: .keepDevice)
 
         let secondRemote = TestDailyRemote(userID: userID)
         let retry = try await fixture.engine(remote: secondRemote).synchronize()
@@ -1130,6 +1130,173 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(calls[0].limit, pageSize)
         XCTAssertEqual(calls[1].cursor, DailyImportedResultsCursor(expected[pageSize - 1]))
         XCTAssertEqual(calls[1].limit, pageSize)
+    }
+
+    @MainActor
+    func testDeferredProgressChoiceProtectsNextDayAndRefreshesAdvancedSameDay() throws {
+        for resolution in [DailyProgressConflictResolution.keepDevice, .useCloud] {
+            let fixture = SyncFixture(userID: userID)
+            defer { fixture.remove() }
+            let local = progress(words: ["crane"])
+            let cloud = progress(words: ["civic"])
+            try fixture.store.save(local)
+            let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
+            let conflict = DailySyncConflict.progress(puzzleID: local.puzzleID, local: local, cloud: cloud)
+            let preview = try engine.choice(for: conflict)
+            let newer = progress(day: day + 1, words: ["civic"])
+            try fixture.store.save(newer)
+            XCTAssertEqual(try engine.resolve(preview, with: resolution), .noLongerApplicable)
+            XCTAssertEqual(try fixture.store.loadProgress(), newer)
+            try fixture.store.save(local)
+            let advanced = progress(words: ["crane", "civic"])
+            try fixture.store.save(advanced)
+            guard case .refreshed(let fresh) = try engine.resolve(preview, with: resolution) else {
+                return XCTFail("Advancement requires fresh consent")
+            }
+            XCTAssertNotEqual(fresh.id, preview.id)
+            XCTAssertEqual(try fixture.store.loadProgress(), advanced)
+            XCTAssertEqual(try engine.resolve(fresh, with: resolution), .applied)
+            XCTAssertEqual(try fixture.store.loadProgress(), resolution == .useCloud ? cloud : advanced)
+        }
+    }
+
+    @MainActor
+    func testGuestChoiceUsesAccountBasisAndPreservesGuestOnRefresh() throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let guest = progress(words: ["crane"])
+        let account = progress(words: ["civic"])
+        try fixture.store.save(account)
+        let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
+        let conflict = DailySyncConflict.progress(puzzleID: guest.puzzleID, local: guest, cloud: account)
+        let preview = try engine.choice(for: conflict, isGuestImport: true)
+        let advanced = progress(words: ["civic", "crane"])
+        try fixture.store.save(advanced)
+        guard case .refreshed(let fresh) = try engine.resolve(preview, with: .keepDevice),
+              case .progress(_, let shownGuest, let shownAccount) = fresh.conflict else {
+            return XCTFail("Expected refreshed import")
+        }
+        XCTAssertEqual(shownGuest, guest)
+        XCTAssertEqual(shownAccount, advanced)
+        XCTAssertEqual(try engine.resolve(fresh, with: .keepDevice), .applied)
+        XCTAssertEqual(try fixture.store.loadProgress(), guest, "Unchanged preview permits deliberate replacement")
+    }
+
+    @MainActor
+    func testTerminalDeferredProgressBranchesCannotOverwriteNextDaySlot() throws {
+        for terminalOnLocal in [false, true] {
+            for resolution in [DailyProgressConflictResolution.keepDevice, .useCloud] {
+                let fixture = SyncFixture(userID: userID)
+                defer { fixture.remove() }
+                let completed = result(words: ["stone"])
+                let terminal = DailyClassicProgress(result: completed)
+                let active = progress(words: ["civic"])
+                let local = terminalOnLocal ? terminal : active
+                let cloud = terminalOnLocal ? active : terminal
+                try fixture.store.save(local)
+                if terminalOnLocal { try fixture.store.save(history(completed)) }
+                let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
+                let preview = try engine.choice(for: .progress(puzzleID: active.puzzleID, local: local, cloud: cloud))
+                let newer = progress(day: day + 1, words: ["crane"])
+                try fixture.store.save(newer)
+                XCTAssertEqual(try engine.resolve(preview, with: resolution), .noLongerApplicable)
+                XCTAssertEqual(try fixture.store.loadProgress(), newer)
+            }
+        }
+    }
+
+    @MainActor
+    func testResolveMetadataFailureRetriesWithoutLosingSelectedBoard() throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let local = progress(words: ["crane"]), cloud = progress(words: ["civic"])
+        try fixture.store.save(local)
+        let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
+        let preview = try engine.choice(for: .progress(puzzleID: local.puzzleID, local: local, cloud: cloud))
+        let metadataURL = fixture.store.directory.appending(path: "daily-sync-metadata-v1.json")
+        try fixture.store.save(DailySyncMetadata())
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: metadataURL.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: metadataURL.path) }
+        XCTAssertThrowsError(try engine.resolve(preview, with: .useCloud))
+        XCTAssertEqual(try fixture.store.loadProgress(), cloud, "Progress succeeds before metadata fails")
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: metadataURL.path)
+        XCTAssertEqual(try engine.resolve(preview, with: .useCloud), .applied)
+        XCTAssertEqual(try fixture.store.loadProgress(), cloud)
+    }
+
+    @MainActor
+    func testCoordinatorClockSelectsGuestAndAccountDayAndProtectsDelayedImportAfterRollover() async throws {
+        let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1, "id": "daily-classic-en-US-v1", "scheduleVersion": 1,
+            "locale": "en-US", "wordLength": 5, "epochDay": day,
+            "acceptedGuesses": ["adore", "civic", "stone"],
+            "answers": ["civic", "stone", "adore"]
+        ]))
+        for useCloud in [false, true] {
+            let root = temporaryRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let guest = DailyClassicStore(directory: root.appending(path: "Guest"))
+            let accountStore = AccountDailyClassicStore(rootDirectory: root, userID: userID)
+            var clock = date(day: day + 1, seconds: 100)
+            let initialPuzzle = try DailyPuzzleSchedule.puzzle(at: clock, in: pack)
+            var guestGame = DailyClassicGame(puzzle: initialPuzzle, acceptedWords: Set(pack.acceptedGuesses))
+            var accountGame = guestGame
+            for letter in "adore" { guestGame.type(letter) }
+            for letter in "civic" { accountGame.type(letter) }
+            XCTAssertNil(guestGame.submit(at: clock).error)
+            XCTAssertNil(accountGame.submit(at: clock).error)
+            try guest.save(guestGame.progress)
+            try accountStore.save(accountGame.progress)
+            let remote = TestDailyRemote(userID: userID,
+                progress: progressDTO(accountGame.progress, userID: userID, revision: 1))
+            let coordinator = try DailyAccountCoordinator(
+                dailyPack: pack, tutorialPack: WordPack.load(bundle: .main), guestStore: guest,
+                accountService: nil, dailyRemoteFactory: { _ in remote },
+                accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+                liveStoreFactory: { LiveMatchRecoveryStore(rootDirectory: root, userID: $0) },
+                now: { clock })
+            XCTAssertEqual(coordinator.daily.puzzle, initialPuzzle)
+            XCTAssertEqual(coordinator.daily.game.progress, guestGame.progress)
+            coordinator.sessionChanged(to: userID)
+            XCTAssertEqual(coordinator.daily.puzzle, initialPuzzle)
+            XCTAssertEqual(coordinator.daily.game.progress, accountGame.progress)
+            await waitForClockCondition { if case .synced = coordinator.syncStatus { true } else { false } }
+            coordinator.importGuestHistory()
+            await waitForClockCondition { coordinator.firstConflictID != nil }
+            let oldChoice = try XCTUnwrap(coordinator.firstConflictID)
+            let guestBefore = try guest.loadProgress()
+            clock = date(day: day + 2, seconds: 100)
+            // Exercise the same owner method called by the actual scenePhase path.
+            coordinator.foregrounded()
+            let nextPuzzle = try DailyPuzzleSchedule.puzzle(at: clock, in: pack)
+            XCTAssertEqual(coordinator.daily.puzzle, nextPuzzle)
+            XCTAssertTrue(coordinator.daily.game.rows.isEmpty)
+            for letter in "civic" { coordinator.daily.typeLetter(letter) }
+            coordinator.daily.submitGuess()
+            await waitForClockCondition { if case .conflict = coordinator.syncStatus { true } else { false } }
+            XCTAssertEqual(coordinator.daily.game.rows.count, 1)
+            XCTAssertEqual(coordinator.daily.game.progress.acceptedGuesses.first?.acceptedAt, clock)
+            XCTAssertEqual(coordinator.firstConflictID, oldChoice, "Pending import consent survives ordinary next-day play")
+            let nextProgress = try XCTUnwrap(accountStore.loadProgress())
+            coordinator.resolveConflict(id: oldChoice, useCloud: useCloud)
+            await waitForClockCondition { coordinator.firstConflictID != oldChoice }
+            XCTAssertEqual(try accountStore.loadProgress(), nextProgress)
+            XCTAssertEqual(coordinator.daily.game.progress, nextProgress)
+            XCTAssertEqual(try guest.loadProgress(), guestBefore)
+            coordinator.sessionChanged(to: nil)
+            coordinator.foregrounded()
+            XCTAssertEqual(coordinator.daily.puzzle, nextPuzzle, "Guest owner shares the injected clock after return")
+        }
+    }
+
+    @MainActor
+    private func waitForClockCondition(_ condition: @MainActor () -> Bool,
+                                       file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<200 {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Timed out waiting for coordinator clock state", file: file, line: line)
     }
 
     private func XCTAssertThrowsCancellation(

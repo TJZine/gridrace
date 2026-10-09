@@ -31,8 +31,21 @@ This local mode makes no secrecy claim for bundled answers.
 Accounts are optional. Guest Codable files remain the immediate gameplay source while
 signed out. Each authenticated UUID has a separate local directory; changing or
 deleting an account swaps away from that directory before another account can render
-it. Supabase Auth sessions use the SDK's Apple-platform Keychain storage and never
-enter Daily Classic files or `UserDefaults`.
+it. `SupabaseAccountService` owns Auth lifetimes and stores sessions through native
+Security operations in the pinned SDK's existing Keychain namespace. Credentials
+never enter Daily Classic files or `UserDefaults`.
+
+The Auth owner validates persisted session data before publishing an effective
+account. Profile, Daily, Live commands and Realtime hold immutable account-bound
+leases across suspension; obsolete work cannot borrow a later account's client.
+Explicit sign-out fences consumers before credential cleanup or remote logout.
+A secure retirement marker and independently checked credential removal protect
+cold restoration; unresolved storage failures expose signed-out cleanup rather than
+claiming durable sign-out. Offline restoration retains existing credentials for
+Retry, with an explicit local sign-out action. SDK automatic Auth refresh and
+Realtime app-lifecycle handling are disabled: the Auth owner schedules refresh,
+and the Live session owns foreground recovery. Reversible storage failure drains
+old channels before the same client can publish fresh leases.
 
 `AccountModel` applies authentication identity changes without waiting for profile
 transport. It owns a cancellable profile task with identity and request-generation
@@ -51,7 +64,12 @@ immutable results.
 A pending guest-history import belongs to its account and sync-engine lifecycle.
 Replacing that lifecycle clears the pending decision; successful synchronization
 for another account cannot mark it imported. Staged conflicts require an explicit
-attempt choice, and durable decision-write failures remain retryable.
+attempt choice, and durable decision-write failures remain retryable. The displayed
+choice carries its account, puzzle slot and durable basis; an obsolete choice is
+refreshed or rejected before it can replace newer play. Accepted in-memory play
+remains the durability owner when a device write fails, and Settings exposes saving
+status and Retry. A prior-day terminal progress fallback is reconciled into immutable
+history before the next board replaces its slot.
 
 Hard Mode is attempt configuration, separate from immutable puzzle identity. A
 started attempt (accepted guesses) takes precedence over an empty board with a
