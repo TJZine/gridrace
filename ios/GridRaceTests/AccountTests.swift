@@ -160,6 +160,272 @@ final class SupabaseAccountConfigurationTests: XCTestCase {
 
 @MainActor
 final class DailyAccountCoordinatorTests: XCTestCase {
+    func testSignedInColdStartupNeverWritesInactiveGuestBeforeOrAfterHeldRestoration() async throws {
+        let fixture = try GuestStartupFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let before = try fixture.guestBytes()
+        let service = AccountServiceMock()
+        let userID = UUID()
+        var held: CheckedContinuation<AccountSession?, Error>?
+        service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+        let coordinator = try fixture.coordinator(service: service)
+        XCTAssertEqual(try fixture.guestBytes(), before, "Capture before constructor catches eager writes")
+        let initial = Task { await coordinator.start() }
+        await waitForAccountCondition { held != nil }
+        service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+        await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
+        coordinator.foregrounded()
+        await coordinator.start()
+        XCTAssertEqual(service.restoreCallCount, 1)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+        held?.resume(returning: AccountSession(userID: userID, expiresAt: .distantFuture))
+        await initial.value
+        XCTAssertEqual(coordinator.account.session?.userID, userID)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+        let store = AccountDailyClassicStore(rootDirectory: fixture.root, userID: userID)
+        let accountProgress = try XCTUnwrap(store.loadProgress())
+        let coldService = AccountServiceMock()
+        coldService.restoredSession = AccountSession(userID: userID, expiresAt: .distantFuture)
+        let cold = try fixture.coordinator(service: coldService)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+        await cold.start()
+        XCTAssertEqual(cold.daily.game.progress, accountProgress)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+    }
+
+    func testSingleLatestRestoreSettlesGuestAfterProvisionalNilAndCurrentNilOrError() async throws {
+        for terminal in [false, true] {
+            for failure in [false, true] {
+                let fixture = try GuestStartupFixture()
+                defer { try? FileManager.default.removeItem(at: fixture.root) }
+                if terminal {
+                    let old = Date(timeIntervalSince1970: 20_696 * 86_400 + 100)
+                    let puzzle = try DailyPuzzleSchedule.puzzle(at: old, in: fixture.pack)
+                    var game = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(fixture.pack.acceptedGuesses))
+                    for letter in puzzle.answer { game.type(letter) }
+                    XCTAssertNil(game.submit(at: old).error)
+                    try fixture.guestStore.save(game.progress)
+                }
+                let before = try fixture.guestBytes()
+                let service = AccountServiceMock()
+                var held: CheckedContinuation<AccountSession?, Error>?
+                service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+                let coordinator = try fixture.coordinator(service: service)
+                let guest = coordinator.daily
+                let initial = Task { await coordinator.start() }
+                await waitForAccountCondition { held != nil }
+                service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+                await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
+                coordinator.foregrounded()
+                XCTAssertEqual(try fixture.guestBytes(), before)
+                XCTAssertFalse(guest.isPersistenceActive)
+                if failure {
+                    // Current storage-error restoration can publish cleanup recovery before throwing.
+                    service.emitState(AccountAuthState(session: nil, recovery: .init(action: .cleanup, storageIssue: nil)))
+                    await waitForAccountCondition { coordinator.account.authRecovery?.action == .cleanup }
+                    XCTAssertEqual(try fixture.guestBytes(), before)
+                    held?.resume(throwing: TestError.failed)
+                } else { held?.resume(returning: nil) }
+                await initial.value
+                XCTAssertEqual(service.restoreCallCount, 1, "No second restore is needed to settle this attempt")
+                XCTAssertTrue(coordinator.daily === guest)
+                XCTAssertTrue(guest.isPersistenceActive)
+                XCTAssertNil(coordinator.account.session)
+                XCTAssertEqual(coordinator.account.errorMessage != nil, failure)
+                XCTAssertEqual(guest.puzzle.day, 20_697)
+                XCTAssertTrue(guest.game.rows.isEmpty)
+                XCTAssertEqual(try fixture.guestStore.loadProgress(), guest.game.progress)
+                XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults.count, terminal ? 1 : 0)
+                XCTAssertEqual(try Data(contentsOf: fixture.guestStore.directory.appending(path: "sibling.dat")), Data("protected sibling".utf8))
+            }
+        }
+    }
+
+    func testExplicitCleanupWhileAlreadyNilInvalidatesLateRestorationFallback() async throws {
+        for failure in [false, true] {
+            let fixture = try GuestStartupFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let before = try fixture.guestBytes()
+            let service = AccountServiceMock()
+            var held: CheckedContinuation<AccountSession?, Error>?
+            service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+            let coordinator = try fixture.coordinator(service: service)
+            let initial = Task { await coordinator.start() }
+            await waitForAccountCondition { held != nil }
+            service.emitState(AccountAuthState(session: nil, recovery: .init(action: .cleanup, storageIssue: nil)))
+            await waitForAccountCondition { coordinator.account.authRecovery?.action == .cleanup }
+            XCTAssertFalse(coordinator.daily.isPersistenceActive)
+            XCTAssertEqual(try fixture.guestBytes(), before)
+            await coordinator.account.retryAuthRecovery()
+            XCTAssertEqual(service.cleanupRetryCount, 1)
+            XCTAssertNil(coordinator.account.session)
+            XCTAssertTrue(coordinator.daily.isPersistenceActive, "Completed explicit cleanup owns signed-out fallback")
+            let afterCleanup = try fixture.guestBytes()
+            XCTAssertNotEqual(afterCleanup, before)
+            if failure { held?.resume(throwing: TestError.failed) }
+            else { held?.resume(returning: nil) }
+            await initial.value
+            coordinator.foregrounded()
+            XCTAssertEqual(try fixture.guestBytes(), afterCleanup, "An obsolete restore cannot replace completed cleanup state")
+            XCTAssertNil(coordinator.account.errorMessage, "Old restore error cannot replace current cleanup state")
+            service.restoration = nil
+            await coordinator.start()
+            XCTAssertEqual(service.restoreCallCount, 1, "Late supersession cannot reopen a completed signed-out intent")
+        }
+    }
+
+    func testCompletedSignOutWithoutRetiredUUIDActivatesPreparedTerminalGuest() async throws {
+        let fixture = try GuestStartupFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let old = Date(timeIntervalSince1970: 20_696 * 86_400 + 100)
+        let puzzle = try DailyPuzzleSchedule.puzzle(at: old, in: fixture.pack)
+        var game = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(fixture.pack.acceptedGuesses))
+        for letter in puzzle.answer { game.type(letter) }
+        XCTAssertNil(game.submit(at: old).error)
+        try fixture.guestStore.save(game.progress)
+        let before = try fixture.guestBytes()
+        let service = AccountServiceMock()
+        var held: CheckedContinuation<AccountSession?, Error>?
+        service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+        let coordinator = try fixture.coordinator(service: service)
+        let initial = Task { await coordinator.start() }
+        await waitForAccountCondition { held != nil }
+        service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+        await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
+        XCTAssertEqual(try fixture.guestBytes(), before)
+        await coordinator.account.signOut() // Mock returns no retired UUID, matching unbound restoration.
+        XCTAssertEqual(service.signOutCount, 1)
+        XCTAssertTrue(coordinator.daily.isPersistenceActive)
+        XCTAssertEqual(coordinator.daily.puzzle.day, 20_697)
+        XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults.count, 1)
+        let afterSignOut = try fixture.guestBytes()
+        held?.resume(returning: nil)
+        await initial.value
+        XCTAssertEqual(try fixture.guestBytes(), afterSignOut)
+        XCTAssertNil(coordinator.account.errorMessage)
+        service.restoration = nil
+        await coordinator.start()
+        XCTAssertEqual(service.restoreCallCount, 1)
+    }
+
+    func testCancelledStartupDoesNotAcquireGuestAndCanDeliberatelyRestart() async throws {
+        for cancelTask in [false, true] {
+            let fixture = try GuestStartupFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let before = try fixture.guestBytes()
+            let service = AccountServiceMock()
+            var held: CheckedContinuation<AccountSession?, Error>?
+            service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+            let coordinator = try fixture.coordinator(service: service)
+            let initial = Task { await coordinator.start() }
+            await waitForAccountCondition { held != nil }
+            service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+            await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
+            if cancelTask { initial.cancel() }
+            held?.resume(throwing: CancellationError())
+            await initial.value
+            XCTAssertEqual(try fixture.guestBytes(), before)
+            XCTAssertFalse(coordinator.daily.isPersistenceActive)
+            XCTAssertNil(coordinator.account.errorMessage)
+            service.restoration = nil
+            await coordinator.start()
+            XCTAssertEqual(service.restoreCallCount, 2)
+            XCTAssertTrue(coordinator.daily.isPersistenceActive)
+            XCTAssertEqual(try fixture.guestStore.loadProgress(), coordinator.daily.game.progress)
+        }
+    }
+
+    func testGuestFallbackAndExplicitInputRemainAvailableDuringAccountRecovery() async throws {
+        for outcome in ["nil", "failure", "input"] {
+            let fixture = try GuestStartupFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let service = AccountServiceMock()
+            var held: CheckedContinuation<AccountSession?, Error>?
+            service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+            let coordinator = try fixture.coordinator(service: service)
+            let guestOwner = coordinator.daily
+            let initial = Task { await coordinator.start() }
+            await waitForAccountCondition { held != nil }
+            XCTAssertTrue(coordinator.isDailyPlayable)
+            if outcome == "input" {
+                coordinator.daily.typeLetter("C")
+                XCTAssertTrue(guestOwner.isPersistenceActive)
+                XCTAssertEqual(try fixture.guestStore.loadProgress()?.draft, "C")
+                held?.resume(returning: AccountSession(userID: UUID(), expiresAt: .distantFuture))
+            } else if outcome == "failure" {
+                held?.resume(throwing: TestError.failed)
+            } else { held?.resume(returning: nil) }
+            await initial.value
+            if outcome == "input" {
+                XCTAssertFalse(coordinator.daily === guestOwner)
+                coordinator.sessionChanged(to: nil)
+                XCTAssertTrue(coordinator.daily === guestOwner)
+                XCTAssertEqual(coordinator.daily.game.draft, "C")
+            } else {
+                XCTAssertTrue(coordinator.daily === guestOwner)
+                XCTAssertTrue(guestOwner.isPersistenceActive)
+                XCTAssertEqual(try fixture.guestStore.loadProgress(), guestOwner.game.progress)
+                XCTAssertEqual(coordinator.account.errorMessage != nil, outcome == "failure")
+            }
+        }
+    }
+
+    func testStaleRestorationCannotActivateGuestAfterIntentionalAccountSignIn() async throws {
+        let fixture = try GuestStartupFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let before = try fixture.guestBytes()
+        let service = AccountServiceMock()
+        var held: CheckedContinuation<AccountSession?, Error>?
+        service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+        let coordinator = try fixture.coordinator(service: service)
+        let initial = Task { await coordinator.start() }
+        await waitForAccountCondition { held != nil }
+        service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+        await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
+        let userID = UUID()
+        service.appleSession = AccountSession(userID: userID, expiresAt: .distantFuture)
+        await coordinator.account.signInWithApple(idToken: "test", rawNonce: "test")
+        held?.resume(returning: nil)
+        await initial.value
+        XCTAssertEqual(coordinator.account.session?.userID, userID)
+        XCTAssertTrue(coordinator.daily.isPersistenceActive)
+        XCTAssertEqual(try fixture.guestBytes(), before)
+    }
+
+    func testLogoutAndDeletionActivateRetainedGuestTerminalRecoveryBeforeRollover() async throws {
+        for deletion in [false, true] {
+            let fixture = try GuestStartupFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let old = Date(timeIntervalSince1970: 20_696 * 86_400 + 100)
+            let puzzle = try DailyPuzzleSchedule.puzzle(at: old, in: fixture.pack)
+            var terminal = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(fixture.pack.acceptedGuesses))
+            for letter in puzzle.answer { terminal.type(letter) }
+            XCTAssertNil(terminal.submit(at: old).error)
+            try fixture.guestStore.save(terminal.progress)
+            let before = try fixture.guestBytes()
+            let service = AccountServiceMock()
+            let userID = UUID()
+            service.restoredSession = AccountSession(userID: userID, expiresAt: .distantFuture)
+            let coordinator = try fixture.coordinator(service: service)
+            let guestOwner = coordinator.daily
+            await coordinator.start()
+            XCTAssertEqual(try fixture.guestBytes(), before, "Account restoration cannot archive guest fallback")
+            let accountStore = AccountDailyClassicStore(rootDirectory: fixture.root, userID: userID)
+            let accountBefore = try accountStore.loadProgress()
+            if deletion { await coordinator.account.deleteAccount() }
+            else { await coordinator.account.signOut() }
+            XCTAssertTrue(coordinator.daily === guestOwner)
+            XCTAssertTrue(guestOwner.isPersistenceActive)
+            XCTAssertEqual(guestOwner.puzzle.day, 20_697)
+            XCTAssertTrue(guestOwner.game.rows.isEmpty)
+            XCTAssertEqual(try fixture.guestStore.loadHistory().completedResults, [try XCTUnwrap(terminal.completedResult)])
+            XCTAssertEqual(try fixture.guestStore.loadProgress(), guestOwner.game.progress)
+            XCTAssertEqual(try Data(contentsOf: fixture.guestStore.directory.appending(path: "sibling.dat")), Data("protected sibling".utf8))
+            if deletion { XCTAssertNil(try accountStore.loadProgress()) }
+            else { XCTAssertEqual(try accountStore.loadProgress(), accountBefore) }
+        }
+    }
+
     func testReadableUnwritableProgressSurvivesFailedSyncAndRecoversAcceptedOwner() async throws {
         let previousSettings = DailyClassicSettings.load(from: .standard)
         defer { try? previousSettings.save(to: .standard) }
@@ -1008,6 +1274,62 @@ final class AccountModelTests: XCTestCase {
         XCTAssertTrue(sheet.observe(isSignedIn: model.isSignedIn, profileReady: profileReady(model)))
     }
 
+    func testRestorationOutcomesDistinguishProvisionalNilAndSupersededRetry() async throws {
+        let service = AccountServiceMock()
+        var holds: [CheckedContinuation<AccountSession?, Error>] = []
+        service.restoration = { try await withCheckedThrowingContinuation { holds.append($0) } }
+        var nilNotifications = 0
+        var completions: [AccountModel.RestorationOutcome] = []
+        let model = AccountModel(service: service,
+            didChangeSession: { if $0 == nil { nilNotifications += 1 } },
+            didFinishRestoration: { completions.append($0) })
+        let initial = Task { await model.start() }
+        await waitForAccountCondition { holds.count == 1 }
+        let duplicate = await model.start()
+        XCTAssertEqual(duplicate, .alreadyStarted)
+        service.emit(nil)
+        await waitForAccountCondition { nilNotifications == 1 }
+        XCTAssertTrue(completions.isEmpty, "A provisional stream nil is not restoration settlement")
+        let retry = Task { await model.restoreSession() }
+        await waitForAccountCondition { holds.count == 2 }
+        holds[0].resume(returning: nil)
+        let obsolete = await initial.value
+        XCTAssertEqual(obsolete, .superseded)
+        XCTAssertTrue(completions.isEmpty, "Older attempt cannot settle the latest restore")
+        XCTAssertTrue(model.isRestoring)
+        holds[1].resume(returning: nil)
+        let latest = await retry.value
+        XCTAssertEqual(latest, .settled(nil))
+        XCTAssertEqual(completions, [.settled(nil)])
+        XCTAssertFalse(model.isRestoring)
+    }
+
+    func testCompletedCleanupDoesNotReauthorizeOlderRestoreReceipt() async throws {
+        for failure in [false, true] {
+            let service = AccountServiceMock()
+            var held: CheckedContinuation<AccountSession?, Error>?
+            service.restoration = { try await withCheckedThrowingContinuation { held = $0 } }
+            var outcomes: [AccountModel.RestorationOutcome] = []
+            var cleanupCompletions = 0
+            let model = AccountModel(service: service,
+                didFinishRestoration: { outcomes.append($0) },
+                didCompleteSignedOutIntent: { cleanupCompletions += 1 })
+            let initial = Task { await model.start() }
+            await waitForAccountCondition { held != nil }
+            service.emitState(AccountAuthState(session: nil, recovery: .init(action: .cleanup, storageIssue: nil)))
+            await waitForAccountCondition { model.authRecovery?.action == .cleanup }
+            await model.retryAuthRecovery()
+            XCTAssertEqual(cleanupCompletions, 1)
+            XCTAssertTrue(outcomes.isEmpty, "Completed cleanup is not a restoration outcome")
+            if failure { held?.resume(throwing: TestError.failed) }
+            else { held?.resume(returning: nil) }
+            let outcome = await initial.value
+            XCTAssertEqual(outcome, .superseded)
+            XCTAssertEqual(outcomes, [.superseded])
+            XCTAssertNil(model.errorMessage)
+        }
+    }
+
     func testSessionRestorationLoadsOnlyTheOwnersProfile() async {
         let userID = UUID()
         let service = AccountServiceMock()
@@ -1343,10 +1665,53 @@ final class AccountModelTests: XCTestCase {
 }
 
 @MainActor
-private final class AccountServiceMock: AccountServicing {
+private final class GuestStartupFixture {
+    let root = FileManager.default.temporaryDirectory.appending(path: "GridRaceGuestStartup-\(UUID().uuidString)")
+    let pack: DailyWordPack
+    let current = Date(timeIntervalSince1970: 20_697 * 86_400 + 100)
+    var guestStore: DailyClassicStore { DailyClassicStore(directory: root.appending(path: "Guest")) }
+
+    init() throws {
+        pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+            "formatVersion": 1, "id": "daily-classic-en-US-v1", "scheduleVersion": 1,
+            "locale": "en-US", "wordLength": 5, "epochDay": 20_696,
+            "acceptedGuesses": ["adore", "civic", "stone"], "answers": ["stone", "adore"]
+        ]))
+        let old = Date(timeIntervalSince1970: 20_696 * 86_400 + 100)
+        let puzzle = try DailyPuzzleSchedule.puzzle(at: old, in: pack)
+        var game = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(pack.acceptedGuesses))
+        for letter in "civic" { game.type(letter) }
+        XCTAssertNil(game.submit(at: old).error)
+        try guestStore.save(game.progress)
+        try guestStore.save(DailyClassicHistory())
+        try Data("protected sibling".utf8).write(to: guestStore.directory.appending(path: "sibling.dat"))
+    }
+
+    func guestBytes() throws -> [String: Data] {
+        let names = try FileManager.default.contentsOfDirectory(atPath: guestStore.directory.path)
+        return try Dictionary(uniqueKeysWithValues: names.map {
+            ($0, try Data(contentsOf: guestStore.directory.appending(path: $0)))
+        })
+    }
+
+    func coordinator(service: AccountServiceMock) throws -> DailyAccountCoordinator {
+        try DailyAccountCoordinator(dailyPack: pack, tutorialPack: WordPack.load(bundle: .main),
+            guestStore: guestStore, accountService: nil, accountModelService: service,
+            dailyRemoteFactory: { _ in UnavailableDailyRemote() },
+            accountStoreFactory: { AccountDailyClassicStore(rootDirectory: self.root, userID: $0) },
+            liveStoreFactory: { LiveMatchRecoveryStore(rootDirectory: self.root, userID: $0) },
+            now: { self.current })
+    }
+}
+
+@MainActor
+// Shared with DailySyncTests for faithful coordinator cold-restoration coverage.
+final class AccountServiceMock: AccountServicing {
     private let stream: AsyncStream<AccountAuthState>
     private let continuation: AsyncStream<AccountAuthState>.Continuation
 
+    var restoration: (@MainActor () async throws -> AccountSession?)?
+    private(set) var restoreCallCount = 0
     var restoredSession: AccountSession?
     var refreshedSession: AccountSession?
     var appleSession: AccountSession?
@@ -1372,7 +1737,11 @@ private final class AccountServiceMock: AccountServicing {
 
     var authStateChanges: AsyncStream<AccountAuthState> { stream }
 
-    func restoreSession() async throws -> AccountSession? { restoredSession }
+    func restoreSession() async throws -> AccountSession? {
+        restoreCallCount += 1
+        if let restoration { return try await restoration() }
+        return restoredSession
+    }
     func refreshSession() async throws -> AccountSession? { refreshedSession }
 
     func signInWithApple(idToken: String, rawNonce: String) async throws -> AccountSession {

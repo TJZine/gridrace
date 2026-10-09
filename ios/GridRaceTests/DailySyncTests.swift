@@ -128,6 +128,57 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(try guest.loadHistory().completedResults, [guestResult])
     }
 
+    func testRemoteRetainsPerPuzzleProgressAndImportsOnlyTheRequestedDay() async throws {
+        let remote = TestDailyRemote(userID: userID)
+        let oldUpload = DailyProgressUploadDTO(progress: progress(words: ["civic"]), expectedRevision: nil)
+        let newUpload = DailyProgressUploadDTO(
+            progress: progress(day: day + 1, words: ["crane"]), expectedRevision: nil
+        )
+        guard case let .stored(oldRow) = try await remote.pushProgress(oldUpload) else {
+            return XCTFail("The old puzzle must insert its own progress row")
+        }
+        guard case let .stored(newRow) = try await remote.pushProgress(newUpload) else {
+            return XCTFail("A different puzzle must insert without conflicting with the old row")
+        }
+        XCTAssertEqual(oldRow.revision, 1)
+        XCTAssertEqual(newRow.revision, 1)
+        let latest = try await remote.pull()
+        let current = await remote.currentProgress()
+        XCTAssertEqual(latest.progress, newRow)
+        XCTAssertEqual(current, newRow)
+
+        let oldRetry = try await remote.pushProgress(oldUpload)
+        XCTAssertEqual(oldRetry, .stored(oldRow), "Inserting a new day must retain the old row and revision")
+        let oldAdvance = DailyProgressUploadDTO(
+            progress: progress(words: ["civic", "crane"]), expectedRevision: oldRow.revision
+        )
+        guard case let .stored(advancedOldRow) = try await remote.pushProgress(oldAdvance) else {
+            return XCTFail("The retained old row must still accept its next revision")
+        }
+        XCTAssertEqual(advancedOldRow.revision, 2)
+        XCTAssertEqual(advancedOldRow.guesses.map(\.domain), oldAdvance.guesses.map(\.domain))
+        let afterOldAdvance = try await remote.pull()
+        XCTAssertEqual(afterOldAdvance.progress, newRow, "Updating an older puzzle must not change the latest day")
+
+        let oldResult = result(words: ["civic", "crane", "stone"])
+        guard case let .stored(importedOldRow) = try await remote.importResult(DailyImportedResultUploadDTO(oldResult)) else {
+            return XCTFail("The old puzzle result must import")
+        }
+        let afterOldImport = try await remote.pull()
+        let currentAfterImport = await remote.currentProgress()
+        XCTAssertEqual(afterOldImport.importedResults.map(\.domain), [oldResult])
+        XCTAssertEqual(afterOldImport.progress, newRow, "Importing the old result must preserve the newer progress row")
+        XCTAssertEqual(currentAfterImport, newRow)
+        let completedOldRetry = try await remote.pushProgress(oldAdvance)
+        XCTAssertEqual(completedOldRetry, .completed(importedOldRow))
+
+        let newResult = result(day: day + 1, words: ["crane", "stone"])
+        _ = try await remote.importResult(DailyImportedResultUploadDTO(newResult))
+        let afterBothImports = try await remote.pull()
+        XCTAssertNil(afterBothImports.progress, "Importing both results must remove both puzzles' progress rows")
+        XCTAssertEqual(afterBothImports.importedResults.map(\.domain), [oldResult, newResult])
+    }
+
     func testCloudOnlyHistoryRestoresAndDerivesStatisticsWithoutReupload() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
@@ -1246,6 +1297,12 @@ final class DailySyncTests: XCTestCase {
             XCTAssertNil(guestGame.submit(at: clock).error)
             XCTAssertNil(accountGame.submit(at: clock).error)
             try guest.save(guestGame.progress)
+            let historicalDate = date(day: day, seconds: 100)
+            let historicalPuzzle = try DailyPuzzleSchedule.puzzle(at: historicalDate, in: pack)
+            var historicalGame = DailyClassicGame(puzzle: historicalPuzzle, acceptedWords: Set(pack.acceptedGuesses))
+            for letter in historicalPuzzle.answer { historicalGame.type(letter) }
+            XCTAssertNil(historicalGame.submit(at: historicalDate).error)
+            try guest.save(history(try XCTUnwrap(historicalGame.completedResult)))
             try accountStore.save(accountGame.progress)
             let remote = TestDailyRemote(userID: userID,
                 progress: progressDTO(accountGame.progress, userID: userID, revision: 1))
@@ -1283,6 +1340,31 @@ final class DailySyncTests: XCTestCase {
             XCTAssertEqual(try accountStore.loadProgress(), nextProgress)
             XCTAssertEqual(coordinator.daily.game.progress, nextProgress)
             XCTAssertEqual(try guest.loadProgress(), guestBefore)
+            await waitForClockCondition { if case .synced = coordinator.syncStatus { true } else { false } }
+            func guestFiles() throws -> [String: Data] {
+                let names = try FileManager.default.contentsOfDirectory(atPath: guest.directory.path)
+                return try Dictionary(uniqueKeysWithValues: names.map {
+                    ($0, try Data(contentsOf: guest.directory.appending(path: $0)))
+                })
+            }
+            let guestBytes = try guestFiles()
+            let restoreService = AccountServiceMock()
+            restoreService.restoredSession = AccountSession(userID: userID, expiresAt: .distantFuture)
+            let cold = try DailyAccountCoordinator(
+                dailyPack: pack, tutorialPack: WordPack.load(bundle: .main), guestStore: guest,
+                accountService: nil, accountModelService: restoreService,
+                dailyRemoteFactory: { _ in remote },
+                accountStoreFactory: { AccountDailyClassicStore(rootDirectory: root, userID: $0) },
+                liveStoreFactory: { LiveMatchRecoveryStore(rootDirectory: root, userID: $0) },
+                now: { clock })
+            XCTAssertEqual(try guestFiles(), guestBytes,
+                "A signed-in cold constructor must not roll over the inactive guest slot")
+            await cold.start()
+            await waitForClockCondition { if case .synced = cold.syncStatus { true } else { false } }
+            XCTAssertEqual(cold.daily.game.progress, nextProgress)
+            XCTAssertEqual(try accountStore.loadProgress(), nextProgress)
+            XCTAssertEqual(try accountStore.loadSyncMetadata().guestImportDecision, .imported)
+            XCTAssertEqual(try guestFiles(), guestBytes)
             coordinator.sessionChanged(to: nil)
             coordinator.foregrounded()
             XCTAssertEqual(coordinator.daily.puzzle, nextPuzzle, "Guest owner shares the injected clock after return")
@@ -1501,7 +1583,7 @@ private final class SyncFixture: @unchecked Sendable {
 
 private actor TestDailyRemote: DailySyncRemote {
     private let userID: UUID
-    private var progress: DailyProgressDTO?
+    private var progressByPuzzleID: [String: DailyProgressDTO]
     private var results: [String: DailyImportedResultDTO]
     private var pullFailures = 0
     private var imports = 0
@@ -1513,7 +1595,11 @@ private actor TestDailyRemote: DailySyncRemote {
         results: [String: DailyImportedResultDTO] = [:]
     ) {
         self.userID = userID
-        self.progress = progress
+        if let progress {
+            progressByPuzzleID = [progress.puzzleID: progress]
+        } else {
+            progressByPuzzleID = [:]
+        }
         self.results = results
     }
 
@@ -1523,7 +1609,7 @@ private actor TestDailyRemote: DailySyncRemote {
             throw DailySyncRemoteError.unavailable
         }
         return DailyCloudSnapshot(
-            progress: progress,
+            progress: currentProgress(),
             importedResults: results.values.sorted { $0.puzzleDay < $1.puzzleDay }
         )
     }
@@ -1532,9 +1618,9 @@ private actor TestDailyRemote: DailySyncRemote {
         if let completed = results[upload.puzzleID] {
             return .completed(completed)
         }
-        guard let existing = progress else {
+        guard let existing = progressByPuzzleID[upload.puzzleID] else {
             let inserted = dto(upload, revision: 1)
-            progress = inserted
+            progressByPuzzleID[upload.puzzleID] = inserted
             return .stored(inserted)
         }
         guard sameIdentity(upload, existing) else { return .conflict(.progress(existing)) }
@@ -1553,7 +1639,7 @@ private actor TestDailyRemote: DailySyncRemote {
             return .conflict(.progress(existing))
         }
         let advanced = dto(upload, revision: existing.revision + 1)
-        progress = advanced
+        progressByPuzzleID[upload.puzzleID] = advanced
         return .stored(advanced)
     }
 
@@ -1565,15 +1651,15 @@ private actor TestDailyRemote: DailySyncRemote {
                 ? .stored(existing)
                 : .conflict(.result(existing))
         }
-        if let existingProgress = progress, existingProgress.puzzleID == upload.puzzleID {
-            progress = nil
-        }
+        progressByPuzzleID.removeValue(forKey: upload.puzzleID)
         results[upload.puzzleID] = incoming
         return .stored(incoming)
     }
 
     func failNextPull() { pullFailures += 1 }
-    func currentProgress() -> DailyProgressDTO? { progress }
+    func currentProgress() -> DailyProgressDTO? {
+        progressByPuzzleID.values.max { $0.puzzleDay < $1.puzzleDay }
+    }
     func storedResultCount() -> Int { results.count }
     func importCallCount() -> Int { imports }
 

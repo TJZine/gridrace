@@ -202,6 +202,105 @@ final class DailyClassicModelTests: XCTestCase {
         [view] + view.subviews.flatMap { descendants($0) }
     }
 
+    func testPreparedGuestDefersProgressRepairAndPassiveRefreshUntilExplicitActivation() throws {
+        for corrupt in [false, true] {
+            let fixture = try Fixture()
+            let store = DailyClassicStore(directory: fixture.directory)
+            let oldDate = fixture.date(day: fixture.epochDay)
+            let old = try fixture.model(now: { oldDate })
+            fixture.type("civic", into: old)
+            old.submitGuess()
+            let progressURL = fixture.directory.appending(path: "daily-progress-v1.json")
+            if corrupt { try Data("{broken".utf8).write(to: progressURL) }
+            let before = try Data(contentsOf: progressURL)
+            let current = fixture.date(day: fixture.epochDay + 1)
+            let prepared = try DailyClassicModel(pack: fixture.pack, store: store,
+                defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+            prepared.refreshForCurrentDay()
+            XCTAssertFalse(prepared.flushAcceptedState(), "Deferred initial persistence is not durable")
+            try prepared.reloadReconciledState()
+            XCTAssertEqual(try Data(contentsOf: progressURL), before)
+            XCTAssertNil(prepared.storageMessage, "Preparation did not attempt a failing save")
+            XCTAssertFalse(prepared.isPersistenceActive)
+            XCTAssertTrue(prepared.retryPersistence(), "Explicit saving intent activates this owner")
+            XCTAssertTrue(prepared.isPersistenceActive)
+            XCTAssertEqual(try store.loadProgress(), prepared.game.progress)
+            XCTAssertEqual(prepared.puzzle.day, fixture.epochDay + 1)
+            let activated = try Data(contentsOf: progressURL)
+            XCTAssertTrue(prepared.activatePersistence())
+            XCTAssertEqual(try Data(contentsOf: progressURL), activated)
+        }
+    }
+
+    func testPreparedTerminalFallbackRemainsUntouchedUntilActivationAndDurableRetry() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let oldDate = fixture.date(day: fixture.epochDay)
+        let old = try fixture.model(store: store, now: { oldDate })
+        store.historySaveFailures = 1
+        fixture.type("adore", into: old)
+        old.submitGuess()
+        let fallback = try XCTUnwrap(store.savedProgress)
+        XCTAssertNotNil(fallback.completion)
+        let current = fixture.date(day: fixture.epochDay + 1)
+        let prepared = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+        prepared.refreshForCurrentDay()
+        XCTAssertFalse(prepared.flushAcceptedState())
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertTrue((store.savedHistory ?? DailyClassicHistory()).completedResults.isEmpty)
+        store.historySaveFailures = 2
+        XCTAssertFalse(prepared.activatePersistence())
+        XCTAssertEqual(prepared.puzzle.day, fixture.epochDay)
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertFalse(prepared.retryPersistence())
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertTrue(prepared.retryPersistence())
+        prepared.refreshForCurrentDay()
+        XCTAssertEqual(prepared.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(store.savedHistory?.completedResults.count, 1)
+        XCTAssertEqual(store.savedProgress, prepared.game.progress)
+    }
+
+    func testPreparedSubmissionActivatesWithItsSingleAcceptedTimestamp() throws {
+        let fixture = try Fixture()
+        let current = fixture.date(day: fixture.epochDay, seconds: 100)
+        let puzzle = try DailyPuzzleSchedule.puzzle(at: current, in: fixture.pack)
+        var draft = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(fixture.pack.acceptedGuesses))
+        for letter in "adore" { draft.type(letter) }
+        let store = DailyClassicStore(directory: fixture.directory)
+        try store.save(draft.progress)
+        var calls = 0
+        let model = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared,
+            now: { calls += 1; return current })
+        model.submitGuess()
+        XCTAssertTrue(model.isPersistenceActive)
+        XCTAssertEqual(calls, 2, "Construction and submission each sample once, including activation")
+        XCTAssertEqual(model.game.progress.acceptedGuesses.first?.acceptedAt, current)
+        XCTAssertEqual(try store.loadHistory().completedResults.count, 1)
+    }
+
+    func testPreparedModeIntentActivatesAndUnknownProgressReadFailureIsNotRepaired() throws {
+        let fixture = try Fixture()
+        let current = fixture.date(day: fixture.epochDay)
+        let store = DailyClassicStore(directory: fixture.directory)
+        let model = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+        XCTAssertNil(try store.loadProgress())
+        model.updateHardMode(true)
+        XCTAssertTrue(model.isPersistenceActive)
+        XCTAssertEqual(try store.loadProgress()?.hardModeEnabled, true)
+        try store.discardProgress()
+        let unreadable = fixture.directory.appending(path: "daily-progress-v1.json")
+        try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current }))
+        var directory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unreadable.path, isDirectory: &directory))
+        XCTAssertTrue(directory.boolValue, "Unavailable storage is preserved, not treated as corrupt JSON")
+    }
+
     func testDraftAndAcceptedRowsRestoreAfterRecreation() throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)

@@ -5,6 +5,17 @@ import Observation
 @MainActor
 @Observable
 final class AccountModel {
+    enum RestorationOutcome: Equatable, Sendable {
+        case settled(UUID?)
+        case failed
+        case cancelled
+        case superseded
+        case alreadyStarted
+        case notConfigured
+    }
+
+    private let didFinishRestoration: @MainActor (RestorationOutcome) -> Void
+    private let didCompleteSignedOutIntent: @MainActor () -> Void
     private let service: (any AccountServicing)?
     private let didChangeSession: @MainActor (UUID?) -> Void
     private let didSignOut: @MainActor (UUID) async -> Bool
@@ -17,6 +28,10 @@ final class AccountModel {
     private var authObservation: Task<Void, Never>?
     private var started = false
     private var profileTask: Task<Void, Never>?
+    private var restorationGeneration = 0
+    // Only the current restore may follow identity-neutral nil notifications.
+    // Explicit Auth intent or a real identity transition leaves this receipt invalid.
+    private var restorationSessionGeneration: Int?
     private var sessionGeneration = 0
     private var profileGeneration = 0
 
@@ -48,6 +63,8 @@ final class AccountModel {
     init(
         service: (any AccountServicing)?,
         didChangeSession: @escaping @MainActor (UUID?) -> Void = { _ in },
+        didFinishRestoration: @escaping @MainActor (RestorationOutcome) -> Void = { _ in },
+        didCompleteSignedOutIntent: @escaping @MainActor () -> Void = {},
         didSignOut: @escaping @MainActor (UUID) async -> Bool = { _ in true },
         didDeleteAccount: @escaping @MainActor (UUID) async throws -> Void = { _ in },
         retryDeletedDailyCleanup: (@MainActor (UUID) async throws -> Void)? = nil,
@@ -55,6 +72,8 @@ final class AccountModel {
     ) {
         self.service = service
         self.didChangeSession = didChangeSession
+        self.didFinishRestoration = didFinishRestoration
+        self.didCompleteSignedOutIntent = didCompleteSignedOutIntent
         self.didSignOut = didSignOut
         self.didDeleteAccount = didDeleteAccount
         self.retryDeletedDailyCleanup = retryDeletedDailyCleanup
@@ -66,8 +85,13 @@ final class AccountModel {
         profileTask?.cancel()
     }
 
-    func start() async {
-        guard !started, let service else { return }
+    @discardableResult
+    func start() async -> RestorationOutcome {
+        guard !started else { return .alreadyStarted }
+        guard let service else {
+            didFinishRestoration(.notConfigured)
+            return .notConfigured
+        }
         started = true
         let changes = service.authStateChanges
         authObservation = Task { [weak self] in
@@ -76,25 +100,50 @@ final class AccountModel {
                 self?.receiveAuthState(state)
             }
         }
-        await restoreSession()
+        return await restoreSession()
     }
 
-    func restoreSession() async {
-        guard let service else { return }
-        let generation = sessionGeneration
+    @discardableResult
+    func restoreSession() async -> RestorationOutcome {
+        guard let service else {
+            didFinishRestoration(.notConfigured)
+            return .notConfigured
+        }
+        restorationGeneration += 1
+        let restoration = restorationGeneration
+        restorationSessionGeneration = sessionGeneration
         isRestoring = true
         errorMessage = nil
-        defer { isRestoring = false }
+        defer {
+            if restorationGeneration == restoration {
+                isRestoring = false
+                restorationSessionGeneration = nil
+            }
+        }
+        let outcome: RestorationOutcome
         do {
             let restored = try await service.restoreSession()
             try Task.checkCancellation()
-            guard sessionGeneration == generation else { return }
-            receive(restored)
+            if restorationSessionGeneration == sessionGeneration, restorationGeneration == restoration {
+                receive(restored)
+                outcome = .settled(restored?.userID)
+            } else {
+                outcome = .superseded
+            }
         } catch is CancellationError {
+            outcome = .cancelled
         } catch {
-            guard sessionGeneration == generation else { return }
-            presentError("Your account could not be restored. You can keep playing and retry.")
+            if Task.isCancelled {
+                outcome = .cancelled
+            } else if restorationSessionGeneration != sessionGeneration || restorationGeneration != restoration {
+                outcome = .superseded
+            } else {
+                presentError("Your account could not be restored. You can keep playing and retry.")
+                outcome = .failed
+            }
         }
+        if restorationGeneration == restoration { didFinishRestoration(outcome) }
+        return outcome
     }
 
     func refreshSession() async {
@@ -114,6 +163,7 @@ final class AccountModel {
 
     func signInWithApple(idToken: String, rawNonce: String) async {
         guard let service, beginWork() else { return }
+        restorationSessionGeneration = nil
         defer { isWorking = false }
         do {
             let session = try await service.signInWithApple(idToken: idToken, rawNonce: rawNonce)
@@ -128,6 +178,7 @@ final class AccountModel {
     #if DEBUG
     func signInForLocalTesting(email: String, password: String) async {
         guard let service, beginWork() else { return }
+        restorationSessionGeneration = nil
         defer { isWorking = false }
         do {
             let session = try await service.signInForLocalTesting(email: email, password: password)
@@ -179,12 +230,14 @@ final class AccountModel {
     func signOut() async {
         guard let service, session != nil || authRecovery?.action == .restore, beginWork() else { return }
         let effectiveUserID = session?.userID
+        restorationSessionGeneration = nil
         defer { isWorking = false }
         let outcome = await service.signOut()
         clearAccountState()
         authRecovery = outcome.localRecovery
         let retiredUserID = outcome.retiredUserID ?? effectiveUserID
         let removedRecovery = if let retiredUserID { await didSignOut(retiredUserID) } else { true }
+        didCompleteSignedOutIntent()
         if outcome.localRecovery != nil {
             presentError("You’re signed out, but saved account credentials need cleanup. Retry account cleanup before signing in again.")
         } else if !removedRecovery {
@@ -200,13 +253,17 @@ final class AccountModel {
         if authRecovery.action == .restore {
             await restoreSession()
         } else {
-            receiveAuthState(await service.retrySignedOutCleanup())
+            restorationSessionGeneration = nil
+            let state = await service.retrySignedOutCleanup()
+            receiveAuthState(state)
+            if state.session == nil { didCompleteSignedOutIntent() }
             if self.authRecovery != nil { presentError("Saved account credentials could not be removed. You can keep playing and retry cleanup.") }
         }
     }
 
     func deleteAccount() async {
         guard let service, let userID = session?.userID, beginWork() else { return }
+        restorationSessionGeneration = nil
         defer { isWorking = false }
         do {
             let confirmed = try await service.deleteAccount()
@@ -219,6 +276,7 @@ final class AccountModel {
             } catch { unknownLocalFailure = true }
             clearAccountState()
             authRecovery = confirmed.localRecovery
+            didCompleteSignedOutIntent()
             presentDeletionRecovery(unknownLocalFailure: unknownLocalFailure)
         } catch is CancellationError {
         } catch {
@@ -256,8 +314,17 @@ final class AccountModel {
     }
 
     private func receiveAuthState(_ state: AccountAuthState) {
+        let restoration = restorationGeneration
+        let neutralNil = isRestoring && session == nil && state.session == nil
+            && restorationSessionGeneration == sessionGeneration
         authRecovery = state.recovery
         receive(state.session)
+        // Preserve global session/profile fences. Only this still-current restore
+        // can acknowledge a notification that did not change effective identity.
+        if neutralNil, restorationGeneration == restoration,
+           restorationSessionGeneration != nil {
+            restorationSessionGeneration = sessionGeneration
+        }
     }
 
     func appleAuthorizationFailed(_ error: Error) {

@@ -8,6 +8,8 @@ final class DailyAccountCoordinator {
     private let dailyPack: DailyWordPack
     private let guestStore: DailyClassicStore
     private let guestDaily: DailyClassicModel
+    private enum StartupState: Equatable { case notStarted, restoring, settled, retryable }
+    private var startupState = StartupState.notStarted
     private let accountModelService: (any AccountServicing)?
     private let dailyRemoteFactory: ((UUID) throws -> any DailySyncRemote)?
     private let liveTransportFactory: ((UUID) throws -> LiveAccountTransport)?
@@ -38,6 +40,8 @@ final class DailyAccountCoordinator {
     lazy var account = AccountModel(
         service: accountModelService,
         didChangeSession: { [weak self] userID in self?.sessionChanged(to: userID) },
+        didFinishRestoration: { [weak self] outcome in self?.restorationFinished(outcome) },
+        didCompleteSignedOutIntent: { [weak self] in self?.signedOutIntentCompleted() },
         didSignOut: { [weak self] _ in self?.activateGuest() == .completed },
         didDeleteAccount: { [weak self] userID in
             guard let self else { throw AccountLocalDeletionFailure(dailyCacheUserID: userID, liveRecoveryPending: false) }
@@ -80,7 +84,10 @@ final class DailyAccountCoordinator {
         self.accountModelService = accountModelService ?? accountService
         self.accountStoreFactory = accountStoreFactory
         live = LiveMatchSession(service: nil, realtime: nil, storeFactory: liveStoreFactory)
-        let guestDaily = try DailyClassicModel(pack: dailyPack, store: guestStore, now: now)
+        let guestDaily = try DailyClassicModel(
+            pack: dailyPack, store: guestStore,
+            persistenceStartup: self.accountModelService == nil ? .active : .prepared,
+            now: now)
         self.guestDaily = guestDaily
         daily = guestDaily
         tutorial = TutorialModel(acceptedWords: Set(tutorialPack.words))
@@ -93,7 +100,51 @@ final class DailyAccountCoordinator {
     }
 
     func start() async {
-        await account.start()
+        switch startupState {
+        case .restoring, .settled: return
+        case .notStarted:
+            startupState = .restoring
+            await account.start()
+        case .retryable:
+            startupState = .restoring
+            await account.restoreSession()
+        }
+    }
+
+    private func restorationFinished(_ outcome: AccountModel.RestorationOutcome) {
+        switch outcome {
+        case .cancelled, .superseded:
+            if startupState == .restoring {
+                startupState = account.session != nil || currentUserID != nil || activationUserID != nil
+                    ? .settled : .retryable
+            }
+        case .alreadyStarted:
+            break
+        case .settled(let userID):
+            startupState = .settled
+            if userID == nil { activateGuestFallback() }
+        case .failed, .notConfigured:
+            startupState = .settled
+            activateGuestFallback()
+        }
+    }
+
+    private func signedOutIntentCompleted() {
+        guard account.session == nil,
+              currentUserID == nil, activationUserID == nil, daily === guestDaily else { return }
+        startupState = .settled
+        // The completed Auth intent owns fallback; an obsolete restore does not.
+        // Existing stream/captured-user callbacks retain Live cleanup ownership.
+        if !guestDaily.isPersistenceActive {
+            guestDaily.activatePersistence()
+            guestDaily.refreshForCurrentDay()
+        }
+    }
+
+    private func activateGuestFallback() {
+        guard !Task.isCancelled, account.session == nil,
+              currentUserID == nil, activationUserID == nil else { return }
+        activateGuest()
     }
 
     func sessionChanged(to userID: UUID?) {
@@ -204,7 +255,7 @@ final class DailyAccountCoordinator {
         schedule {
             do {
                 self.pendingGuestImport = nil
-                guard self.daily.retryPersistence() else {
+                guard self.daily.flushAcceptedState() else {
                     self.syncStatus = .failed(.unavailable)
                     return
                 }
@@ -245,7 +296,7 @@ final class DailyAccountCoordinator {
             guard self.currentUserID == userID, self.syncEngine === engine,
                   self.firstConflictID == id else { return }
             do {
-                guard self.daily.retryPersistence() else {
+                guard self.daily.flushAcceptedState() else {
                     self.syncStatus = .failed(.unavailable)
                     return
                 }
@@ -329,13 +380,13 @@ final class DailyAccountCoordinator {
             syncStatus = .conflict(conflicts)
             return
         }
-        if !daily.retryPersistence() {
+        if !daily.flushAcceptedState() {
             let owner = daily
             let result = try? await engine.authoritativeCompletion(for: owner.game.progress)
             guard currentUserID == userID, syncEngine === engine,
                   daily === owner, !Task.isCancelled else { return }
             if let result { try? owner.adoptAuthoritativeCompletion(result) }
-            guard owner.retryPersistence() else {
+            guard owner.flushAcceptedState() else {
                 syncStatus = .failed(.unavailable)
                 return
             }
@@ -391,6 +442,8 @@ final class DailyAccountCoordinator {
         pendingGuestImport = nil
         isDailyPlayable = true
         daily = guestDaily
+        daily.activatePersistence()
+        daily.refreshForCurrentDay()
         configureDailyCallback()
         return liveOutcome
     }
