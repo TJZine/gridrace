@@ -281,16 +281,16 @@ final class TutorialModelTests: XCTestCase {
                 clock = base.addingTimeInterval(6)
                 model.refreshFromClock()
                 defer { model.cancelSessionTasks() }
-                let hosted = try await GameplayContainmentHost(
+                try await GameplayContainmentHost.withHost(
                     GameplayRouteView(.tutorial) {
                         TutorialView(model: model, hapticsEnabled: .constant(false))
-                    }, landscape: landscape, accessibility: accessibility)
-                defer { hosted.close() }
-                try hosted.assertGameplay(in: self, name: "practice-playing", opponents: 2, hasTimer: true)
-                for letter in "zzzzz" { model.typeLetter(letter) }
-                model.submitGuess()
-                try await hosted.settle()
-                try hosted.assertGameplay(in: self, name: "practice-error", notices: [try XCTUnwrap(model.errorMessage)], opponents: 2, hasTimer: true)
+                    }, landscape: landscape, accessibility: accessibility) { hosted in
+                    try hosted.assertGameplay(in: self, name: "practice-playing", opponents: 2, hasTimer: true)
+                    for letter in "zzzzz" { model.typeLetter(letter) }
+                    model.submitGuess()
+                    try await hosted.settle()
+                    try hosted.assertGameplay(in: self, name: "practice-error", notices: [try XCTUnwrap(model.errorMessage)], opponents: 2, hasTimer: true)
+                }
             }
         }
     }

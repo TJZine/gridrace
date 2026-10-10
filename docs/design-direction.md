@@ -1,8 +1,10 @@
 # GridRace Design Direction
 
-Status: Accepted direction; shared foundation implemented in S0b. Feature screens
-remain transitional until S1–S3. [`screen-flow.md`](screen-flow.md) describes the
-shipped checkpoint; this file describes the full accepted target presentation.
+Status: Accepted direction; S0b foundation and S1–S3 feature screens are implemented
+and integrated. S4/A9 OS/device acceptance remains open in the
+[active Stamped plan](plans/2026-10-03-stamped-ui-refresh.md).
+[`screen-flow.md`](screen-flow.md) describes the shipped checkpoint; this file
+describes the full accepted target presentation.
 
 Accepted by the human on 2026-10-03 after a simulator audit and rendered direction
 comparisons. It supersedes the 2026-09-04 refresh's visual direction (lane-edge

@@ -1657,33 +1657,33 @@ final class AccountModelTests: XCTestCase {
         await model.start()
         await waitForAccountCondition { !model.isLoadingProfile }
         XCTAssertNotNil(model.errorMessage)
-        let hosted = try await GameplayContainmentHost(NavigationStack { AccountView(model: model) }, landscape: false)
-        defer { hosted.close() }
-        let controls = accountAccessibilityElements(hosted.host.view)
-        let elements = hosted.elements()
-        let hierarchy = controls.map {
-            "label=\($0.accessibilityLabel ?? "") id=\(accountAccessibilityIdentifier($0) ?? "") traits=\($0.accessibilityTraits.rawValue) frame=\($0.accessibilityFrame)"
-        }.joined(separator: "\n")
-        let hierarchyAttachment = XCTAttachment(string: hierarchy)
-        hierarchyAttachment.name = "Account-profile-failed-public-accessibility-tree"
-        hierarchyAttachment.lifetime = .keepAlways
-        add(hierarchyAttachment)
-        for (identifier, label) in [("account-sign-out", "Sign out"), ("account-delete", "Delete account")] {
-            let control = try XCTUnwrap(controls.first { accountAccessibilityIdentifier($0) == identifier })
-            XCTAssertTrue(control.accessibilityTraits.contains(.button))
-            XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
-            let matches = elements.filter { $0.label == label && $0.button }
-            XCTAssertEqual(matches.count, 1)
-            let element = try XCTUnwrap(matches.first)
-            XCTAssertTrue(hosted.isVisible(element), "\(label) must have its full frame inside the usable viewport and clipping ancestors")
+        try await GameplayContainmentHost.withHost(NavigationStack { AccountView(model: model) }, landscape: false) { hosted in
+            let controls = accountAccessibilityElements(hosted.host.view)
+            let elements = hosted.elements()
+            let hierarchy = controls.map {
+                "label=\($0.accessibilityLabel ?? "") id=\(accountAccessibilityIdentifier($0) ?? "") traits=\($0.accessibilityTraits.rawValue) frame=\($0.accessibilityFrame)"
+            }.joined(separator: "\n")
+            let hierarchyAttachment = XCTAttachment(string: hierarchy)
+            hierarchyAttachment.name = "Account-profile-failed-public-accessibility-tree"
+            hierarchyAttachment.lifetime = .keepAlways
+            add(hierarchyAttachment)
+            for (identifier, label) in [("account-sign-out", "Sign out"), ("account-delete", "Delete account")] {
+                let control = try XCTUnwrap(controls.first { accountAccessibilityIdentifier($0) == identifier })
+                XCTAssertTrue(control.accessibilityTraits.contains(.button))
+                XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
+                let matches = elements.filter { $0.label == label && $0.button }
+                XCTAssertEqual(matches.count, 1)
+                let element = try XCTUnwrap(matches.first)
+                XCTAssertTrue(hosted.isVisible(element), "\(label) must have its full frame inside the usable viewport and clipping ancestors")
+            }
+            let image = UIGraphicsImageRenderer(bounds: hosted.window.bounds).image { _ in
+                hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Account-profile-failed-lifecycle-controls"
+            attachment.lifetime = .keepAlways
+            add(attachment)
         }
-        let image = UIGraphicsImageRenderer(bounds: hosted.window.bounds).image { _ in
-            hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true)
-        }
-        let attachment = XCTAttachment(image: image)
-        attachment.name = "Account-profile-failed-lifecycle-controls"
-        attachment.lifetime = .keepAlways
-        add(attachment)
     }
 
     private func profileReady(_ model: AccountModel) -> Bool {
@@ -2261,17 +2261,17 @@ extension AccountModelTests {
             await model.start()
             service.emitState(AccountAuthState(session: nil, recovery: .init(action: action, storageIssue: nil)))
             await waitForAccountCondition { model.authRecovery?.action == action }
-            let hosted = try await GameplayContainmentHost(NavigationStack { AccountView(model: model) }, landscape: false)
-            defer { hosted.close() }
-            let labels = action == .restore ? ["Retry account restore", "Sign out on this device"] : ["Retry account cleanup"]
-            let controls = accountAccessibilityElements(hosted.host.view)
-            let elements = hosted.elements()
-            for label in labels {
-                let control = try XCTUnwrap(controls.first { $0.accessibilityLabel == label })
-                XCTAssertTrue(control.accessibilityTraits.contains(.button))
-                XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
-                let element = try XCTUnwrap(elements.first { $0.label == label && $0.button })
-                XCTAssertTrue(hosted.isVisible(element))
+            try await GameplayContainmentHost.withHost(NavigationStack { AccountView(model: model) }, landscape: false) { hosted in
+                let labels = action == .restore ? ["Retry account restore", "Sign out on this device"] : ["Retry account cleanup"]
+                let controls = accountAccessibilityElements(hosted.host.view)
+                let elements = hosted.elements()
+                for label in labels {
+                    let control = try XCTUnwrap(controls.first { $0.accessibilityLabel == label })
+                    XCTAssertTrue(control.accessibilityTraits.contains(.button))
+                    XCTAssertFalse(control.accessibilityTraits.contains(.notEnabled))
+                    let element = try XCTUnwrap(elements.first { $0.label == label && $0.button })
+                    XCTAssertTrue(hosted.isVisible(element))
+                }
             }
         }
     }
@@ -2353,16 +2353,16 @@ extension AccountModelTests {
         }, retryDeletedDailyCleanup: { retried.append($0) })
         await model.signInWithApple(idToken: "synthetic", rawNonce: "synthetic")
         await model.deleteAccount()
-        let hosted = try await GameplayContainmentHost(NavigationStack { AccountView(model: model) }, landscape: false)
-        defer { hosted.close() }
-        let controls = accountAccessibilityElements(hosted.host.view)
-        let action = try XCTUnwrap(controls.first { $0.accessibilityLabel == "Retry Daily cleanup" })
-        XCTAssertTrue(action.accessibilityTraits.contains(.button))
-        XCTAssertFalse(action.accessibilityTraits.contains(.notEnabled))
-        let element = try XCTUnwrap(hosted.elements().first { $0.label == "Retry Daily cleanup" && $0.button })
-        XCTAssertTrue(hosted.isVisible(element))
-        await model.retryDeletedDailyData()
-        XCTAssertEqual(retried, [user])
-        XCTAssertFalse(model.canRetryDeletedDailyData)
+        try await GameplayContainmentHost.withHost(NavigationStack { AccountView(model: model) }, landscape: false) { hosted in
+            let controls = accountAccessibilityElements(hosted.host.view)
+            let action = try XCTUnwrap(controls.first { $0.accessibilityLabel == "Retry Daily cleanup" })
+            XCTAssertTrue(action.accessibilityTraits.contains(.button))
+            XCTAssertFalse(action.accessibilityTraits.contains(.notEnabled))
+            let element = try XCTUnwrap(hosted.elements().first { $0.label == "Retry Daily cleanup" && $0.button })
+            XCTAssertTrue(hosted.isVisible(element))
+            await model.retryDeletedDailyData()
+            XCTAssertEqual(retried, [user])
+            XCTAssertFalse(model.canRetryDeletedDailyData)
+        }
     }
 }

@@ -150,6 +150,8 @@ final class LiveMatchViewTests: XCTestCase {
 
     @MainActor
     func testEveryLiveStateMapsFromSessionFixturesAndRendersOnSE() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
         for scenario in RenderScenario.allCases {
             let fixture = try await makeScenario(scenario)
             let session = fixture.session
@@ -229,19 +231,19 @@ final class LiveMatchViewTests: XCTestCase {
                 .environment(\.legibilityWeight, accessibility ? .bold : .regular)
                 let host = UIHostingController(rootView: view)
                 host.traitOverrides.accessibilityContrast = accessibility ? .high : .normal
-                let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
                 let window = UIWindow(windowScene: scene)
                 window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
                 window.rootViewController = host
                 window.makeKeyAndVisible()
+                defer { window.isHidden = true; window.rootViewController = nil }
                 if scenario == .invalidWord || scenario == .rejectedWord {
                     try await Task.sleep(for: .milliseconds(100))
                     session.submitGuess("CRANE")
                     try await settle(session)
                 }
-                defer { window.isHidden = true; window.rootViewController = nil }
                 try await Task.sleep(for: .milliseconds(2500))
                 host.view.layoutIfNeeded()
+                XCTAssertEqual(scene.interfaceOrientation, .portrait, "Live SE captures require an OS portrait scene")
                 let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
                 func attach(_ suffix: String = "") {
                     let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
@@ -272,26 +274,26 @@ final class LiveMatchViewTests: XCTestCase {
                 for scenario in [RenderScenario.playing, .rejectedWord, .guessDecision, .solved] {
                     let fixture = try await makeScenario(scenario)
                     defer { fixture.session.leaveToHome() }
-                    let hosted = try await GameplayContainmentHost(
+                    try await GameplayContainmentHost.withHost(
                         GameplayRouteView(.live) {
                             LiveMatchFlowView(session: fixture.session, hapticsEnabled: false,
                                               highContrast: false, isSignedIn: true)
-                        }, landscape: landscape, accessibility: accessibility)
-                    defer { hosted.close() }
-                    if scenario == .rejectedWord {
-                        fixture.session.submitGuess("CRANE")
-                        try await settle(fixture.session)
-                        try await hosted.settle()
+                        }, landscape: landscape, accessibility: accessibility) { hosted in
+                        if scenario == .rejectedWord {
+                            fixture.session.submitGuess("CRANE")
+                            try await settle(fixture.session)
+                            try await hosted.settle()
+                        }
+                        let presentation = LiveMatchPresentation.map(.init(session: fixture.session))
+                        let notices = scenario == .rejectedWord
+                            ? [try XCTUnwrap(LiveMatchPresentation.errorMessage(.server(.wordNotAccepted)))]
+                            : presentation.notice.map { [$0.body] } ?? []
+                        let actions = scenario == .guessDecision ? ["Retry saved request", "Discard saved request"] : []
+                        try hosted.assertGameplay(in: self, name: "live-\(scenario.rawValue)", notices: notices,
+                                                  expectsKeyboard: presentation.notice == nil, actions: actions,
+                                                  opponents: try XCTUnwrap(fixture.session.snapshot).members.filter { !$0.isSelf }.count,
+                                                  hasTimer: true)
                     }
-                    let presentation = LiveMatchPresentation.map(.init(session: fixture.session))
-                    let notices = scenario == .rejectedWord
-                        ? [try XCTUnwrap(LiveMatchPresentation.errorMessage(.server(.wordNotAccepted)))]
-                        : presentation.notice.map { [$0.body] } ?? []
-                    let actions = scenario == .guessDecision ? ["Retry saved request", "Discard saved request"] : []
-                    try hosted.assertGameplay(in: self, name: "live-\(scenario.rawValue)", notices: notices,
-                                              expectsKeyboard: presentation.notice == nil, actions: actions,
-                                              opponents: try XCTUnwrap(fixture.session.snapshot).members.filter { !$0.isSelf }.count,
-                                              hasTimer: true)
                 }
             }
         }
@@ -599,6 +601,7 @@ final class LiveMatchViewTests: XCTestCase {
         let host = UIHostingController(rootView: controls.padding(20).tint(Color.ink).background(Color.page)
             .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 393, height: accessibility ? 650 : 300)
         window.rootViewController = host
