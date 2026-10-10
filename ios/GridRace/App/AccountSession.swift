@@ -9,6 +9,7 @@ struct PlayerProfile: Codable, Equatable, Sendable {
     let userID: UUID
     var displayName: String
     var avatarSeed: String
+    let setupCompleted: Bool
     let createdAt: Date
     let updatedAt: Date
 
@@ -16,12 +17,13 @@ struct PlayerProfile: Codable, Equatable, Sendable {
         case userID = "id"
         case displayName = "display_name"
         case avatarSeed = "avatar_seed"
+        case setupCompleted = "setup_completed"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 
     var needsSetup: Bool {
-        displayName.range(of: #"^Player [0-9a-f]{6}$"#, options: .regularExpression) != nil
+        !setupCompleted
     }
 
     static func normalizedDisplayName(_ value: String) -> String? {
@@ -42,9 +44,53 @@ private extension Unicode.Scalar {
     }
 }
 
+struct AuthStorageIssue: Error, Equatable, Sendable {
+    enum Operation: Sendable { case read, store, remove }
+    let operation: Operation
+    let status: Int32
+}
+
+struct AccountAuthRecovery: Equatable, Sendable {
+    enum Action: Sendable { case restore, cleanup }
+    let action: Action
+    let storageIssue: AuthStorageIssue?
+}
+
+struct AccountAuthState: Equatable, Sendable {
+    let session: AccountSession?
+    let recovery: AccountAuthRecovery?
+    init(session: AccountSession?, recovery: AccountAuthRecovery? = nil) {
+        self.session = session
+        self.recovery = recovery
+    }
+}
+
+struct AccountSignOutOutcome: Sendable {
+    let localRecovery: AccountAuthRecovery?
+    let remoteLogoutFailed: Bool
+    let retiredUserID: UUID?
+    init(localRecovery: AccountAuthRecovery?, remoteLogoutFailed: Bool, retiredUserID: UUID? = nil) {
+        self.localRecovery = localRecovery
+        self.remoteLogoutFailed = remoteLogoutFailed
+        self.retiredUserID = retiredUserID
+    }
+}
+
+struct AccountLocalDeletionFailure: Error, Sendable {
+    let dailyCacheUserID: UUID?
+    let liveRecoveryPending: Bool
+}
+
+struct ConfirmedAccountDeletion: Sendable {
+    let localRecovery: AccountAuthRecovery?
+}
+
 @MainActor
 protocol AccountServicing: AnyObject {
-    var authStateChanges: AsyncStream<AccountSession?> { get }
+    // Each subscription immediately buffers the current state as its first value,
+    // followed by future changes in publication order. Consumers must process the
+    // initial snapshot before applying the result of a newer Auth command.
+    var authStateChanges: AsyncStream<AccountAuthState> { get }
 
     func restoreSession() async throws -> AccountSession?
     func refreshSession() async throws -> AccountSession?
@@ -54,6 +100,7 @@ protocol AccountServicing: AnyObject {
     #endif
     func loadProfile(userID: UUID) async throws -> PlayerProfile
     func updateProfile(userID: UUID, displayName: String, avatarSeed: String) async throws -> PlayerProfile
-    func signOut() async throws
-    func deleteAccount() async throws
+    func signOut() async -> AccountSignOutOutcome
+    func deleteAccount() async throws -> ConfirmedAccountDeletion
+    func retrySignedOutCleanup() async -> AccountAuthState
 }

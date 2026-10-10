@@ -19,32 +19,6 @@ final class LiveMatchViewTests: XCTestCase {
         XCTAssertEqual(LiveMatchPresentation.countdownSeconds(startsAt: start, displayedServerTime: start), 0)
     }
 
-    func testStartRequiresCreatorFullCanonicalLobbyBeforeExpiryAndNoCommand() {
-        let snapshot = Self.snapshot(status: .lobby, roundState: .pending, selfSeat: 1)
-        let now = snapshot.serverTime
-
-        XCTAssertTrue(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: now,
-            isCommandInFlight: false
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: now,
-            isCommandInFlight: true
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: Self.snapshot(status: .lobby, roundState: .pending, selfSeat: 2),
-            displayedServerTime: now,
-            isCommandInFlight: false
-        ))
-        XCTAssertFalse(LiveMatchPresentation.canStart(
-            snapshot: snapshot,
-            displayedServerTime: snapshot.match.expiresAt,
-            isCommandInFlight: false
-        ))
-    }
-
     func testCountdownAccessibilityIncludesRoundAndDeletionBoundary() throws {
         let countdown = try Phase4LiveFixtures.snapshot("3-round-2-countdown")
         XCTAssertEqual(LiveMatchPresentation.countdownLabel(countdown, seconds: 2), "Round 2 of 3, Live race starts in 2")
@@ -133,29 +107,6 @@ final class LiveMatchViewTests: XCTestCase {
         XCTAssertNil(session.pendingIntent)
     }
 
-    func testLaterStartIgnoresLobbyExpiryButRequiresCurrentRevealAndLiveRoster() throws {
-        let snapshot = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
-        let afterExpiry = snapshot.match.expiresAt.addingTimeInterval(100)
-        func canStart(_ value: LiveMatchSnapshot, pending: Bool = false, start: Bool = false) -> Bool {
-            LiveMatchPresentation.canStart(snapshot: value, displayedServerTime: afterExpiry,
-                                          isCommandInFlight: false, hasPendingIntent: pending, hasPendingStart: start)
-        }
-        XCTAssertTrue(canStart(snapshot))
-        XCTAssertFalse(canStart(snapshot, pending: true))
-        XCTAssertFalse(canStart(snapshot, start: true))
-        for label in ["3-round-2-countdown", "3-round-2-playing", "3-round-3-reveal",
-                      "deletion-active", "deletion-between", "deletion-active-revealed"] {
-            XCTAssertFalse(canStart(try Phase4LiveFixtures.snapshot(label)), label)
-        }
-        var guest = try Phase4LiveFixtures.object("3-round-1-reveal")
-        var members = try XCTUnwrap(guest["members"] as? [[String: Any]])
-        members[0]["is_self"] = false
-        members[1]["is_self"] = true
-        guest["members"] = members
-        XCTAssertFalse(canStart(try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(guest))))
-        XCTAssertFalse(canStart(try Phase4LiveFixtures.snapshot("3-lobby"))) // creator alone
-    }
-
     func testRoundOwnedDraftCannotHydrateFromOldRoundOrOtherMatch() throws {
         let snapshot = try Phase4LiveFixtures.snapshot("3-round-2-playing")
         let request = UUID()
@@ -198,96 +149,459 @@ final class LiveMatchViewTests: XCTestCase {
     }
 
     @MainActor
-    func testPriorRevealIsDisplayOnlyAndNativeScreensRenderAtNormalAndAccessibilitySizes() async throws {
-        for label in ["3-lobby", "3-round-1-countdown", "3-round-2-playing", "3-round-1-reveal", "3-round-2-reveal",
-                      "1-round-1-reveal", "5-round-5-reveal", "3-final-tie", "deletion-between", "deletion-active"] {
-            let snapshot: LiveMatchSnapshot
-            if label == "3-lobby" {
-                var object = try Phase4LiveFixtures.object(label)
-                object["members"] = try Phase4LiveFixtures.object("3-round-1-countdown")["members"]
-                snapshot = try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(object))
-            } else { snapshot = try Phase4LiveFixtures.snapshot(label) }
-            let pending: LivePendingIntent? = label == "3-final-tie"
-                ? .guess(matchID: snapshot.match.id, requestID: UUID(), word: "CRANE", roundNumber: 1, clientBuild: 2) : nil
-            let store = PresentationRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id, pendingIntent: pending))
-            let session = LiveMatchSession(service: PresentationService(snapshot), realtime: nil,
-                                           storeFactory: { _ in store }, uptime: { 0 })
-            session.backgrounded()
-            session.changeAccount(to: UUID())
-            session.resumeSavedMatch()
-            session.foregrounded()
-            for _ in 0..<100 where session.snapshot == nil { try await Task.sleep(for: .milliseconds(10)) }
-            XCTAssertEqual(session.snapshot, snapshot, label)
-            if label == "3-lobby" || label == "3-round-1-reveal" {
-                session.startMatch()
-                for _ in 0..<100 where session.isCommandInFlight || session.phase != .ready {
-                    try await Task.sleep(for: .milliseconds(10))
-                }
-                XCTAssertTrue(session.hasPendingStart)
-                XCTAssertNil(session.lastError, "an unchanged ready snapshot must still show the saved Start")
-                session.leaveToHome()
-                session.resumeSavedMatch()
-                for _ in 0..<100 where session.phase != .ready { try await Task.sleep(for: .milliseconds(10)) }
-                XCTAssertTrue(session.hasPendingStart)
-                XCTAssertTrue(session.canRetry)
-            }
-            if pending != nil {
-                XCTAssertEqual(session.lastError, .server(.requestConflict))
-                XCTAssertEqual(session.pendingIntent, pending)
-            }
+    func testEveryLiveStateMapsFromSessionFixturesAndRendersOnSE() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        for scenario in RenderScenario.allCases {
+            let fixture = try await makeScenario(scenario)
+            let session = fixture.session
             defer { session.leaveToHome() }
-            if label == "3-round-2-reveal" {
-                session.selectReveal(number: 1)
+            let retained = scenario == .invalidWord ? LiveMatchPresentation.errorMessage(.server(.invalidGuessFormat))
+                : scenario == .rejectedWord ? LiveMatchPresentation.errorMessage(.server(.wordNotAccepted)) : nil
+            let state = LiveMatchPresentation.State(session: session, isSignedIn: scenario != .signedOut, retainedError: retained)
+            let mapped = LiveMatchPresentation.map(state)
+            XCTAssertEqual(mapped.surface, scenario.surface, scenario.rawValue)
+            let actions = mapped.controls + (mapped.notice?.controls ?? [])
+                + (mapped.topNotice?.controls ?? []) + (mapped.savedNotice?.controls ?? [])
+            XCTAssertEqual(actions.map { String(describing: $0.action) }.sorted(),
+                scenario.actions.map { String(describing: $0) }.sorted(), scenario.rawValue)
+            let notice = mapped.notice ?? mapped.savedNotice ?? mapped.topNotice
+            XCTAssertEqual(notice?.body, scenario.body(snapshot: state.snapshot), scenario.rawValue)
+            let needsAction = [.signedOut, .needsSignIn, .storageUnavailable, .failedJoin, .failedCreate,
+                .failedCreateDecision, .topError, .savedStart, .entrySavedStart, .nextHostSavedStart,
+                .savedRequestDecision, .guessDecision, .rateDecision, .connectionUnavailable].contains(scenario)
+            XCTAssertEqual(notice?.requiresAction ?? false, needsAction, scenario.rawValue)
+            if let title = scenario.title {
+                XCTAssertEqual(mapped.notice?.title ?? mapped.savedNotice?.title ?? mapped.topNotice?.title,
+                    title, scenario.rawValue)
+            }
+            if scenario == .failedJoin {
+                XCTAssertFalse(session.canRetry, "failed Join cannot retry the old room")
+                XCTAssertFalse(mapped.notice?.controls.contains { $0.action == .retry } ?? true)
+                XCTAssertTrue(session.hasSavedMatch)
+            }
+            if scenario == .savedStart || scenario == .nextHostSavedStart {
+                XCTAssertTrue(session.hasPendingStart)
+                XCTAssertEqual(mapped.savedNotice?.controls, [.init(action: .retryStart, enabled: session.canRetry)])
+            }
+            if scenario == .entryPendingCreate {
+                XCTAssertTrue(session.hasSavedMatch)
+                XCTAssertEqual(mapped.surface, .entry)
+                XCTAssertTrue(mapped.permits(.resume))
+                XCTAssertFalse(mapped.permits(.create))
+            }
+            if scenario == .priorReveal {
+                let canonical = session.snapshot
                 XCTAssertEqual(session.displayedReveal?.number, 1)
                 XCTAssertEqual(session.snapshot?.round.number, 2)
-                XCTAssertEqual(session.snapshot?.standings, snapshot.standings)
+                XCTAssertEqual(mapped.priorRevealNotice?.title, "Round 1 reveal")
                 session.selectReveal(number: 3)
-                XCTAssertEqual(session.selectedRevealNumber, 1, "future reveals must not become selectable")
+                XCTAssertEqual(session.selectedRevealNumber, 1)
+                XCTAssertEqual(session.snapshot, canonical, "history selection cannot mutate canonical standings or the current round")
+            }
+            if scenario == .hostAlone || scenario == .lobbyGuest || scenario == .expiredLobby {
+                XCTAssertFalse(mapped.controls.contains { $0.action == .start })
+            }
+            if scenario == .hostTwo || scenario == .nextHost { XCTAssertTrue(mapped.permits(.start)) }
+            if scenario == .incomplete {
+                XCTAssertFalse(mapped.notice?.usesClaret ?? true)
+                XCTAssertEqual(mapped.notice?.title, "Match incomplete")
+                XCTAssertTrue(session.snapshot?.members.contains { $0.displayName == "Deleted Player" } ?? false)
+            }
+            if scenario == .rejectedWord || scenario == .invalidWord {
+                XCTAssertEqual(session.guessDraft, "CRANE")
+                XCTAssertNil(mapped.notice, "the keyboard stays available after definitive rejection")
+                XCTAssertNotNil(mapped.inlineError)
+            }
+            if scenario == .finalSavedDecision {
+                XCTAssertEqual(session.lastError, .server(.requestConflict))
+                XCTAssertNotNil(session.pendingIntent, "a prior-round unresolved request survives final snapshots")
+                XCTAssertEqual(mapped.savedNotice?.controls.map(\.action), [.retryRequest, .discardGuess])
+            }
+            if scenario == .guessDecision || scenario == .rateDecision {
+                XCTAssertEqual(mapped.notice?.controls.map(\.action), [.retryRequest, .discardGuess])
             }
             for accessibility in [false, true] {
                 let view = NavigationStack {
-                    LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility)
+                    LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility,
+                        isSignedIn: scenario != .signedOut)
                 }
-                .tint(Color.raceIndigo)
+                .tint(Color.ink)
                 .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large)
                 .environment(\.legibilityWeight, accessibility ? .bold : .regular)
                 let host = UIHostingController(rootView: view)
                 host.traitOverrides.accessibilityContrast = accessibility ? .high : .normal
-                let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
                 let window = UIWindow(windowScene: scene)
-                window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+                window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
                 window.rootViewController = host
                 window.makeKeyAndVisible()
                 defer { window.isHidden = true; window.rootViewController = nil }
+                if scenario == .invalidWord || scenario == .rejectedWord {
+                    try await Task.sleep(for: .milliseconds(100))
+                    session.submitGuess("CRANE")
+                    try await settle(session)
+                }
                 try await Task.sleep(for: .milliseconds(2500))
                 host.view.layoutIfNeeded()
+                XCTAssertEqual(scene.interfaceOrientation, .portrait, "Live SE captures require an OS portrait scene")
                 let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-                let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-                XCTAssertEqual(image.size.width, 393)
-                let attachment = XCTAttachment(image: image)
-                attachment.name = "native-\(label)-\(accessibility ? "AX5" : "normal")"
-                attachment.lifetime = .keepAlways
-                add(attachment)
-                // Capture lower scroll content too: standings, saved actions and Home must remain reachable.
-                let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
-                for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height {
-                    scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
-                    host.view.layoutIfNeeded()
-                    let lower = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-                    let attachment = XCTAttachment(image: lower)
-                    attachment.name = "native-\(label)-\(accessibility ? "AX5" : "normal")-scroll-\(index)-bottom"
+                func attach(_ suffix: String = "") {
+                    let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "native-SE-\(scenario.rawValue)-\(accessibility ? "AX5" : "normal")\(suffix)"
                     attachment.lifetime = .keepAlways
                     add(attachment)
+                }
+                attach()
+                // Only vertical scrolls: the board and keyboard own horizontal AX scrolling.
+                let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
+                for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height + 1 {
+                    scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
+                    host.view.layoutIfNeeded()
+                    attach("-scroll-\(index)-bottom")
+                }
+            }
+            await fixture.service.releaseDelays()
+            session.leaveToHome()
+            for _ in 0..<100 where session.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
+        }
+    }
+
+    @MainActor
+    func testLiveGameplayContainmentAndAccessibilityReachability() async throws {
+        for accessibility in [false, true] {
+            for landscape in accessibility ? [false] : [false, true] {
+                for scenario in [RenderScenario.playing, .rejectedWord, .guessDecision, .solved] {
+                    let fixture = try await makeScenario(scenario)
+                    defer { fixture.session.leaveToHome() }
+                    try await GameplayContainmentHost.withHost(
+                        GameplayRouteView(.live) {
+                            LiveMatchFlowView(session: fixture.session, hapticsEnabled: false,
+                                              highContrast: false, isSignedIn: true)
+                        }, landscape: landscape, accessibility: accessibility) { hosted in
+                        if scenario == .rejectedWord {
+                            fixture.session.submitGuess("CRANE")
+                            try await settle(fixture.session)
+                            try await hosted.settle()
+                        }
+                        let presentation = LiveMatchPresentation.map(.init(session: fixture.session))
+                        let notices = scenario == .rejectedWord
+                            ? [try XCTUnwrap(LiveMatchPresentation.errorMessage(.server(.wordNotAccepted)))]
+                            : presentation.notice.map { [$0.body] } ?? []
+                        let actions = scenario == .guessDecision ? ["Retry saved request", "Discard saved request"] : []
+                        try hosted.assertGameplay(in: self, name: "live-\(scenario.rawValue)", notices: notices,
+                                                  expectsKeyboard: presentation.notice == nil, actions: actions,
+                                                  opponents: try XCTUnwrap(fixture.session.snapshot).members.filter { !$0.isSelf }.count,
+                                                  hasTimer: true)
+                    }
                 }
             }
         }
     }
 
     @MainActor
+    func testPresentationConsumesStartCapabilityAndPreservesStoragePrecedence() async throws {
+        let fixture = try await makeScenario(.hostTwo)
+        defer { fixture.session.leaveToHome() }
+        var state = LiveMatchPresentation.State(session: fixture.session)
+        state.canStart = false
+        XCTAssertFalse(LiveMatchPresentation.map(state).permits(.start))
+        state.canStart = true
+        XCTAssertTrue(LiveMatchPresentation.map(state).permits(.start))
+        state.phase = .storageUnavailable
+        state.canRetryRecoveryStorage = false
+        state.canDiscardRecovery = false
+        XCTAssertEqual(LiveMatchPresentation.map(state).notice?.controls.map(\.action), [.account])
+        state.canRetryRecoveryStorage = true
+        state.canDiscardRecovery = true
+        XCTAssertEqual(LiveMatchPresentation.map(state).notice?.controls.map(\.action), [.retryStorage, .discardRecovery, .account])
+        state.phase = .ready
+        state.hasPendingStart = true
+        state.canRetry = false
+        state.pendingIntent = .create(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        state.error = .server(.requestConflict)
+        let start = LiveMatchPresentation.map(state)
+        XCTAssertNil(start.topNotice)
+        XCTAssertEqual(start.savedNotice?.title, "Round didn't start yet")
+        XCTAssertEqual(start.savedNotice?.controls, [.init(action: .retryStart, enabled: false)])
+        state.hasPendingStart = false
+        XCTAssertEqual(LiveMatchPresentation.map(state).savedNotice?.controls,
+            [.init(action: .retryRequest, enabled: false), .init(action: .discardCreate)])
+        state.snapshot = nil
+        state.phase = .inactive
+        state.hasSavedMatch = true
+        state.joinCode = "ABC234"
+        let entry = LiveMatchPresentation.map(state)
+        XCTAssertTrue(entry.permits(.resume))
+        XCTAssertTrue(entry.permits(.join), "Join preserves its existing presentation gate; the session still owns intent safety")
+        XCTAssertFalse(entry.permits(.create))
+        state.isCommandInFlight = true
+        XCTAssertFalse(LiveMatchPresentation.map(state).permits(.join))
+    }
+
+    private enum RenderScenario: String, CaseIterable {
+        case signedOut, entry, entryPendingCreate, entrySavedStart, needsSignIn, storageUnavailable, recovering
+        case failedJoin, failedCreate, failedCreateDecision, topError, savedStart, savedRequestDecision
+        case hostAlone, hostTwo, lobbyGuest, expiredLobby, countdown, deletionCountdown, deletionPlaying
+        case playing, solved, failed, timedOut, forfeited, terminalRecovering, terminalUnavailable
+        case sendingGuess, guessDecision, rateDecision, connectionRecovering, connectionUnavailable
+        case deadline, invalidWord, rejectedWord, revealUnavailable, priorReveal, nextHost, nextGuest
+        case final, finalFive, finalTie, finalSavedDecision, nextHostSavedStart, incomplete
+
+        var surface: LiveMatchPresentation.Surface {
+            switch self {
+            case .entry, .entryPendingCreate, .entrySavedStart: .entry
+            case .hostAlone, .hostTwo, .lobbyGuest, .expiredLobby, .savedStart, .savedRequestDecision, .topError: .lobby
+            case .countdown, .deletionCountdown: .countdown
+            case .playing, .solved, .failed, .timedOut, .forfeited, .terminalRecovering, .terminalUnavailable,
+                 .sendingGuess, .guessDecision, .rateDecision, .connectionRecovering, .connectionUnavailable,
+                 .deadline, .invalidWord, .rejectedWord, .deletionPlaying: .round
+            case .revealUnavailable, .priorReveal, .nextHost, .nextGuest, .nextHostSavedStart,
+                 .final, .finalFive, .finalTie, .finalSavedDecision, .incomplete: .reveal
+            default: .notice
+            }
+        }
+        var actions: [LiveMatchPresentation.Action] {
+            switch self {
+            case .signedOut: [.home, .account]
+            case .entry: [.home, .create, .join]
+            case .entryPendingCreate: [.home, .resume, .create, .join]
+            case .entrySavedStart: [.home, .resume, .create, .join, .retryStart]
+            case .needsSignIn: [.home, .backToRace, .account]
+            case .storageUnavailable: [.home, .retryStorage, .discardRecovery, .account]
+            case .failedJoin: [.home, .backToRace, .account]
+            case .failedCreate: [.home, .retry, .discardCreate, .backToRace, .account]
+            case .failedCreateDecision: [.home, .retryRequest, .discardCreate, .backToRace, .account]
+            case .hostAlone, .lobbyGuest: [.home, .copyCode, .shareCode]
+            case .hostTwo: [.home, .copyCode, .shareCode, .start]
+            case .savedStart: [.home, .copyCode, .shareCode, .start, .retryStart]
+            case .savedRequestDecision: [.home, .copyCode, .shareCode, .start, .retryRequest, .discardGuess]
+            case .topError: [.home, .copyCode, .shareCode, .start, .retry]
+            case .guessDecision, .rateDecision: [.home, .retryRequest, .discardGuess]
+            case .connectionUnavailable, .terminalUnavailable: [.home, .retry]
+            case .priorReveal: [.home, .selectReveal, .start]
+            case .nextHost: [.home, .start]
+            case .finalTie, .finalFive: [.home, .selectReveal]
+            case .finalSavedDecision: [.home, .selectReveal, .retryRequest, .discardGuess]
+            case .nextHostSavedStart: [.home, .start, .retryStart]
+            default: [.home]
+            }
+        }
+        func body(snapshot: LiveMatchSnapshot?) -> String? {
+            let opponent = snapshot?.members.first { !$0.isSelf }?.displayName ?? "player two"
+            switch self {
+            case .signedOut: return "Live races need a player name. Daily stays open without an account."
+            case .needsSignIn: return "Your race is saved on this device. Go back to the race to try again; signing out removes it."
+            case .storageUnavailable: return "Saved race data on this device couldn't be read or cleared."
+            case .recovering: return "Hang tight. This only takes a moment."
+            case .failedJoin: return "This room already has two players."
+            case .failedCreate: return "The live match is unavailable. Check your connection and try again."
+            case .failedCreateDecision, .guessDecision, .savedRequestDecision: return "Retry or discard it."
+            case .rateDecision: return "Try again in a moment."
+            case .topError: return ""
+            case .savedStart, .entrySavedStart, .nextHostSavedStart: return "Retry starts the same round."
+            case .hostAlone: return "Share the code to invite them."
+            case .lobbyGuest: return "The host starts each round."
+            case .expiredLobby: return "It expired before the race started."
+            case .countdown, .deletionCountdown: return "Starts on the server clock. Leaving the app won't pause it."
+            case .solved, .failed, .timedOut, .forfeited, .terminalRecovering, .terminalUnavailable: return "Waiting for \(opponent)"
+            case .sendingGuess: return "Typing is locked until it's confirmed."
+            case .connectionRecovering, .connectionUnavailable: return "Your board is saved. Typing resumes when you're back."
+            case .deadline: return "Getting the final result for this round."
+            case .revealUnavailable: return "The full reveal hasn't arrived yet."
+            case .nextGuest: return "They'll start round 2 of 3."
+            case .final, .finalFive, .finalTie, .finalSavedDecision: return "Final match standings"
+            case .incomplete: return "Your opponent left GridRace after round 1. The rounds you played are saved; round 2 won't be played."
+            default: return nil
+            }
+        }
+        var title: String? {
+            switch self {
+            case .signedOut: "Sign in to race"
+            case .needsSignIn: "Your sign-in expired"
+            case .storageUnavailable: "Couldn't open your saved race"
+            case .recovering: "Connecting to your race"
+            case .failedJoin, .failedCreate, .failedCreateDecision: "Race unavailable"
+            case .hostAlone: "Waiting for player two"
+            case .expiredLobby: "This room closed"
+            case .savedStart, .entrySavedStart, .nextHostSavedStart: "Round didn't start yet"
+            case .solved, .terminalRecovering, .terminalUnavailable: "Solved in 2"
+            case .failed: "Out of guesses"
+            case .timedOut, .deadline: "Time's up"
+            case .forfeited: "Round forfeited"
+            case .sendingGuess: "Sending your guess"
+            case .guessDecision, .rateDecision: "Your guess needs a decision"
+            case .savedRequestDecision: "Your saved request needs a decision"
+            case .connectionRecovering: "Reconnecting"
+            case .connectionUnavailable: "Connection lost"
+            case .revealUnavailable: "Reveal on its way"
+            case .final, .finalFive: "You won"
+            case .finalTie, .finalSavedDecision: "Tied"
+            case .incomplete: "Match incomplete"
+            case .lobbyGuest, .nextGuest: "Waiting for Player dae45d"
+            case .countdown, .deletionCountdown: "Round 1 of 3"
+            case .topError: "This live match needs a newer compatible response. Try again."
+            default: nil
+            }
+        }
+    }
+
+    @MainActor
+    private func makeScenario(_ scenario: RenderScenario) async throws -> (session: LiveMatchSession, service: RenderService) {
+        let label: String = switch scenario.surface {
+        case .lobby: "3-lobby"
+        case .countdown: scenario == .deletionCountdown ? "deletion-active" : "3-round-1-countdown"
+        case .round: scenario == .deletionPlaying ? "deletion-active" : "3-round-1-playing"
+        case .reveal:
+            switch scenario {
+            case .final: "1-round-1-reveal"
+            case .finalTie, .finalSavedDecision: "3-final-tie"
+            case .finalFive: "5-round-5-reveal"
+            case .incomplete: "deletion-between"
+            case .priorReveal: "3-round-2-reveal"
+            default: "3-round-1-reveal"
+            }
+        default: "3-lobby"
+        }
+        var snapshot = try Phase4LiveFixtures.snapshot(label)
+        if [.hostTwo, .lobbyGuest, .savedStart, .entrySavedStart, .topError, .savedRequestDecision].contains(scenario) {
+            var object = try Phase4LiveFixtures.object(label)
+            object["members"] = try Phase4LiveFixtures.object("3-round-1-countdown")["members"]
+            snapshot = try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(object))
+        }
+        if scenario == .lobbyGuest || scenario == .nextGuest {
+            snapshot = replacing(snapshot, members: snapshot.members.map {
+                LiveMatchMember(id: $0.id, seat: $0.seat, displayName: $0.displayName, avatarSeed: $0.avatarSeed,
+                    isSelf: !$0.isSelf, isDeleted: $0.isDeleted)
+            })
+        }
+        if scenario == .expiredLobby { snapshot = replacing(snapshot, time: snapshot.match.expiresAt) }
+        if [.solved, .failed, .timedOut, .forfeited, .terminalRecovering, .terminalUnavailable].contains(scenario) {
+            let own = try XCTUnwrap(snapshot.members.first(where: \.isSelf))
+            let state: LivePlayerState = switch scenario {
+            case .failed: .failed
+            case .timedOut: .timedOut
+            case .forfeited: .forfeited
+            default: .solved
+            }
+            let canonical = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
+            let solvedRows = try XCTUnwrap(canonical.round.players.first { $0.memberID == own.id }?.board)
+            let incorrect = try XCTUnwrap(solvedRows.first)
+            let count = state == .failed ? 6 : 2
+            let rows = state == .solved ? solvedRows : (1...count).map { sequence in
+                LiveGuess(sequence: sequence, word: incorrect.word, feedback: incorrect.feedback,
+                    submittedAt: (snapshot.round.startsAt ?? snapshot.serverTime)
+                        .addingTimeInterval(Double(sequence) / 1000))
+            }
+            let players = snapshot.round.players.map { player in
+                player.memberID != own.id ? player : LiveRoundPlayer(memberID: own.id, state: state,
+                    acceptedGuessCount: rows.count, solveDurationMilliseconds: state == .solved ? 500 : nil,
+                    efficiencyPoints: nil, placement: nil, board: rows)
+            }
+            snapshot = replacing(snapshot, round: LiveRound(state: .playing, startsAt: snapshot.round.startsAt,
+                endsAt: snapshot.round.endsAt, completedAt: nil, answer: nil, players: players))
+        }
+        if scenario == .deletionPlaying {
+            snapshot = replacing(snapshot, time: try XCTUnwrap(snapshot.round.startsAt),
+                round: LiveRound(state: .playing, startsAt: snapshot.round.startsAt, endsAt: snapshot.round.endsAt,
+                    completedAt: nil, answer: nil, players: snapshot.round.players))
+        }
+        if scenario == .revealUnavailable {
+            snapshot = replacing(snapshot, round: LiveRound(state: .revealed, startsAt: snapshot.round.startsAt,
+                endsAt: snapshot.round.endsAt, completedAt: snapshot.round.completedAt, answer: nil,
+                players: snapshot.round.players))
+        }
+        if scenario == .deadline { snapshot = replacing(snapshot, time: try XCTUnwrap(snapshot.round.endsAt)) }
+        let service = RenderService(snapshot)
+        let empty = [.signedOut, .entry, .entryPendingCreate, .failedCreate, .failedCreateDecision].contains(scenario)
+        let pending: LivePendingIntent? = scenario == .savedRequestDecision || scenario == .finalSavedDecision
+            ? .guess(matchID: snapshot.match.id, requestID: UUID(), word: "CRANE", roundNumber: 1, clientBuild: 2) : nil
+        let store = PresentationRecoveryStore(LiveRecoveryState(matchID: empty ? nil : snapshot.match.id, pendingIntent: pending))
+        let realtime = RenderRealtime()
+        let session = LiveMatchSession(service: service, realtime: realtime, storeFactory: { _ in
+            if scenario == .storageUnavailable { throw LiveMatchServiceError.unavailable }
+            return store
+        }, timing: LiveMatchSessionTiming(requestTimeout: .seconds(60), staleAfter: .seconds(3600),
+            retryBackoff: [.seconds(3600)]), uptime: { 0 })
+        if scenario == .signedOut { return (session, service) }
+        session.changeAccount(to: UUID())
+        if scenario == .storageUnavailable || scenario == .entry { return (session, service) }
+        if scenario == .entryPendingCreate {
+            await service.configure(commandDelay: true)
+            session.createMatch()
+            session.leaveToHome()
+            return (session, service)
+        }
+        if scenario == .failedCreate || scenario == .failedCreateDecision {
+            if scenario == .failedCreateDecision { await service.configure(createError: .server(.requestConflict)) }
+            session.createMatch()
+            try await settle(session)
+            return (session, service)
+        }
+        if scenario == .failedJoin {
+            session.joinMatch(code: "ABC234")
+            try await settle(session)
+            return (session, service)
+        }
+        if scenario == .recovering { await service.configure(snapshotDelay: true) }
+        if scenario == .needsSignIn { await service.configure(snapshotError: .server(.notAuthenticated)) }
+        session.resumeSavedMatch()
+        if scenario == .recovering { return (session, service) }
+        try await settle(session)
+        if scenario == .needsSignIn { return (session, service) }
+        XCTAssertEqual(session.snapshot, snapshot, scenario.rawValue)
+        if scenario == .savedStart || scenario == .entrySavedStart || scenario == .nextHostSavedStart {
+            session.startMatch()
+            try await settle(session)
+            XCTAssertTrue(session.hasPendingStart)
+            session.leaveToHome()
+            if scenario == .entrySavedStart { return (session, service) }
+            session.resumeSavedMatch()
+            try await settle(session)
+        }
+        if scenario == .priorReveal { session.selectReveal(number: 1) }
+        if [.topError, .connectionUnavailable, .terminalUnavailable, .connectionRecovering, .terminalRecovering].contains(scenario) {
+            let recovering = scenario == .connectionRecovering || scenario == .terminalRecovering
+            await service.configure(snapshotError: recovering ? nil : .invalidResponse, snapshotDelay: recovering)
+            realtime.send(recovering ? .disconnected : .signal)
+            if recovering { try await Task.sleep(for: .milliseconds(30)) }
+            else { try await settle(session) }
+        }
+        if [.sendingGuess, .guessDecision, .rateDecision, .rejectedWord, .invalidWord].contains(scenario) {
+            let error: LiveMatchServiceError = switch scenario {
+            case .rateDecision: .server(.rateLimited)
+            case .rejectedWord: .server(.wordNotAccepted)
+            case .invalidWord: .server(.invalidGuessFormat)
+            default: .server(.requestConflict)
+            }
+            await service.configure(guessError: error, commandDelay: scenario == .sendingGuess)
+            session.submitGuess("CRANE")
+            if scenario != .sendingGuess { try await settle(session) }
+        }
+        return (session, service)
+    }
+
+    @MainActor
+    private func settle(_ session: LiveMatchSession) async throws {
+        for _ in 0..<200 where session.isCommandInFlight || session.phase == .recovering {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(30))
+    }
+
+    private func replacing(_ snapshot: LiveMatchSnapshot, time: Date? = nil,
+        members: [LiveMatchMember]? = nil, round: LiveRound? = nil) -> LiveMatchSnapshot {
+        LiveMatchSnapshot(serverTime: time ?? snapshot.serverTime, match: snapshot.match,
+            members: members ?? snapshot.members, round: round ?? snapshot.round, revision: snapshot.revision,
+            revealedRounds: snapshot.revealedRounds, standings: snapshot.standings)
+    }
+
+    @MainActor
     private func captureCreate(_ controls: LiveCreateControls, name: String, accessibility: Bool = false) async throws {
-        let host = UIHostingController(rootView: controls.padding(20).tint(Color.raceIndigo).background(Color.racePage)
+        let host = UIHostingController(rootView: controls.padding(20).tint(Color.ink).background(Color.page)
             .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 393, height: accessibility ? 650 : 300)
         window.rootViewController = host
@@ -398,4 +712,54 @@ private struct PresentationService: LiveMatchServicing {
     func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
     func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String,
                      clientBuild: Int) async throws -> LiveGuessReceipt { throw LiveMatchServiceError.server(.requestConflict) }
+}
+
+/// Deterministic in-process command/snapshot transport for faithful native screens.
+/// Delays are cancellable so each fixture releases every session task.
+private actor RenderService: LiveMatchServicing {
+    let value: LiveMatchSnapshot
+    var snapshotError: LiveMatchServiceError?
+    var snapshotDelay = false
+    var guessError: LiveMatchServiceError = .server(.requestConflict)
+    var createError: LiveMatchServiceError = .unavailable
+    var commandDelay = false
+    init(_ value: LiveMatchSnapshot) { self.value = value }
+    func configure(snapshotError: LiveMatchServiceError? = nil, snapshotDelay: Bool = false,
+        guessError: LiveMatchServiceError = .server(.requestConflict), commandDelay: Bool = false,
+        createError: LiveMatchServiceError = .unavailable) {
+        self.snapshotError = snapshotError
+        self.snapshotDelay = snapshotDelay
+        self.guessError = guessError
+        self.createError = createError
+        self.commandDelay = commandDelay
+    }
+    func releaseDelays() { snapshotDelay = false; commandDelay = false }
+    func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot {
+        while snapshotDelay { try await Task.sleep(for: .milliseconds(20)) }
+        if let snapshotError { throw snapshotError }
+        return value
+    }
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
+        while commandDelay { try await Task.sleep(for: .milliseconds(20)) }
+        throw createError
+    }
+    func joinMatch(code: String) async throws -> UUID { throw LiveMatchServiceError.server(.roomFull) }
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String,
+        clientBuild: Int) async throws -> LiveGuessReceipt {
+        while commandDelay { try await Task.sleep(for: .milliseconds(20)) }
+        throw guessError
+    }
+}
+
+private final class RenderRealtime: LiveMatchRealtimeServicing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: AsyncThrowingStream<LiveMatchRealtimeEvent, Error>.Continuation?
+    func events(matchID: UUID) -> AsyncThrowingStream<LiveMatchRealtimeEvent, Error> {
+        AsyncThrowingStream { continuation in
+            lock.withLock { self.continuation = continuation }
+            continuation.yield(.ready)
+        }
+    }
+    func send(_ event: LiveMatchRealtimeEvent) { lock.withLock { continuation?.yield(event) } }
 }

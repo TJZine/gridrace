@@ -80,18 +80,18 @@ enum DailyHomeStatus: Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .unplayed: "Ready to race"
-        case .inProgress: "Race in progress"
-        case .solved: "Solved today"
-        case .failed: "Finished today"
+        case .unplayed: "Ready to play"
+        case .inProgress(let rows): "\(rows) of 6 rows used"
+        case .solved(let rows): "Solved in \(rows)"
+        case .failed: "Not solved"
         }
     }
 
     var action: String {
         switch self {
-        case .unplayed: "Play today's puzzle"
-        case .inProgress: "Continue today's puzzle"
-        case .solved, .failed: "View today's result"
+        case .unplayed: "Play"
+        case .inProgress: "Continue"
+        case .solved, .failed: "Result"
         }
     }
 
@@ -108,11 +108,21 @@ enum DailyHomeStatus: Equatable, Sendable {
 @Observable
 @MainActor
 final class DailyClassicModel {
+    enum PersistenceStartup: Equatable {
+        case active
+        case prepared
+    }
+
+    private(set) var isPersistenceActive = false
+    private var needsProgressRepair = false
     private(set) var puzzle: DailyPuzzle
     private(set) var game: DailyClassicGame
     private(set) var history: DailyClassicHistory
     var settings: DailyClassicSettings
-    private(set) var errorMessage: String?
+    private var validationMessage: String?
+    private(set) var storageMessage: String?
+    var errorMessage: String? { validationMessage ?? storageMessage }
+    private(set) var hasUnsavedProgress = false
     private(set) var hapticEvent = 0
     private(set) var resultEvent = 0
 
@@ -127,15 +137,35 @@ final class DailyClassicModel {
         pack: DailyWordPack,
         store: any DailyClassicStoring,
         defaults: UserDefaults = .standard,
+        persistenceStartup: PersistenceStartup = .active,
         now: @escaping @MainActor () -> Date = { Date() }
     ) throws {
         self.pack = pack
         self.store = store
         self.defaults = defaults
         self.now = now
-        let puzzle = try DailyPuzzleSchedule.puzzle(at: now(), in: pack)
+        let initialDate = now()
+        var puzzle = try DailyPuzzleSchedule.puzzle(at: initialDate, in: pack)
         var history = try store.loadHistory()
         var settings = DailyClassicSettings.load(from: defaults)
+        // The single progress slot can contain yesterday's terminal fallback.
+        // Validate against its canonical scheduled puzzle before recording history.
+        if let saved = try? store.loadProgress(), saved.completion != nil,
+           saved.puzzleDay < puzzle.day, history.result(for: saved.puzzleID) == nil {
+            do {
+                let prior = try DailyPuzzleSchedule.puzzle(
+                    at: Date(timeIntervalSince1970: TimeInterval(saved.puzzleDay) * 86_400), in: pack)
+                let terminal = try DailyClassicGame(
+                    puzzle: prior, acceptedWords: Set(pack.acceptedGuesses), restoring: saved)
+                guard let result = terminal.completedResult, history.record(result) else {
+                    throw DailyClassicError.invalidSavedGame
+                }
+                pendingTerminalResult = result
+                puzzle = prior
+            } catch {
+                needsProgressRepair = true
+            }
+        }
         self.puzzle = puzzle
 
         let restoredGame: DailyClassicGame
@@ -150,7 +180,7 @@ final class DailyClassicModel {
             do {
                 saved = try store.loadProgress()
             } catch DailyClassicError.invalidSavedGame {
-                try? store.discardProgress()
+                needsProgressRepair = true
                 saved = nil
             }
             if let saved, saved.puzzleID == puzzle.id {
@@ -161,7 +191,7 @@ final class DailyClassicModel {
                         restoring: saved
                     )
                 } catch DailyClassicError.invalidSavedGame {
-                    try? store.discardProgress()
+                    needsProgressRepair = true
                     restoredGame = DailyClassicGame(
                         puzzle: puzzle,
                         acceptedWords: Set(pack.acceptedGuesses),
@@ -187,11 +217,30 @@ final class DailyClassicModel {
         game = restoredGame
         self.history = history
         self.settings = settings
+        if persistenceStartup == .active { activatePersistence(at: initialDate) }
+    }
+
+    /// Reading a provisional guest board does not acquire its persistence ownership.
+    /// Activation retains this model's accepted state and deferred recovery work.
+    @discardableResult
+    func activatePersistence() -> Bool {
+        if !isPersistenceActive { activatePersistence(at: now()) }
+        return pendingTerminalResult == nil && !hasUnsavedProgress
+    }
+
+    private func activatePersistence(at date: Date) {
+        guard !isPersistenceActive else { return }
+        isPersistenceActive = true
+        if needsProgressRepair {
+            try? store.discardProgress()
+            needsProgressRepair = false
+        }
         if pendingTerminalResult != nil {
             retryPendingCompletion()
         } else {
             persistProgress()
         }
+        if pendingTerminalResult == nil { refreshForCurrentDay(at: date) }
     }
 
     var homeStatus: DailyHomeStatus {
@@ -225,12 +274,17 @@ final class DailyClassicModel {
     var nextReset: Date { DailyPuzzleSchedule.nextReset(after: now()) }
 
     func refreshForCurrentDay() {
+        guard isPersistenceActive else { return }
+        refreshForCurrentDay(at: now())
+    }
+
+    private func refreshForCurrentDay(at date: Date) {
         retryPendingCompletion()
         do {
-            let current = try DailyPuzzleSchedule.puzzle(at: now(), in: pack)
+            let current = try DailyPuzzleSchedule.puzzle(at: date, in: pack)
             guard current.id != puzzle.id else { return }
             guard pendingTerminalResult == nil else {
-                errorMessage = "Yesterday's result is still being saved. GridRace will retry."
+                storageMessage = "Yesterday's result is still being saved. GridRace will retry."
                 return
             }
             puzzle = current
@@ -247,53 +301,58 @@ final class DailyClassicModel {
                     hardModeEnabled: settings.hardModeEnabled
                 )
             }
-            errorMessage = nil
-            try store.save(game.progress)
+            validationMessage = nil
+            persistProgress()
         } catch {
-            errorMessage = "Today's puzzle could not be refreshed."
+            validationMessage = "Today's puzzle could not be refreshed."
         }
     }
 
     func typeLetter(_ letter: Character) {
+        if !isPersistenceActive { activatePersistence(at: now()) }
         guard !game.isComplete else { return }
-        errorMessage = nil
+        validationMessage = nil
         game.type(letter)
         persistProgress()
     }
 
     func deleteLetter() {
+        if !isPersistenceActive { activatePersistence(at: now()) }
         guard !game.isComplete else { return }
-        errorMessage = nil
+        validationMessage = nil
         game.deleteBackward()
         persistProgress()
     }
 
     func submitGuess() {
         let submissionDate = now()
-        guard DailyPuzzleSchedule.day(containing: submissionDate) == puzzle.day else {
-            refreshForCurrentDay()
-            errorMessage = "A new daily puzzle is ready."
+        let submittedPuzzleID = puzzle.id
+        if !isPersistenceActive { activatePersistence(at: submissionDate) }
+        guard submittedPuzzleID == puzzle.id,
+              DailyPuzzleSchedule.day(containing: submissionDate) == puzzle.day else {
+            refreshForCurrentDay(at: submissionDate)
+            validationMessage = "A new daily puzzle is ready."
             hapticEvent += 1
             return
         }
         let submission = game.submit(at: submissionDate)
         if let error = submission.error {
-            errorMessage = error.message
+            validationMessage = error.message
             hapticEvent += 1
             persistProgress()
             return
         }
         guard submission.guess != nil else { return }
-        errorMessage = nil
+        validationMessage = nil
         hapticEvent += 1
         if let result = game.completedResult {
             guard history.result(for: result.puzzleID) == nil else {
-                errorMessage = "This daily result was already recorded."
+                validationMessage = "This daily result was already recorded."
                 return
             }
             guard history.record(result) else {
                 pendingTerminalResult = result
-                errorMessage = "Your result could not be recorded. GridRace will retry."
+                validationMessage = "Your result could not be recorded. GridRace will retry."
                 persistProgress()
                 return
             }
@@ -317,6 +376,7 @@ final class DailyClassicModel {
     }
 
     func updateHardMode(_ enabled: Bool) {
+        if !isPersistenceActive { activatePersistence(at: now()) }
         guard game.setHardMode(enabled) else { return }
         settings.hardModeEnabled = enabled
         persistSettings()
@@ -324,39 +384,81 @@ final class DailyClassicModel {
         acceptedStateChanged?()
     }
 
+    /// Explicit saving intent may activate a provisional guest owner.
+    @discardableResult
+    func retryPersistence() -> Bool {
+        if !isPersistenceActive { return activatePersistence() }
+        return flushAcceptedState()
+    }
+
+    /// Passive reconciliation cannot activate or claim a prepared owner is durable.
+    @discardableResult
+    func flushAcceptedState() -> Bool {
+        guard isPersistenceActive else { return false }
+        if pendingTerminalResult != nil { retryPendingCompletion() }
+        if pendingTerminalResult == nil, hasUnsavedProgress { persistProgress() }
+        return pendingTerminalResult == nil && !hasUnsavedProgress
+    }
+
+    /// Adopt durable reconciliation without replacing this accepted-state owner.
+    func reloadReconciledState() throws {
+        guard flushAcceptedState() else { return }
+        let loadedHistory = try store.loadHistory()
+        let progress = try loadedHistory.result(for: puzzle.id).map(DailyClassicProgress.init(result:))
+            ?? store.loadProgress()
+        if let progress, progress.puzzleID == puzzle.id {
+            game = try DailyClassicGame(puzzle: puzzle, acceptedWords: Set(pack.acceptedGuesses), restoring: progress)
+            settings.hardModeEnabled = game.progress.hardModeEnabled
+        }
+        history = loadedHistory
+        refreshForCurrentDay()
+    }
+
+    /// An immutable remote completion can settle a dirty active attempt.
+    func adoptAuthoritativeCompletion(_ result: DailyCompletedResult) throws {
+        guard isPersistenceActive, result.puzzleID == puzzle.id, history.result(for: puzzle.id) == nil else { return }
+        let restored = try DailyClassicGame(puzzle: puzzle, acceptedWords: Set(pack.acceptedGuesses),
+                                           restoring: DailyClassicProgress(result: result))
+        guard history.record(result) else { throw DailyClassicError.invalidHistory }
+        game = restored
+        pendingTerminalResult = result
+        retryPendingCompletion()
+    }
+
     private func persistProgress() {
+        guard isPersistenceActive else { return }
+        hasUnsavedProgress = true
         do {
             try store.save(game.progress)
+            hasUnsavedProgress = false
+            if pendingTerminalResult == nil { storageMessage = nil }
         } catch {
-            errorMessage = "Your puzzle could not be saved. Try again."
+            storageMessage = "Your puzzle could not be saved. Try again."
         }
     }
 
     private func retryPendingCompletion() {
-        guard let result = pendingTerminalResult else { return }
+        guard isPersistenceActive, let result = pendingTerminalResult else { return }
         if let existing = history.result(for: result.puzzleID) {
             guard existing == result else {
-                errorMessage = "The saved daily result conflicts with this game."
+                storageMessage = "The saved daily result conflicts with this game."
                 return
             }
         } else {
             guard history.record(result) else {
-                errorMessage = "Your result could not be recorded. GridRace will retry."
+                storageMessage = "Your result could not be recorded. GridRace will retry."
                 return
             }
         }
-
         do {
             try store.save(history)
             pendingTerminalResult = nil
-            errorMessage = nil
+            // History is sufficient durability for a terminal game.
+            hasUnsavedProgress = false
+            storageMessage = nil
         } catch {
-            do {
-                try store.save(game.progress)
-                errorMessage = nil
-            } catch {
-                errorMessage = "Your result could not be saved. GridRace will retry."
-            }
+            persistProgress()
+            storageMessage = "Your result is still being saved. GridRace will retry."
         }
     }
 
@@ -364,7 +466,7 @@ final class DailyClassicModel {
         do {
             try settings.save(to: defaults)
         } catch {
-            errorMessage = "Your settings could not be saved."
+            validationMessage = "Your settings could not be saved."
         }
     }
 

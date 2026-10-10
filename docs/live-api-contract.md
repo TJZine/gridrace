@@ -427,6 +427,16 @@ Display names are 2–16 ASCII characters: letters or digits at both ends, with
 letters, digits, single spaces, apostrophes, and hyphens internally. Consecutive
 spaces are rejected. Email never enters the public profile or match domain.
 
+The owner-private profile includes required Boolean `setup_completed`. New profiles
+start false. A successful permitted display-name update marks it true, including
+same-value Save of a name such as `Player abcdef`; the name remains ordinary user
+content. Profile reads and avatar-only updates leave the flag unchanged. Owners
+may select this field but cannot directly update it. Native profile decoding requires
+its explicit value, and the returned profile owns setup readiness across restoration.
+Migration `202610080002` preserves every legacy name and timestamp, using the
+human-approved existing-name classification recorded in the remediation plan.
+Backend schema support must precede native consumption; no hosted rollout is claimed.
+
 Release authentication is Sign in with Apple through Supabase. Debug builds may
 show a local email/password sign-in for test accounts; that implementation and its
 labels compile out of Release. Credentials and service keys are never bundled.
@@ -454,14 +464,16 @@ The preceding v1 contract remains the supported legacy local contract. The backe
 implements this accepted Phase 4 extension in migration
 `202610020001_blind_race_multiround.sql` and the existing Edge commands. Local
 forward/reset, grants/RLS, scoring, concurrency and real gateway proof are recorded
-in the active plan. Swift transport, recovery and UI are implemented; real
+in the Historical Phase 4 plan. Swift transport, recovery and UI are implemented; real
 independent-client product integration and the independent implementation review
 are complete. Required OS-assisted accessibility proof remains pending; this is
-not a complete Phase 4 or hosted rollout.
+not an OS-assisted accessibility pass or hosted rollout.
 The human approved the UI and freeze-on-either-account-deletion policy on
 2026-10-02. Independent plan review and targeted corrections were checkpointed
-at `3a01d9a` before product writes. The sole
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md) owns packages and proof;
+at `3a01d9a` before product writes. The
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md) records software proof;
+S4 of the [Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md)
+owns the transferred A9 OS-assisted checks;
 this section owns the frozen wire/recovery extension. Existing game rules own
 unchanged scoring and deadlines. No hosted rollout or compatibility framework is
 introduced; bounded v1 support preserves real local rooms and protected pending

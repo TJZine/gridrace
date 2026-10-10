@@ -27,6 +27,18 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+DUMP_SHA256 = "0b7f554b1884e52e1c06de74cecab5e370c6b9f765711cedb0759f6d14c5e719"
+
+
+def verify_dump(source) -> None:
+    """Verify all compressed bytes, including the tail after an early XML hit."""
+    digest = hashlib.sha256()
+    for block in iter(lambda: source.read(1024 * 1024), b""):
+        digest.update(block)
+    if digest.hexdigest() != DUMP_SHA256:
+        raise ValueError("compressed dump SHA-256 does not match the pinned source")
+    source.seek(0)
+
 
 def child(element: ET.Element, name: str) -> ET.Element | None:
     return next((item for item in element if item.tag.rsplit("}", 1)[-1] == name), None)
@@ -57,30 +69,32 @@ def main() -> int:
 
     found: dict[str, dict[str, str | None]] = {}
     pages_seen = 0
-    with bz2.open(args.dump, "rb") as source:
-        for _, page in ET.iterparse(source, events=("end",)):
-            if page.tag.rsplit("}", 1)[-1] != "page":
-                continue
-            pages_seen += 1
-            title = text_of(child(page, "title"))
-            if title in need and text_of(child(page, "ns")) == "0":
-                revision = child(page, "revision")
-                body = text_of(child(revision, "text") if revision is not None else None)
-                found[title] = {
-                    "title": title,
-                    "pageId": text_of(child(page, "id")),
-                    "revisionId": text_of(child(revision, "id") if revision is not None else None),
-                    "timestamp": text_of(child(revision, "timestamp") if revision is not None else None),
-                    "upstreamTextSha1": text_of(child(revision, "sha1") if revision is not None else None),
-                    "textSha256": hashlib.sha256(body.encode()).hexdigest() if body else None,
-                }
-                print(f"found {len(found)}/{len(need)}: {title}", flush=True)
-                if len(found) == len(need):
-                    print("all found; stopping early", flush=True)
-                    break
-            page.clear()
-            if pages_seen % 1_000_000 == 0:
-                print(f"scanned {pages_seen} pages, found {len(found)}", flush=True)
+    with args.dump.open("rb") as compressed:
+        verify_dump(compressed)
+        with bz2.BZ2File(compressed, "rb") as source:
+            for _, page in ET.iterparse(source, events=("end",)):
+                if page.tag.rsplit("}", 1)[-1] != "page":
+                    continue
+                pages_seen += 1
+                title = text_of(child(page, "title"))
+                if title in need and text_of(child(page, "ns")) == "0":
+                    revision = child(page, "revision")
+                    body = text_of(child(revision, "text") if revision is not None else None)
+                    found[title] = {
+                        "title": title,
+                        "pageId": text_of(child(page, "id")),
+                        "revisionId": text_of(child(revision, "id") if revision is not None else None),
+                        "timestamp": text_of(child(revision, "timestamp") if revision is not None else None),
+                        "upstreamTextSha1": text_of(child(revision, "sha1") if revision is not None else None),
+                        "textSha256": hashlib.sha256(body.encode()).hexdigest() if body else None,
+                    }
+                    print(f"found {len(found)}/{len(need)}: {title}", flush=True)
+                    if len(found) == len(need):
+                        print("all found; stopping early", flush=True)
+                        break
+                page.clear()
+                if pages_seen % 1_000_000 == 0:
+                    print(f"scanned {pages_seen} pages, found {len(found)}", flush=True)
 
     print(f"scanned {pages_seen} pages; found {len(found)}/{len(need)}")
     missing = sorted(need - set(found))

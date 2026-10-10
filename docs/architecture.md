@@ -5,8 +5,9 @@ local Daily Classic mode, the Phase 1 tutorial, the implemented Phase 2/3 client
 and locally verified Phase 4 multi-round backend/client. Real independent-client
 multi-round verification and the independent implementation review are complete,
 with evidence and review closure in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
-accessibility proof remains pending; no hosted rollout is claimed.
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md). Required OS-assisted
+accessibility proof is now owned by S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md); no hosted rollout is claimed.
 
 ## Daily Classic architecture
 
@@ -30,8 +31,26 @@ This local mode makes no secrecy claim for bundled answers.
 Accounts are optional. Guest Codable files remain the immediate gameplay source while
 signed out. Each authenticated UUID has a separate local directory; changing or
 deleting an account swaps away from that directory before another account can render
-it. Supabase Auth sessions use the SDK's Apple-platform Keychain storage and never
-enter Daily Classic files or `UserDefaults`.
+it. `SupabaseAccountService` owns Auth lifetimes and stores sessions through native
+Security operations in the pinned SDK's existing Keychain namespace. Credentials
+never enter Daily Classic files or `UserDefaults`.
+
+The Auth owner validates persisted session data before publishing an effective
+account. Profile, Daily, Live commands and Realtime hold immutable account-bound
+leases across suspension; obsolete work cannot borrow a later account's client.
+Explicit sign-out fences consumers before credential cleanup or remote logout.
+A secure retirement marker and independently checked credential removal protect
+cold restoration; unresolved storage failures expose signed-out cleanup rather than
+claiming durable sign-out. Offline restoration retains existing credentials for
+Retry, with an explicit local sign-out action. SDK automatic Auth refresh and
+Realtime app-lifecycle handling are disabled: the Auth owner schedules refresh,
+and the Live session owns foreground recovery. Reversible storage failure drains
+old channels before the same client can publish fresh leases.
+
+`AccountModel` applies authentication identity changes without waiting for profile
+transport. It owns a cancellable profile task with identity and request-generation
+guards, so a replaced account or profile retry rejects older success and failure.
+Profile availability does not gate authenticated sign-out or account deletion.
 
 After sign-in, a small sync coordinator pulls owner-private state and continues using
 the account's local files for gameplay. It marks the current compact snapshot pending
@@ -41,6 +60,16 @@ completion always dominates active progress; a longer exact-prefix active attemp
 advances; divergent active attempts and distinct terminal results are shown as choices
 rather than silently combined. Statistics are always recalculated from the merged
 immutable results.
+
+A pending guest-history import belongs to its account and sync-engine lifecycle.
+Replacing that lifecycle clears the pending decision; successful synchronization
+for another account cannot mark it imported. Staged conflicts require an explicit
+attempt choice, and durable decision-write failures remain retryable. The displayed
+choice carries its account, puzzle slot and durable basis; an obsolete choice is
+refreshed or rejected before it can replace newer play. Accepted in-memory play
+remains the durability owner when a device write fails, and Settings exposes saving
+status and Retry. A prior-day terminal progress fallback is reconciled into immutable
+history before the next board replaces its slot.
 
 Hard Mode is attempt configuration, separate from immutable puzzle identity. A
 started attempt (accepted guesses) takes precedence over an empty board with a
@@ -203,6 +232,12 @@ Use the existing authenticated SDK client through service composition. One live
 session owns live state; the Daily coordinator continues to own Daily/account
 synchronization. Reuse passive presentation and pure keyboard evidence from accepted
 rows, but never use a bundled evaluator/dictionary to decide live acceptance.
+
+The live session owns complete capabilities for new Start and guess input from
+canonical state, server-time display, and its current lifetime/pending work.
+Presentation projects those capabilities. Retrying a captured Start remains a
+separate operation targeting its original round; PostgreSQL still validates every
+command and owns acceptance.
 
 Opponent presence is deferred in this slice. Only local transport status is known;
 opponent inactivity or local socket connectivity is not an opponent online signal.

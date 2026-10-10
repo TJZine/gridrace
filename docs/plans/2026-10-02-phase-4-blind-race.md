@@ -1,4 +1,4 @@
-Status: Active
+Status: Historical
 Scope: GridRace Phase 4 private two-player multi-round Blind Race
 Owner: GridRace Phase 4 kickoff controller, 01a0fc7c-88b3-7f80-9631-504b4baffc45
 Started: 2026-10-02
@@ -6,7 +6,33 @@ Last updated: 2026-10-03
 
 # Phase 4 Blind Race
 
-## Current checkpoint and authority gate
+## Shared workflow transition — 2026-10-04
+
+[AGENTS.md](../../AGENTS.md), the [project profile](../../.agents/project.md)
+and shared develop/design/review/verify skills replace prior process mechanics.
+Maintenance stays explicit-only. Historical models, role names, leases, machine
+paths, callbacks and source hashes describe recorded runs, not future requirements.
+Accepted product/design/API/data decisions, human authorizations and qualified
+proof remain intact. This workflow refresh does not resume product work, alter
+task status or claim unresolved acceptance passed.
+
+## Rescope closeout — 2026-10-03
+
+The human chose rescope activation of the
+[Stamped UI Refresh](2026-10-03-stamped-ui-refresh.md). This Phase 4 plan is
+Historical with last content checkpoint
+`2d19d2c5b8263fe176dc77af167fe7c19f588081`. The tracker closeout is this
+activation commit. The software proof and review below remain as recorded.
+
+A9 OS-assisted accessibility proof transfers to the stamped plan's S4, including
+VoiceOver focus/announcements, OS Reduce Motion, hardware keyboard letters/delete/
+return, haptic preference, and measured hit regions. These checks have not passed;
+this rescope makes no completion claim beyond the recorded software evidence.
+Physical-device, hosted, and distribution gates remain external. Earlier Active
+status, next-action, and lease passages below are historical checkpoint records,
+not current instructions. The stamped plan now owns execution and A9 closure.
+
+## Historical checkpoint and authority gate
 
 Human accepted D3 and D4 on 2026-10-02 with “use both recs.” The agreed UI
 is the native 1/3/5 Create selector (3 selected), Round N of M, existing reveals
@@ -37,7 +63,8 @@ software proof at `81d14d4`. One fresh configured independent final review is
 complete; its sole P3 documentation finding is repaired with targeted controller
 closure in this content checkpoint. No concrete runtime defect was found.
 Required A9 OS-assisted accessibility proof remains unavailable through enabled
-local tooling, so this plan stays Active. See the final review ledger below.
+local tooling at that checkpoint. A9 now transfers to stamped S4 above. See the
+final review ledger below.
 
 ## Repository snapshot and authority
 
@@ -703,7 +730,7 @@ complete implementation, proof, review and required repairs.
 - [x] Real independent-client multi-round proof and full affected software gates complete; A9 OS-assisted gap is explicit below.
 - [x] Fresh independent final review complete; accepted fixes/targeted closure proved.
 - [x] Authorities current; unrelated hashes preserved; owned changes committed in this content checkpoint.
-- [ ] Only then Historical closeout, commit report and explicit external release gates.
+- [x] Historical rescope closeout: A9 transferred to stamped S4; no OS-assisted pass claimed.
 
 ## P4-V authoring and controller runtime in progress
 

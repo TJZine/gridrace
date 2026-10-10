@@ -1,9 +1,373 @@
 import Foundation
 import XCTest
+import SwiftUI
+import UIKit
+import Darwin
 @testable import GridRace
 
 @MainActor
 final class DailyClassicModelTests: XCTestCase {
+    func testProgramStampsAndResultStatus() {
+        XCTAssertEqual(DailyHomeStatus.unplayed.action, "Play")
+        XCTAssertEqual(DailyHomeStatus.inProgress(2).action, "Continue")
+        XCTAssertEqual(DailyHomeStatus.inProgress(2).title, "2 of 6 rows used")
+        XCTAssertEqual(DailyHomeStatus.solved(3).action, "Result")
+        XCTAssertEqual(DailyHomeStatus.solved(3).title, "Solved in 3")
+        XCTAssertEqual(DailyHomeStatus.failed.action, "Result")
+        XCTAssertEqual(DailyHomeStatus.failed.title, "Not solved")
+    }
+
+    func testAccountSheetWaitsForSignInAndProfileAndStaysOpenForExpiredAuth() {
+        var signedOut = AccountSheetState(isSignedIn: false)
+        XCTAssertFalse(signedOut.observe(isSignedIn: false, profileReady: false))
+        XCTAssertFalse(signedOut.observe(isSignedIn: true, profileReady: false), "Authentication alone cannot hide profile setup or a profile-load error")
+        XCTAssertTrue(signedOut.observe(isSignedIn: true, profileReady: true))
+        var expired = AccountSheetState(isSignedIn: true)
+        XCTAssertFalse(expired.observe(isSignedIn: true, profileReady: true))
+        XCTAssertFalse(expired.observe(isSignedIn: true, profileReady: false))
+        XCTAssertFalse(expired.observe(isSignedIn: false, profileReady: false), "Sign-out and deletion keep the sheet open")
+        XCTAssertTrue(expired.observe(isSignedIn: true, profileReady: true), "A new sign-in after sign-out can dismiss")
+        var cancelled = AccountSheetState(isSignedIn: false)
+        XCTAssertFalse(cancelled.observe(isSignedIn: true, profileReady: false))
+        XCTAssertFalse(cancelled.observe(isSignedIn: false, profileReady: false))
+        XCTAssertFalse(cancelled.observe(isSignedIn: false, profileReady: true))
+    }
+
+    /// Native target-runtime evidence with the real screen bounds and safe areas.
+    /// AX captures include lower scroll content; OS VoiceOver remains an S4 gate.
+    func testDailyNativeScreenCapturesAndAccessibilityScrollContent() async throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(now: { now })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        let size = scene.screen.bounds.size
+        let device = size.width < 390 ? "SE" : "Pro"
+        let account = AccountModel(service: nil)
+        for state in ["unplayed", "progress", "solved", "failed", "hard-mode", "storage", "resume", "resolve"] {
+            if state == "progress" { fixture.type("civic", into: model); model.submitGuess() }
+            if state == "solved" { fixture.type("adore", into: model); model.submitGuess() }
+            let shown: DailyClassicModel
+            if state == "failed" || state == "hard-mode" {
+                shown = try fixture.model(store: FailingStore(), now: { now })
+                if state == "hard-mode" { shown.updateHardMode(true) }
+                for _ in 0..<(state == "failed" ? 6 : 1) { fixture.type("civic", into: shown); shown.submitGuess() }
+            } else { shown = model }
+            let store = DailyScreenLiveStore(fails: state == "resolve")
+            let live = LiveMatchSession(service: DailyScreenLiveService(), realtime: nil, storeFactory: { _ in store })
+            if state == "resume" || state == "resolve" {
+                live.changeAccount(to: UUID())
+                if state == "resume" {
+                    live.leaveToHome()
+                    XCTAssertTrue(live.hasSavedMatch)
+                } else { XCTAssertEqual(live.phase, .storageUnavailable) }
+            }
+            for dark in [false, true] {
+                let home = NavigationStack {
+                    DailyHomeView(model: shown, account: account, live: live, syncMessage: nil,
+                                  isDailyPlayable: state != "storage", retryDailyStorage: {}, openRoute: { _ in })
+                }
+                try await capture(home, scene: scene, name: "\(device)-home-\(state)-\(dark ? "dark" : "light")", dark: dark)
+                if ["unplayed", "progress", "solved", "failed", "hard-mode"].contains(state) {
+                    try await capture(NavigationStack { DailyGameView(model: shown) }, scene: scene,
+                                      name: "\(device)-daily-\(state)-\(dark ? "dark" : "light")", dark: dark)
+                }
+                if state == "solved" || state == "failed" {
+                    try await capture(NavigationStack { DailyStatisticsView(model: shown) }, scene: scene,
+                                      name: "\(device)-stats-\(state)-\(dark ? "dark" : "light")", dark: dark)
+                }
+            }
+        }
+        try await capture(NavigationStack { DailyGameView(model: model) }, scene: scene, name: "\(device)-daily-AX5", accessibility: true)
+        let playing = try fixture.model(store: FailingStore(), now: { now })
+        try await capture(NavigationStack { DailyGameView(model: playing) }, scene: scene, name: "\(device)-daily-play-AX5", accessibility: true)
+        try await capture(NavigationStack { DailyStatisticsView(model: model) }, scene: scene, name: "\(device)-stats-AX5", accessibility: true)
+    }
+
+    func testDailyGameplayContainmentAndHardModeErrorRecovery() async throws {
+        let fixture = try Fixture()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        for landscape in [false, true] {
+            let model = try fixture.model(store: FailingStore(), now: { now })
+            model.updateHardMode(true)
+            fixture.type("civic", into: model)
+            model.submitGuess()
+            try await GameplayContainmentHost.withHost(
+                GameplayRouteView(.daily) { DailyGameView(model: model) }, landscape: landscape) { hosted in
+                try hosted.assertGameplay(in: self, name: "daily-hard-mode", notices: [GameplayContainmentHost.hardModeReminder])
+                fixture.type("zzzzz", into: model)
+                model.submitGuess()
+                try await hosted.settle()
+                try hosted.assertGameplay(in: self, name: "daily-hard-mode-error", notices: [try XCTUnwrap(model.errorMessage)])
+                XCTAssertFalse(hosted.elements().contains { $0.label == GameplayContainmentHost.hardModeReminder })
+                model.deleteLetter()
+                try await hosted.settle()
+                try hosted.assertGameplay(in: self, name: "daily-hard-mode-edited", notices: [GameplayContainmentHost.hardModeReminder])
+            }
+            let clueModel = try fixture.model(store: FailingStore(), now: { now })
+            clueModel.updateHardMode(true)
+            fixture.type("crane", into: clueModel)
+            clueModel.submitGuess()
+            fixture.type("stone", into: clueModel)
+            clueModel.submitGuess()
+            try await GameplayContainmentHost.withHost(GameplayRouteView(.daily) { DailyGameView(model: clueModel) }, landscape: landscape) { hosted in
+                try hosted.assertGameplay(in: self, name: "daily-clue-error", notices: [try XCTUnwrap(clueModel.errorMessage)])
+            }
+            // Appearance retries pending completion, so keep storage unavailable
+            // throughout the hosted fixture rather than failing only one write.
+            let terminalStore = FailingStore()
+            terminalStore.historySaveFailures = 100
+            terminalStore.progressSaveFailures = 100
+            let terminal = try fixture.model(store: terminalStore, now: { now })
+            fixture.type("adore", into: terminal)
+            terminal.submitGuess()
+            try await GameplayContainmentHost.withHost(GameplayRouteView(.daily) { DailyGameView(model: terminal) }, landscape: landscape) { hosted in
+                try hosted.assertGameplay(in: self, name: "daily-terminal-storage-error", notices: [try XCTUnwrap(terminal.errorMessage)],
+                                          expectsKeyboard: false, actions: ["Share result", "View statistics"])
+            }
+        }
+        let model = try fixture.model(store: FailingStore(), now: { now })
+        model.updateHardMode(true)
+        fixture.type("civic", into: model)
+        model.submitGuess()
+        fixture.type("zzzzz", into: model)
+        model.submitGuess()
+        try await GameplayContainmentHost.withHost(GameplayRouteView(.daily) { DailyGameView(model: model) },
+                                                  landscape: false, accessibility: true) { hosted in
+            try hosted.assertGameplay(in: self, name: "daily-AX-error", notices: [try XCTUnwrap(model.errorMessage)])
+            model.deleteLetter()
+            try await hosted.settle()
+            try hosted.assertGameplay(in: self, name: "daily-AX-restored-reminder", notices: [GameplayContainmentHost.hardModeReminder])
+        }
+    }
+
+    func testContainmentGateRejectsActualClippedBoardAndPassesRestoredFixture() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        for clipped in [false, true, false] {
+            var closedHost: GameplayContainmentHost?
+            try await GameplayContainmentHost.withHost(NavigationStack {
+                HStack(spacing: 8) {
+                    BoardView(rows: [], draft: "", isPlaying: true, compactLayout: true)
+                        .frame(width: 244, height: 293)
+                        .offset(y: clipped ? 24 : 0)
+                        .clipped()
+                    LetterKeyboardView(keyboard: KeyboardState(), typeLetter: { _ in }, submit: {}, delete: {})
+                }
+                .navigationTitle("Containment fixture").navigationBarTitleDisplayMode(.inline)
+            }, landscape: true) { hosted in
+                closedHost = hosted
+                XCTAssertEqual(scene.interfaceOrientation, .landscapeRight)
+                if clipped {
+                    let options = XCTExpectedFailure.Options()
+                    options.issueMatcher = { $0.compactDescription.contains("outside") }
+                    try XCTExpectFailure("An actual clipped last row must fail the same containment gate", options: options) {
+                        try hosted.assertGameplay(in: self, name: "negative-clipped-board")
+                    }
+                } else {
+                    try hosted.assertGameplay(in: self, name: "restored-board")
+                }
+            }
+            let hosted = try XCTUnwrap(closedHost)
+            XCTAssertTrue(hosted.window.isHidden)
+            XCTAssertNil(hosted.window.rootViewController)
+            XCTAssertEqual(scene.interfaceOrientation, .portrait, "Cleanup must finish restoring the prior orientation before the next fixture")
+            try await GameplayContainmentHost.establishOrientation(.landscapeLeft, in: scene)
+            try await hosted.close()
+            XCTAssertEqual(scene.interfaceOrientation, .landscapeLeft, "Repeated cleanup must not overwrite a later fixture's orientation")
+            try await capture(NavigationStack { Text("Portrait capture after landscape containment") }, scene: scene,
+                              name: "portrait-after-landscape-\(clipped ? "clipped" : "restored")")
+        }
+    }
+
+    func testContainmentHostAwaitsOrientationRestorationAfterThrowAndCancellation() async throws {
+        enum ProbeError: Error { case failed }
+        enum Exit { case failure, operationCancellation, initializationCancellation }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        for exit in [Exit.failure, .operationCancellation, .initializationCancellation] {
+            let priorWindows = Set(scene.windows.map(ObjectIdentifier.init))
+            let priorKeyWindow = scene.windows.first { $0.isKeyWindow }
+            var closedHost: GameplayContainmentHost?
+            let operation = Task { @MainActor in
+                try await GameplayContainmentHost.withHost(Text("Cleanup failure-path fixture"), landscape: true) { hosted in
+                    closedHost = hosted
+                    XCTAssertEqual(scene.interfaceOrientation, .landscapeRight)
+                    if exit == .operationCancellation {
+                        withUnsafeCurrentTask { $0?.cancel() }
+                        try await hosted.settle()
+                    }
+                    throw ProbeError.failed
+                }
+            }
+            if exit == .initializationCancellation {
+                // A newly visible window proves initialization reached its
+                // first suspension after issuing the scene geometry request.
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: .seconds(5))
+                while !scene.windows.contains(where: { !priorWindows.contains(ObjectIdentifier($0)) && !$0.isHidden }),
+                      clock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                XCTAssertTrue(scene.windows.contains { !priorWindows.contains(ObjectIdentifier($0)) && !$0.isHidden })
+                operation.cancel()
+            }
+            do {
+                try await operation.value
+                XCTFail("The fixture must propagate its operation failure")
+            } catch {
+                XCTAssertTrue(exit == .failure ? error is ProbeError : error is CancellationError)
+            }
+            if exit == .initializationCancellation {
+                XCTAssertNil(closedHost, "Cancellation during initialization must not enter the hosted operation")
+            } else {
+                let hosted = try XCTUnwrap(closedHost)
+                XCTAssertTrue(hosted.window.isHidden)
+                XCTAssertNil(hosted.window.rootViewController)
+            }
+            XCTAssertFalse(scene.windows.contains { !priorWindows.contains(ObjectIdentifier($0)) && !$0.isHidden })
+            XCTAssertTrue(scene.windows.first { $0.isKeyWindow } === priorKeyWindow)
+            XCTAssertEqual(scene.interfaceOrientation, .portrait, "Failure and cancellation cannot leave the next test in landscape")
+        }
+    }
+
+    private func capture<V: View>(_ view: V, scene: UIWindowScene, name: String, dark: Bool = false,
+                                  accessibility: Bool = false) async throws {
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        let host = UIHostingController(rootView: view.tint(Color.ink).foregroundStyle(Color.ink)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
+        host.overrideUserInterfaceStyle = dark ? .dark : .light
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await Task.sleep(for: .milliseconds(350))
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(scene.interfaceOrientation, .portrait, "Daily captures require an OS portrait scene")
+        XCTAssertGreaterThan(window.bounds.height, window.bounds.width, "Daily captures require a portrait viewport")
+        let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        func attach(_ suffix: String) {
+            let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name + suffix
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        attach("")
+        if accessibility {
+            for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height {
+                scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
+                host.view.layoutIfNeeded()
+                attach("-bottom-\(index)")
+            }
+        }
+    }
+
+    private func descendants(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { descendants($0) }
+    }
+
+    func testPreparedGuestDefersProgressRepairAndPassiveRefreshUntilExplicitActivation() throws {
+        for corrupt in [false, true] {
+            let fixture = try Fixture()
+            let store = DailyClassicStore(directory: fixture.directory)
+            let oldDate = fixture.date(day: fixture.epochDay)
+            let old = try fixture.model(now: { oldDate })
+            fixture.type("civic", into: old)
+            old.submitGuess()
+            let progressURL = fixture.directory.appending(path: "daily-progress-v1.json")
+            if corrupt { try Data("{broken".utf8).write(to: progressURL) }
+            let before = try Data(contentsOf: progressURL)
+            let current = fixture.date(day: fixture.epochDay + 1)
+            let prepared = try DailyClassicModel(pack: fixture.pack, store: store,
+                defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+            prepared.refreshForCurrentDay()
+            XCTAssertFalse(prepared.flushAcceptedState(), "Deferred initial persistence is not durable")
+            try prepared.reloadReconciledState()
+            XCTAssertEqual(try Data(contentsOf: progressURL), before)
+            XCTAssertNil(prepared.storageMessage, "Preparation did not attempt a failing save")
+            XCTAssertFalse(prepared.isPersistenceActive)
+            XCTAssertTrue(prepared.retryPersistence(), "Explicit saving intent activates this owner")
+            XCTAssertTrue(prepared.isPersistenceActive)
+            XCTAssertEqual(try store.loadProgress(), prepared.game.progress)
+            XCTAssertEqual(prepared.puzzle.day, fixture.epochDay + 1)
+            let activated = try Data(contentsOf: progressURL)
+            XCTAssertTrue(prepared.activatePersistence())
+            XCTAssertEqual(try Data(contentsOf: progressURL), activated)
+        }
+    }
+
+    func testPreparedTerminalFallbackRemainsUntouchedUntilActivationAndDurableRetry() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let oldDate = fixture.date(day: fixture.epochDay)
+        let old = try fixture.model(store: store, now: { oldDate })
+        store.historySaveFailures = 1
+        fixture.type("adore", into: old)
+        old.submitGuess()
+        let fallback = try XCTUnwrap(store.savedProgress)
+        XCTAssertNotNil(fallback.completion)
+        let current = fixture.date(day: fixture.epochDay + 1)
+        let prepared = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+        prepared.refreshForCurrentDay()
+        XCTAssertFalse(prepared.flushAcceptedState())
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertTrue((store.savedHistory ?? DailyClassicHistory()).completedResults.isEmpty)
+        store.historySaveFailures = 2
+        XCTAssertFalse(prepared.activatePersistence())
+        XCTAssertEqual(prepared.puzzle.day, fixture.epochDay)
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertFalse(prepared.retryPersistence())
+        XCTAssertEqual(store.savedProgress, fallback)
+        XCTAssertTrue(prepared.retryPersistence())
+        prepared.refreshForCurrentDay()
+        XCTAssertEqual(prepared.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(store.savedHistory?.completedResults.count, 1)
+        XCTAssertEqual(store.savedProgress, prepared.game.progress)
+    }
+
+    func testPreparedSubmissionActivatesWithItsSingleAcceptedTimestamp() throws {
+        let fixture = try Fixture()
+        let current = fixture.date(day: fixture.epochDay, seconds: 100)
+        let puzzle = try DailyPuzzleSchedule.puzzle(at: current, in: fixture.pack)
+        var draft = DailyClassicGame(puzzle: puzzle, acceptedWords: Set(fixture.pack.acceptedGuesses))
+        for letter in "adore" { draft.type(letter) }
+        let store = DailyClassicStore(directory: fixture.directory)
+        try store.save(draft.progress)
+        var calls = 0
+        let model = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared,
+            now: { calls += 1; return current })
+        model.submitGuess()
+        XCTAssertTrue(model.isPersistenceActive)
+        XCTAssertEqual(calls, 2, "Construction and submission each sample once, including activation")
+        XCTAssertEqual(model.game.progress.acceptedGuesses.first?.acceptedAt, current)
+        XCTAssertEqual(try store.loadHistory().completedResults.count, 1)
+    }
+
+    func testPreparedModeIntentActivatesAndUnknownProgressReadFailureIsNotRepaired() throws {
+        let fixture = try Fixture()
+        let current = fixture.date(day: fixture.epochDay)
+        let store = DailyClassicStore(directory: fixture.directory)
+        let model = try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current })
+        XCTAssertNil(try store.loadProgress())
+        model.updateHardMode(true)
+        XCTAssertTrue(model.isPersistenceActive)
+        XCTAssertEqual(try store.loadProgress()?.hardModeEnabled, true)
+        try store.discardProgress()
+        let unreadable = fixture.directory.appending(path: "daily-progress-v1.json")
+        try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try DailyClassicModel(pack: fixture.pack, store: store,
+            defaults: fixture.defaults, persistenceStartup: .prepared, now: { current }))
+        var directory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unreadable.path, isDirectory: &directory))
+        XCTAssertTrue(directory.boolValue, "Unavailable storage is preserved, not treated as corrupt JSON")
+    }
+
     func testDraftAndAcceptedRowsRestoreAfterRecreation() throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)
@@ -301,6 +665,138 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertEqual(model.previousDisplayedStreak, 1)
     }
 
+    func testSettingsStorageNoticeAndRetryAreRenderedUnderHardModeSaveFailure() async throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(store: store, now: { now })
+        store.progressSaveFailures = 100
+        model.updateHardMode(true)
+        try await GameplayContainmentHost.withHost(
+            NavigationStack { DailySettingsView(model: model) }, landscape: false) { hosted in
+            let elements = hosted.elements()
+            XCTAssertTrue(elements.contains { $0.label == model.storageMessage })
+            let retry = try XCTUnwrap(elements.first { $0.label == "Retry saving" && $0.button })
+            XCTAssertTrue(hosted.isVisible(retry))
+            let image = UIGraphicsImageRenderer(bounds: hosted.window.bounds).image { _ in
+                hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Settings-Hard-Mode-storage-retry"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            store.progressSaveFailures = 0
+            XCTAssertTrue(model.retryPersistence())
+            try await hosted.settle()
+            XCTAssertFalse(hosted.elements().contains { $0.label == "Retry saving" })
+            XCTAssertTrue(try fixture.model(store: store, now: { now }).game.progress.hardModeEnabled)
+        }
+    }
+
+    func testPriorDayTerminalFallbackSurvivesRepeatedRelaunchAndRetry() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        var now = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(store: store, now: { now })
+        fixture.type("adore", into: model)
+        store.historySaveFailures = 10
+        model.submitGuess()
+        let terminal = try XCTUnwrap(store.savedProgress)
+        XCTAssertNotNil(terminal.completion)
+        XCTAssertNotNil(model.storageMessage)
+        now = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        for _ in 0..<2 {
+            model = try fixture.model(store: store, now: { now })
+            XCTAssertEqual(model.puzzle.day, fixture.epochDay)
+            XCTAssertTrue(model.game.isComplete)
+            XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+            XCTAssertEqual(store.savedProgress, terminal)
+            XCTAssertNil(store.savedHistory)
+        }
+        store.historySaveFailures = 0
+        XCTAssertTrue(model.retryPersistence())
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(store.savedHistory?.statistics.gamesPlayed, 1)
+        model = try fixture.model(store: store, now: { now })
+        XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+        XCTAssertFalse(model.game.isComplete)
+    }
+
+    func testAccountTerminalFallbackRolloverPreservesOtherAccountAndGuestFiles() throws {
+        let fixture = try Fixture()
+        let store = AccountDailyClassicStore(rootDirectory: fixture.directory, userID: UUID())
+        let other = AccountDailyClassicStore(rootDirectory: fixture.directory, userID: UUID())
+        let guest = DailyClassicStore(directory: fixture.directory.appending(path: "Guest"))
+        let yesterday = fixture.date(day: fixture.epochDay, seconds: 100)
+        var model = try fixture.model(store: store, now: { yesterday })
+        try other.save(model.game.progress)
+        try guest.save(model.game.progress)
+        let otherBefore = try other.loadProgress(), guestBefore = try guest.loadProgress()
+        try store.save(DailyClassicHistory())
+        let historyURL = store.directory.appending(path: "daily-history-v1.json")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: historyURL.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: historyURL.path) }
+        fixture.type("adore", into: model)
+        model.submitGuess()
+        let terminal = model.game.progress
+        let today = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        model = try fixture.model(store: store, now: { today })
+        XCTAssertTrue(model.game.isComplete)
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay)
+        XCTAssertEqual(try store.loadProgress(), terminal)
+        XCTAssertTrue(try store.loadHistory().completedResults.isEmpty)
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: historyURL.path)
+        XCTAssertTrue(model.retryPersistence())
+        model.refreshForCurrentDay()
+        XCTAssertEqual(model.puzzle.day, fixture.epochDay + 1)
+        XCTAssertEqual(try store.loadHistory().statistics.gamesPlayed, 1)
+        XCTAssertEqual(try other.loadProgress(), otherBefore)
+        XCTAssertEqual(try guest.loadProgress(), guestBefore)
+    }
+
+    func testPriorDayInvalidFallbackIsNotImportedAndImmutableHistoryWins() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let yesterday = fixture.date(day: fixture.epochDay, seconds: 100)
+        let finished = try fixture.model(store: store, now: { yesterday })
+        fixture.type("adore", into: finished)
+        finished.submitGuess()
+        let terminal = finished.game.progress
+        let today = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+        let restored = try fixture.model(store: store, now: { today })
+        XCTAssertEqual(restored.history.completedResults, finished.history.completedResults)
+        XCTAssertEqual(restored.puzzle.day, fixture.epochDay + 1)
+        store.savedHistory = nil
+        var bad = terminal
+        bad.acceptedGuesses = []
+        store.savedProgress = bad
+        let invalid = try fixture.model(store: store, now: { today })
+        XCTAssertTrue(invalid.history.completedResults.isEmpty)
+        XCTAssertEqual(invalid.puzzle.day, fixture.epochDay + 1)
+    }
+
+    func testAcceptedProgressAndModeRetainSeparateStorageRetryAfterValidationError() throws {
+        let fixture = try Fixture()
+        let store = FailingStore()
+        let now = fixture.date(day: fixture.epochDay, seconds: 100)
+        let model = try fixture.model(store: store, now: { now })
+        store.progressSaveFailures = 100
+        model.updateHardMode(true)
+        XCTAssertTrue(model.game.progress.hardModeEnabled)
+        XCTAssertNotNil(model.storageMessage)
+        fixture.type("zzzzz", into: model)
+        model.submitGuess()
+        XCTAssertNotNil(model.storageMessage)
+        XCTAssertTrue(model.hasUnsavedProgress)
+        store.progressSaveFailures = 0
+        XCTAssertTrue(model.retryPersistence())
+        XCTAssertNil(model.storageMessage)
+        XCTAssertNotNil(model.errorMessage, "Saving must not clear a word-validation error")
+        let relaunched = try fixture.model(store: store, now: { now })
+        XCTAssertTrue(relaunched.game.progress.hardModeEnabled)
+    }
+
     func testTerminalPersistenceRetriesAfterBothWritesFail() throws {
         let fixture = try Fixture()
         let store = FailingStore()
@@ -404,5 +900,457 @@ private final class Fixture {
 
     func date(day: Int, seconds: Int = 0) -> Date {
         Date(timeIntervalSince1970: TimeInterval(day * 86_400 + seconds))
+    }
+}
+
+private struct DailyScreenLiveStore: LiveMatchRecoveryStoring {
+    let fails: Bool
+    func load() throws -> LiveRecoveryState {
+        if fails { throw LiveMatchRecoveryError.invalidData }
+        return LiveRecoveryState(matchID: UUID())
+    }
+    func save(_ state: LiveRecoveryState) throws {}
+    func clear() throws {}
+}
+
+private struct DailyScreenLiveService: LiveMatchServicing {
+    func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
+        throw LiveMatchServiceError.unavailable
+    }
+    func joinMatch(code: String) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String, clientBuild: Int) async throws -> LiveGuessReceipt {
+        throw LiveMatchServiceError.unavailable
+    }
+    func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { throw LiveMatchServiceError.unavailable }
+}
+
+/// Shared by the three gameplay fixtures. Frames come from the hosted UIKit
+/// accessibility hierarchy, never from the SwiftUI layout formula under test.
+@MainActor
+final class GameplayContainmentHost {
+    static let hardModeReminder = "Hard Mode locked. Keep correct-position letters in place and reuse present letters in another position."
+    struct Element {
+        let label: String
+        let frame: CGRect
+        let context: String
+        let button: Bool
+        let clips: [CGRect]
+    }
+    let window: UIWindow
+    let host: UIViewController
+    let accessibility: Bool
+    let requestedLandscape: Bool
+    private let scene: UIWindowScene
+    private let automation: GameplayAccessibilityAutomation
+    private let previousOrientation: UIInterfaceOrientation
+    private weak var previousKeyWindow: UIWindow?
+    private enum CleanupState {
+        case open
+        case closing
+        case closed(Result<Void, Error>)
+    }
+    private var cleanupState = CleanupState.open
+
+    private enum HostError: LocalizedError {
+        case unknownOrientation
+        case orientationRejected(UIInterfaceOrientation, String)
+        case orientationTimedOut(UIInterfaceOrientation, UIInterfaceOrientation)
+        case cleanupFailed(operation: Error, cleanup: Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .unknownOrientation:
+                "The hosted scene has no restorable interface orientation"
+            case .orientationRejected(let requested, let reason):
+                "OS rejected interface orientation \(requested.rawValue): \(reason)"
+            case .orientationTimedOut(let requested, let actual):
+                "OS did not establish interface orientation \(requested.rawValue) within 5 seconds (actual: \(actual.rawValue))"
+            case .cleanupFailed(let operation, let cleanup):
+                "Hosted operation failed (\(operation.localizedDescription)); cleanup also failed (\(cleanup.localizedDescription))"
+            }
+        }
+    }
+
+    /// The operation owns the entire hosted lifetime, including awaited cleanup
+    /// when assertions throw or its task is cancelled.
+    static func withHost<V: View>(_ view: V, landscape: Bool, accessibility: Bool = false,
+                                 operation: @MainActor (GameplayContainmentHost) async throws -> Void) async throws {
+        let hosted = try await GameplayContainmentHost(view, landscape: landscape, accessibility: accessibility)
+        do {
+            try await operation(hosted)
+        } catch {
+            let operationError = error
+            do {
+                try await hosted.close()
+            } catch {
+                throw HostError.cleanupFailed(operation: operationError, cleanup: error)
+            }
+            throw operationError
+        }
+        try await hosted.close()
+    }
+
+    private init<V: View>(_ view: V, landscape: Bool, accessibility: Bool = false) async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousOrientation = scene.interfaceOrientation
+        guard previousOrientation != .unknown else { throw HostError.unknownOrientation }
+        self.scene = scene
+        self.previousOrientation = previousOrientation
+        previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+        automation = try GameplayAccessibilityAutomation()
+        self.accessibility = accessibility
+        requestedLandscape = landscape
+        host = UIHostingController(rootView: view.tint(Color.ink)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large))
+        window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        do {
+            try await Self.establishOrientation(landscape ? .landscapeRight : .portrait, in: scene)
+            try await settle()
+            window.frame = scene.coordinateSpace.bounds
+            try await settle()
+        } catch {
+            let operationError = error
+            do {
+                try await close()
+            } catch {
+                throw HostError.cleanupFailed(operation: operationError, cleanup: error)
+            }
+            throw operationError
+        }
+    }
+
+    func settle() async throws {
+        try await Task.sleep(for: .milliseconds(2500))
+        window.layoutIfNeeded()
+        host.view.layoutIfNeeded()
+    }
+
+    func close() async throws {
+        while case .closing = cleanupState { await Self.orientationPollInterval() }
+        if case .closed(let result) = cleanupState {
+            try result.get()
+            return
+        }
+        cleanupState = .closing
+        window.isHidden = true
+        window.rootViewController = nil
+        previousKeyWindow?.makeKey()
+        automation.restore()
+        do {
+            // Cleanup must still suspend and finish when the operation's task
+            // is cancelled; cancellation cannot skip restoration.
+            try await Self.requestOrientation(previousOrientation, in: scene, checksCancellation: false)
+            cleanupState = .closed(.success(()))
+        } catch {
+            cleanupState = .closed(.failure(error))
+            throw error
+        }
+    }
+
+    /// Capture fixtures call this too: their portrait requirement must not
+    /// depend on which orientation a preceding native test happened to use.
+    static func establishOrientation(_ orientation: UIInterfaceOrientation, in scene: UIWindowScene) async throws {
+        try Task.checkCancellation()
+        let bounds = scene.coordinateSpace.bounds
+        if scene.interfaceOrientation == orientation,
+           orientation.isLandscape ? bounds.width > bounds.height : bounds.height > bounds.width { return }
+        try await requestOrientation(orientation, in: scene, checksCancellation: true)
+    }
+
+    private static func requestOrientation(_ orientation: UIInterfaceOrientation, in scene: UIWindowScene,
+                                           checksCancellation: Bool) async throws {
+        let mask: UIInterfaceOrientationMask
+        switch orientation {
+        case .portrait: mask = .portrait
+        case .portraitUpsideDown: mask = .portraitUpsideDown
+        case .landscapeLeft: mask = .landscapeLeft
+        case .landscapeRight: mask = .landscapeRight
+        default: throw HostError.unknownOrientation
+        }
+        if checksCancellation { try Task.checkCancellation() }
+        var rejection: Error?
+        // Always issue restoration, even when a cancelled initialization's
+        // earlier request has not yet changed interfaceOrientation.
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { rejection = $0 }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var stableSince: ContinuousClock.Instant?
+        while true {
+            if checksCancellation { try Task.checkCancellation() }
+            if let rejection { throw HostError.orientationRejected(orientation, rejection.localizedDescription) }
+            let bounds = scene.coordinateSpace.bounds
+            if scene.interfaceOrientation == orientation,
+               orientation.isLandscape ? bounds.width > bounds.height : bounds.height > bounds.width {
+                let stableStart = stableSince ?? clock.now
+                stableSince = stableStart
+                if clock.now - stableStart >= .milliseconds(250) { return }
+            } else {
+                stableSince = nil
+            }
+            guard clock.now < deadline else {
+                throw HostError.orientationTimedOut(orientation, scene.interfaceOrientation)
+            }
+            await orientationPollInterval()
+        }
+    }
+
+    private static func orientationPollInterval() async {
+        // Task.sleep immediately throws in a cancelled task. A continuation
+        // keeps cleanup bounded without spinning or launching detached work.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) { continuation.resume() }
+        }
+    }
+
+    var viewport: CGRect {
+        var rect = window.convert(window.bounds.inset(by: window.safeAreaInsets), to: nil)
+        for bar in views(window).compactMap({ $0 as? UINavigationBar }) where !bar.isHidden {
+            let frame = bar.convert(bar.bounds, to: nil)
+            if frame.intersects(rect) {
+                rect = CGRect(x: rect.minX, y: max(rect.minY, frame.maxY), width: rect.width,
+                              height: max(0, rect.maxY - max(rect.minY, frame.maxY)))
+            }
+        }
+        return rect
+    }
+
+    private func views(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { views($0) }
+    }
+
+    func elements() -> [Element] {
+        var seen: Set<ObjectIdentifier> = []
+        var result: [Element] = []
+        func visit(_ object: NSObject, context: String, clips: [CGRect]) {
+            guard seen.insert(ObjectIdentifier(object)).inserted else { return }
+            var clipping = clips
+            if let view = object as? UIView {
+                guard !view.isHidden, view.alpha > 0 else { return }
+                if view.clipsToBounds { clipping.append(view.convert(view.bounds, to: nil)) }
+            }
+            let label = object.accessibilityLabel ?? ""
+            let nextContext = ["Your six-row game board", "Letter keyboard"].contains(label) ? label : context
+            if !label.isEmpty {
+                result.append(Element(label: label, frame: object.accessibilityFrame, context: context,
+                                      button: object.accessibilityTraits.contains(.button),
+                                      clips: clipping + physicalClips(of: object)))
+            }
+            if let children = object.accessibilityElements {
+                for child in children {
+                    if let child = child as? NSObject { visit(child, context: nextContext, clips: clipping) }
+                }
+            }
+            let count = object.accessibilityElementCount()
+            if count > 0, count < 1000 {
+                for index in 0..<count {
+                    if let child = object.accessibilityElement(at: index) as? NSObject {
+                        visit(child, context: nextContext, clips: clipping)
+                    }
+                }
+            }
+            if let view = object as? UIView {
+                for child in view.subviews { visit(child, context: nextContext, clips: clipping) }
+            }
+        }
+        visit(host.view, context: "", clips: [])
+        return result
+    }
+
+    private func physicalClips(of object: NSObject) -> [CGRect] {
+        var cursor: NSObject? = object
+        var visited: Set<ObjectIdentifier> = []
+        var clips: [CGRect] = []
+        while let current = cursor, visited.insert(ObjectIdentifier(current)).inserted {
+            if let view = current as? UIView {
+                if view.clipsToBounds { clips.append(view.convert(view.bounds, to: nil)) }
+                cursor = view.superview
+            } else if let element = current as? UIAccessibilityElement {
+                cursor = element.accessibilityContainer as? NSObject
+            } else {
+                cursor = nil
+            }
+        }
+        return clips
+    }
+
+    // 0.0001pt accommodates normalized AX-frame roundoff, far below one pixel.
+    func isVisible(_ element: Element) -> Bool {
+        guard element.frame.width > 0, element.frame.height > 0 else { return false }
+        return ([viewport] + element.clips).allSatisfy {
+            $0.insetBy(dx: -0.0001, dy: -0.0001).contains(element.frame)
+        }
+    }
+
+    private func tile(_ element: Element) -> Bool {
+        element.context == "Your six-row game board" &&
+            (element.label.hasPrefix("Empty tile,") || element.label.hasPrefix("Letter "))
+    }
+
+    private func key(_ element: Element) -> Bool {
+        element.context == "Letter keyboard" && element.button
+    }
+
+    func assertGameplay(in test: XCTestCase, name: String, notices: [String] = [], expectsKeyboard: Bool = true,
+                        actions: [String] = [], opponents: Int = 0, hasTimer: Bool = false,
+                        file: StaticString = #filePath, line: UInt = #line) throws {
+        let bars = views(window).compactMap { $0 as? UINavigationBar }.filter { !$0.isHidden }
+        XCTAssertFalse(bars.isEmpty, "Navigation chrome must be hosted", file: file, line: line)
+        for bar in bars {
+            XCTAssertTrue(window.convert(window.bounds, to: nil).contains(bar.convert(bar.bounds, to: nil)),
+                          "Navigation chrome outside scene", file: file, line: line)
+        }
+        let initial = elements()
+        let tiles = initial.filter(tile)
+        let keys = initial.filter(key)
+        XCTAssertEqual(tiles.count, 30, "All six rows must be observed: \(name)", file: file, line: line)
+        XCTAssertEqual(keys.count, expectsKeyboard ? 28 : 0, "26 letters plus Submit/Delete must be observed: \(name)", file: file, line: line)
+        let opponentElements = initial.filter { $0.label.hasPrefix("Opponent ") }
+        let timerElements = initial.filter { $0.label.contains("seconds remaining") }
+        XCTAssertEqual(opponentElements.count, opponents, "Opponent chrome missing", file: file, line: line)
+        if hasTimer { XCTAssertEqual(timerElements.count, 1, "Timer missing", file: file, line: line) }
+        let wanted = tiles + keys + initial.filter {
+            actions.contains($0.label) || notices.contains($0.label) || $0.label.hasPrefix("Opponent ") || $0.label.contains("seconds remaining")
+        }
+        for notice in notices + actions {
+            XCTAssertTrue(initial.contains { $0.label == notice }, "Complete notice missing: \(notice)", file: file, line: line)
+        }
+        var reached: Set<Int> = []
+        var reachEvidence: [Int: String] = [:]
+        func observe() {
+            let current = elements()
+            // Semantic occurrence preserves duplicate letters/feedback tiles.
+            for (index, expected) in wanted.enumerated() {
+                let occurrence = wanted[..<index].filter { $0.label == expected.label && $0.context == expected.context }.count
+                let matches = current.filter { $0.label == expected.label && $0.context == expected.context }
+                if matches.indices.contains(occurrence), isVisible(matches[occurrence]) {
+                    reached.insert(index)
+                    if reachEvidence[index] == nil {
+                        let offsets = views(host.view).compactMap { $0 as? UIScrollView }.map { "\($0.contentOffset)" }
+                        reachEvidence[index] = "\(expected.label): visibleFrame=\(matches[occurrence].frame), scrollOffsets=\(offsets)"
+                    }
+                }
+            }
+        }
+        observe()
+        if accessibility {
+            let scrolls = views(host.view).compactMap { $0 as? UIScrollView }
+            let vertical = scrolls.filter { $0.contentSize.height > $0.bounds.height + 1 }
+            let horizontal = scrolls.filter { $0.contentSize.width > $0.bounds.width + 1 }
+            func offsets(_ maximum: CGFloat, viewport: CGFloat) -> [CGFloat] {
+                let steps = max(1, Int(ceil(maximum / max(1, viewport / 4))))
+                return (0...steps).map { maximum * CGFloat($0) / CGFloat(steps) }
+            }
+            // Sweep vertical content densely, then each board/keyboard horizontal
+            // scroll at that position. Each required full frame must be visible
+            // in at least one real scroll position, not just intersect the image.
+            for scroll in vertical {
+                let original = scroll.contentOffset
+                let minimum = -scroll.adjustedContentInset.top
+                let maximum = max(minimum, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                for distance in offsets(maximum - minimum, viewport: scroll.bounds.height) {
+                    scroll.setContentOffset(CGPoint(x: original.x, y: minimum + distance), animated: false)
+                    host.view.layoutIfNeeded()
+                    observe()
+                    for cross in horizontal {
+                        let originalCross = cross.contentOffset
+                        let minimumX = -cross.adjustedContentInset.left
+                        let maximumX = max(minimumX, cross.contentSize.width - cross.bounds.width + cross.adjustedContentInset.right)
+                        for distanceX in offsets(maximumX - minimumX, viewport: cross.bounds.width) {
+                            cross.setContentOffset(CGPoint(x: minimumX + distanceX, y: originalCross.y), animated: false)
+                            host.view.layoutIfNeeded()
+                            observe()
+                        }
+                        cross.setContentOffset(originalCross, animated: false)
+                    }
+                }
+                scroll.setContentOffset(original, animated: false)
+            }
+        }
+        for (index, element) in wanted.enumerated() {
+            XCTAssertTrue(reached.contains(index), "\(name): \(element.label) \(element.frame) outside \(viewport) or clipped by \(element.clips)", file: file, line: line)
+        }
+        if !accessibility {
+            // D16's tile floor is landscape-only. Portrait empty dashed-shape
+            // AX bounds are not an independently established layout-size oracle.
+            for element in requestedLandscape ? tiles : [] {
+                let floor: CGFloat = 48
+                XCTAssertGreaterThanOrEqual(element.frame.width + 0.0001, floor, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(element.frame.height + 0.0001, floor, file: file, line: line)
+            }
+            for action in initial.filter({ actions.contains($0.label) }) {
+                XCTAssertGreaterThanOrEqual(action.frame.width + 0.0001, 44, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(action.frame.height + 0.0001, 44, file: file, line: line)
+            }
+            for element in keys {
+                let action = ["Submit guess", "Delete letter"].contains(element.label)
+                XCTAssertGreaterThanOrEqual(element.frame.width + 0.0001, action ? 44 : 32, file: file, line: line)
+                XCTAssertGreaterThanOrEqual(element.frame.height + 0.0001, 48, file: file, line: line)
+            }
+            for tile in tiles {
+                XCTAssertFalse(keys.contains { tile.frame.intersection($0.frame).width > 0.0001 && tile.frame.intersection($0.frame).height > 0.0001 },
+                               "Board overlaps keyboard", file: file, line: line)
+            }
+        }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let imageAttachment = XCTAttachment(image: image)
+        imageAttachment.name = name
+        imageAttachment.lifetime = .keepAlways
+        test.add(imageAttachment)
+        let report = "\(name): scene=\(scene.coordinateSpace.bounds), orientation=\(scene.interfaceOrientation.rawValue) (OS), safeArea=\(window.safeAreaInsets), viewport=\(viewport), DynamicType=\(accessibility ? "AX5" : "large") (injected)\n" + initial.map { "\($0.context) | \($0.label) | \($0.frame)" }.joined(separator: "\n") + "\nReachability observations:\n" + reachEvidence.sorted { $0.key < $1.key }.map(\.value).joined(separator: "\n")
+        let attachment = XCTAttachment(string: report)
+        attachment.name = name + "-hierarchy"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+    }
+}
+
+/// UIKit lazily synthesizes SwiftUI's AX tree only for an accessibility client.
+/// Use the system's automation switch in the test process, then restore its prior
+/// value. This private runtime bootstrap is test-only; observations below it use
+/// public UIKit container/label/frame APIs. Unsupported runtimes fail explicitly.
+private final class GameplayAccessibilityAutomation {
+    private let handle: UnsafeMutableRawPointer
+    private let setEnabled: @convention(c) (Int32) -> Void
+    private let previous: Int32
+    private var restored = false
+
+    init() throws {
+        let root = ProcessInfo.processInfo.environment["IPHONE_SIMULATOR_ROOT"] ?? ""
+        handle = try XCTUnwrap(dlopen(root + "/usr/lib/libAccessibility.dylib", RTLD_NOW),
+                              "System accessibility automation runtime unavailable")
+        let getter = try XCTUnwrap(dlsym(handle, "_AXSAutomationEnabled"))
+        let setter = try XCTUnwrap(dlsym(handle, "_AXSSetAutomationEnabled"))
+        let getEnabled = unsafeBitCast(getter, to: (@convention(c) () -> Int32).self)
+        setEnabled = unsafeBitCast(setter, to: (@convention(c) (Int32) -> Void).self)
+        previous = getEnabled()
+        setEnabled(1)
+    }
+
+    deinit { restore() }
+
+    func restore() {
+        guard !restored else { return }
+        setEnabled(previous)
+        dlclose(handle)
+        restored = true
+    }
+}
+
+/// Push the same AppRoute as the product so UIKit supplies actual Back chrome;
+/// no synthetic safe-area padding or navigation-height constants are injected.
+struct GameplayRouteView<Content: View>: View {
+    let route: AppRoute
+    let content: Content
+    init(_ route: AppRoute, @ViewBuilder content: () -> Content) {
+        self.route = route
+        self.content = content()
+    }
+    var body: some View {
+        NavigationStack(path: .constant([route])) {
+            Color.page.navigationDestination(for: AppRoute.self) { _ in content }
+        }
     }
 }

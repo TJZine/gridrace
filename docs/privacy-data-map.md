@@ -7,8 +7,9 @@ the fixed two-player local live client is implemented and Phase 4 multi-round
 backend/client contracts and native UI are locally verified, including real
 multi-round independent-client proof and an independent implementation review.
 Evidence and review closure are recorded in the
-[Active Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
-accessibility proof remains pending. Recovery stores only the
+[Historical Phase 4 plan](plans/2026-10-02-phase-4-blind-race.md); required OS-assisted
+accessibility proof is now owned by S4 of the
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md). Recovery stores only the
 account-private match pointer and original count/round/build/UUID/word intent, never
 authoritative boards, answers, opponent data, standings or credentials.
 
@@ -17,7 +18,8 @@ authoritative boards, answers, opponent data, standings or credentials.
 | Data | Source | Purpose | Storage owner | Authorized readers | Deletion behavior | Log treatment |
 | --- | --- | --- | --- | --- | --- | --- |
 | Auth identity (Phase 2 local) | Sign in with Apple and Supabase Auth; debug local credentials only in Debug | Establish an account and authenticated session | Supabase Auth | The account owner and privileged authentication services | In-app deletion hard-deletes the local Auth identity. Real Apple provider revocation remains required before production launch. | Never log tokens, authorization codes, private relay email, or credentials. Redact the auth identifier. |
-| Profile (Phase 2 local) | Account owner plus server defaults | Represent the player in private rooms | PostgreSQL behind RLS | Owner fields directly; presentation snapshots for participants in an authorized match | Delete the profile. Retained survivor results use detached member snapshots, never the profile. | Do not log display names or profile payloads. Redact identifiers. |
+| Local Auth credentials and retirement marker | Supabase Auth and the app Auth owner | Restore an intended account and prevent obsolete work from restoring a signed-out lifetime | Native Keychain operations in the existing SDK namespace; the marker contains only a nonsecret version value | This app and the account owner | Sign-out or confirmed deletion fences the lifetime and independently removes its known credential keys. Storage failure exposes explicit cleanup; runtime sign-out alone does not claim durable credential removal. Validated intentional sign-in or successful explicit cleanup may remove the marker. | Never log tokens, credential bytes, or session payloads. |
+| Profile (Phase 2 local) | Account owner plus server defaults and server-managed setup completion | Represent the player in private rooms and retain explicit setup readiness independently of the chosen name | PostgreSQL behind RLS | Owner fields directly; presentation snapshots for participants in an authorized match | Delete the profile. Retained survivor results use detached member snapshots, never the profile. | Do not log display names or profile payloads. Redact identifiers. |
 | Display name (Phase 2 local) | Account owner | Provide the visible name for invited opponents | Profile record and roster snapshot | Same readers as the profile/snapshot | Delete the profile; replace retained roster presentation with `Deleted Player`. | Treat as personal data; do not include it in operational logs. |
 | Generated avatar (Phase 2 local) | Server generation plus owner choice from non-photo descriptors | Give players a recognizable, non-uploaded visual identity | Profile record and roster snapshot | Same readers as the profile/snapshot | Delete the profile; replace retained roster presentation with a neutral descriptor. | Do not log avatar descriptors or generation inputs. |
 | Daily accepted progress | Account owner's local evaluator after each accepted row; draft letters are excluded | Restore an unfinished personal board on another device | UUID-scoped device file and `daily_progress` behind RLS | Account owner and privileged server only | Delete the account row and only that UUID's local cache after confirmed server deletion | Never log guesses, feedback arrays, puzzle payloads, or identifiers without redaction. |
@@ -59,8 +61,11 @@ roster membership, and prevents late joining after countdown begins.
   local Daily cache, while irreversibly anonymizing only survivor-required live results.
   A failed device write leaves live recovery hidden from former-account presentation
   but reachable through an explicit signed-out retry/discard route; it is never reported
-  as successful local cleanup. Later device/report/block data must extend this rule
-  before launch.
+  as successful local cleanup. Confirmed server deletion remains final when local
+  cleanup fails. Credential cleanup and captured-user Daily cache cleanup have
+  separate retry actions; Daily retry does not delete guest data, another account
+  cache, or change a later account’s Live binding. Later device/report/block data
+  must extend this rule before launch.
 - Imported Daily results are not competitive evidence. Future friend comparisons or
   leaderboards must use a structurally separate server-verified result surface and
   must not silently mix imported data into competitive statistics.

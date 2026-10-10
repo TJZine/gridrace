@@ -1,113 +1,42 @@
-# GridRace stamped UI refresh — controller kickoff
+# GridRace Stamped UI refresh — continuation entrypoint
 
-Fresh primary controller (Codex, repository-configured roles in
-`.codex/agents`). Work in the shared local checkout
-`/Users/tristan/Software/gridrace`, branch `dev/classic-mode`. Expected HEAD is
-the commit that last touched this file
-(`git log -1 --format=%H -- docs/plans/2026-10-03-stamped-ui-refresh-kickoff.md`).
-Stop and report if HEAD differs. This packet starts the workflow; the repository plan is the authority
-once read.
+Use this entrypoint when the user requests continuation of the accepted Stamped UI implementation. Activation and S0a/S0b/S2/S1/S3 integration are already complete; read the plan's current checkpoint rather than replaying their procedures. A workflow-installation task may update its procedure but does not activate this product work. Operate in the actual GridRace checkout selected by the user; discover its path, revision, branch and current working state. The source state recorded when this packet was authored is provenance, not a requirement to reset or reject a later legitimate workflow commit.
 
-## Authority and human authorizations (2026-10-03)
+## Accepted scope and authorizations
 
-The human, in a Claude Code design session:
+The human accepted the stamped scorecard direction and all surface decisions in `docs/design-direction.md` and the 2026-10-03 entry of `docs/DECISIONS.md`. The human also authorized the completed rescope activation: Phase 4 A9, including hardware keyboard input and haptic preference, transferred to S4 of `docs/plans/2026-10-03-stamped-ui-refresh.md`; Phase 4 is Historical with that transfer recorded. D3/D4 and required presentation/routing work inside the plan's non-goals are authorized. The independent plan review and its H1–H6, M1–M8 and L1–L11 dispositions remain in the plan, including D7–D12.
 
-- accepted the stamped scorecard direction and every surface design in
-  `docs/design-direction.md`, plus the `docs/DECISIONS.md` entry of 2026-10-03;
-- chose the **rescope** activation: Phase 4's A9 OS-assisted accessibility proof
-  (including hardware keyboard input and haptic preference) moves to S4 of
-  `docs/plans/2026-10-03-stamped-ui-refresh.md`, Phase 4 closes as Historical
-  with that transfer recorded, and the stamped plan becomes Active;
-- delegated D3/D4 to the recommended design and authorized reworking app
-  presentation and routing needed to fit it, within the plan's non-goals;
-- required an adversarial review of the plan and this packet before commit. It
-  ran on 2026-10-03; findings and dispositions are in the plan's review ledger
-  (H1–H6, M1–M8, L1–L11, all accepted and fixed, D7–D12 added).
+Do not seek the same design or scope approval again for work inside those accepted boundaries. Resolve genuinely new product/trust decisions or the plan's unresolved stop conditions with evidence. This packet does not authorize unrelated product work, remote deployment or publication.
 
-No further design or scope approval is needed for work inside the design doc and
-plan. The plan's stop conditions still return to the human.
+Read AGENTS.md, the task-relevant GridRace profile, the accepted design and the Stamped plan's applicable current checkpoint, the relevant Phase 4 historical evidence, and relevant screen/rule/decision contracts. Use shared develop-code, conditional design-code, review-code and verify-code. Inspect the available interface-design skill when it can help execute the accepted visual direction; it does not authorize redesign outside that direction. Ponytail full mode and its callback/turn-ending protocol are superseded by these shared procedures and actual host capabilities.
 
-Read before acting: `AGENTS.md`, `docs/ENGINEERING_RUNBOOK.md`,
-`docs/design-direction.md`, `docs/plans/2026-10-03-stamped-ui-refresh.md`, the
-Active Phase 4 plan, `docs/NOW.md`, `docs/screen-flow.md`, `docs/game-rules.md`,
-and `docs/DECISIONS.md`. Apply Ponytail full mode with the repository's
-preferences and the interface-design skill within the accepted direction only.
+## Current state and completed activation
 
-## Step 0 — rescope activation (controller, docs only)
+Inspect staged, unstaged and relevant untracked work, active owners and runtime resources. Preserve unrelated work with a current scoped baseline; do not assume a historic enumeration of local scratch files is exhaustive. Coordinate overlapping writes or use an isolated worktree. One controller owns integration and shared Git/index state.
 
-1. Verify the expected HEAD, an empty index, and a clean tracked tree. Capture
-   `.codex/runs/stamped-ui-refresh/unrelated-baseline.json` (path → SHA-256) for the
-   untracked paths present at kickoff. Expected set: `.DS_Store`, `docs/.DS_Store`,
-   every file under the `.codex/cache/` directory,
-   `docs/plans/GridRace-dictionary-finalize-and-integrate.md`, and
-   `docs/plans/gridrace-corpus-independent-checks.json`. Report any other untracked
-   path before continuing. Never stage, reset, stash, or overwrite these.
-2. Perform the plan's activation checkpoint exactly as written (Phase 4 transfer
-   and Historical status; repoint all listed authorities; stamped plan Active with
-   this controller as owner and a refreshed snapshot).
-3. Workflow/docs proof: `git diff --check`, every referenced path exists, exactly
-   one `Status: Active` plan, `rg -n "Active Phase 4|phase-4-blind-race" docs
-   AGENTS.md` resolved. One conventional docs commit. No product write before it.
+The plan records the completed A9 transfer and current authority pointers. Rediscover the actual current source, working state, active owner and assigned resources before continuation; preserve the current Stamped checkpoint's resolved D16 layout approval and adjudicated independent final review, with OS/device checks still human-deferred. Do not repeat activation or resume product writes during this maintenance. Preserve Phase 4's latest software, repaired-scan and review records; transferring A9 is not a claim that OS-assisted proof already passed. Keep the activation record as historical evidence. Keep one authoritative record for this product task while allowing nonconflicting independent work.
 
-## Units and dispatch
+## Implementation and parallelism
 
-Follow the plan's work-unit table, write boundaries, and decisions exactly.
+The following are the accepted dependency boundaries for the completed units, retained for interpretation and scoped future repairs. Do not redispatch completed units:
 
-- **S0a** then **S0b**, serial, each to one fresh `worker` or run locally. Audit
-  the full diff, run the unit's proof, commit, then continue. S0a is the only unit
-  that may edit `ios/GridRace.xcodeproj/project.pbxproj`. S0b lands the D6
-  contract stubs with defaults so later units compile independently.
-- **S1** (`worker`), **S2** (`worker`), **S3** (`worker_luna`), in parallel after
-  the S0b commit, isolated per D9: the controller creates one Git worktree per unit
-  from the S0b commit, clones a simulator and assigns a derived-data path per unit,
-  and runs the runbook's frozen package resolve for each path before dispatch.
-  Workers write only inside their boundary in their own worktree and never mutate
-  Git. After S0b the controller alone owns `DesignSystem.swift` and
-  `BoardViews.swift`; workers return change requests.
-- **Integration:** apply returned diffs to the main checkout in order S2, S1, S3,
-  proving and committing each there. S1's removal of Home's inline Live controls
-  never lands before S2's entry branch. Update `screen-flow.md` per unit for the
-  surfaces that shipped. Remove each worktree and cloned simulator after its unit
-  integrates.
-- **S4:** controller with the human for OS-assisted checks; findings go back to
-  the owning unit's files under a new bounded packet.
-- **Final review:** one fresh `reviewer` on the integrated diff, proof, and risk
-  packet; adjudicate, repair accepted findings with targeted closure, no recursive
-  review.
+- S0a performs the mechanical split and is the only planned unit editing `ios/GridRace.xcodeproj/project.pbxproj`. S0b follows it and establishes D6 contracts with defaults so later units can compile independently. Complete the necessary checks and integration for each prerequisite. A fresh agent for each is optional; preserve useful context.
+- S1 Daily, S2 Live and S3 Supporting can run concurrently after S0b. Use D9's separate worktrees, run-owned cloned simulators and derived-data directories, with frozen package resolution for each new path. Workers own the coherent plan surfaces; coordinate any adjacent-file adjustment or shared dependency with the controller. After S0b, shared design and board components stay with the designated integration owner.
+- Preserve S2 → S1 → S3 integration. S2's entry branch must exist before S1 removes Home's inline Live controls. Preserve `LiveCreateControls(live:isSignedIn:openRoute:roundCount:)` compatibility and existing route behavior until S1 integration resolves the old call. Update current screen-flow documentation with implemented surfaces.
+- Do not run competing processes on shared databases, simulators or output paths. Worker worktree ownership does not authorize resetting backend data or deleting unrelated simulators. Retire only resources created for the run after their useful evidence is retained.
+- Keep the plan's no-new-dependencies and product non-goals. Frozen Xcode flags are `-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates`. Resolve actual installed destinations and package prerequisites without changing the accepted lock silently.
+- The two-client harness is optional for this presentation scope unless changed behavior creates a real cross-boundary verification requirement. Its privileged local stack needs separate explicit ownership. Record it as not run when omitted; UI proof remains necessary because the harness does not draw views.
 
-Each dispatch uses the runbook's compact worker packet plus a lease file in
-`.codex/runs/stamped-ui-refresh/` (gitignored run state: leases, baselines,
-callback results, run memory) recording HEAD, worktree path, write paths with initial hashes,
-protected tracked bytes, the unrelated baseline, initial status, and the process
-lease (that unit's cloned simulator and derived-data path). Workers: no files
-outside their boundary, no new dependencies, no backend/database/reset/remote
-work. Artifacts go only under `/tmp/gridrace-stamped-<unit>-*`. Every
-`xcodebuild` uses the frozen flags (`-disableAutomaticPackageResolution
--onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates`). The two-client
-harness is optional for S2 and needs an explicit backend lease; otherwise record
-it as not run.
+Use concise handoffs describing the outcome, changed files, actual evidence, assumptions and blockers. Give each helper its source state and owned resources. Use the host's supported completion/communication mechanism; do not require cross-thread callbacks, prohibit necessary waiting, or end an authorized implementation turn merely because the former workflow demanded it.
 
-## Callbacks
+## S4, review and unresolved decisions
 
-Each worker and the reviewer sends exactly one callback to this controller after
-releasing all file and process leases, including when blocked or making no
-change, with a self-contained result: RESULT | FILES CHANGED | PROOF |
-ASSUMPTIONS | BLOCKERS. No writes after the callback. The controller ends each
-dispatch turn without polling.
+S4 owns the accepted UI/device matrix and transferred A9 requirements. Record source/layout/semantic evidence separately from OS-assisted VoiceOver, Reduce Motion, hardware input, haptic preference and measured targets. Request human assistance only for checks that actually require it after completing available useful work. Missing native access is unverified acceptance, not a reason to claim completion or lower the requirement.
 
-## Stop and ask the human
+Use an independent read-only final review of the integrated consequential UI changes, requirements and evidence. Validate and adjudicate findings, repair accepted issues, and rerun affected proof. Targeted rereview is appropriate if a repair materially changes the risk; avoid redundant full review loops.
 
-- Any live state needing actions beyond the plan table's "Current" plus "Added".
-- Any design element that cannot fit iPhone SE at default type.
-- Any change reaching rules, session/state machines, storage, sync logic,
-  backend, API, share text, or `project.pbxproj` outside S0a.
-- OS-assisted S4 checks that need human hands (VoiceOver, Reduce Motion,
-  hardware keyboard, haptics).
+Return to the user with a concrete decision when the requested implementation exceeds the plan's accepted Current/Added live states, cannot fit the required small-device layout, or would change rules, session/state-machine, storage, synchronization, backend, API, share text or Xcode-project scope outside its authorized unit. Ordinary implementation uncertainty and coordinated file ownership do not require repeated approval.
 
-## Done
+## Completion
 
-All units committed with evidence, S4 and A9 evidence recorded, final review
-adjudicated, `screen-flow.md` describes the shipped presentation, design doc
-marked Implemented and the AGENTS.md pointer updated, plan Historical with its
-closeout commit reported. The closeout commit deletes this kickoff file, and the
-controller deletes `.codex/runs/stamped-ui-refresh/`.
+Complete the accepted units, applicable integrated verification, S4/A9 evidence and review adjudication. Update screen-flow and implemented design status only for actually shipped behavior. Close the product plan only when its acceptance is resolved, with the final content checkpoint in the handoff. Retire this kickoff when it has served its purpose, preserve meaningful historical proof, and clean only run-owned coordination/worktree/simulator resources. Stage or commit only within the user's actual authorization and the current host workflow; no push or remote operation follows merely from this packet.
