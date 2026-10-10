@@ -157,14 +157,60 @@ The parent streaming pass hashes the entire compressed dump against the
 published SHA-256 before parsing, even when all requested titles appear
 early. A hash mismatch leaves the output unchanged.
 
-The preserved September 8 source manifest and extraction summaries record
-the candidate record multiset, five-letter revision index and selected
-SQLite title/body projection. Their historical claims do not automatically
-cover the later relationship-target JSONL and coverage-title lists. Source
-regeneration proves deterministic agreement with retained inputs, not
-historical origin for every consumed input or execution of the fixed tool
-commits recorded in the generated manifest. Complete input attestation
-remains a remediation gate; no new verified-origin claim is made here.
+The accepted October 10 retained-input checkpoint is
+`daily-classic-en-US-v1-retained-inputs.json`. Its exact bytes are pinned by
+`scripts/corpus_input_identity.py`; changing it requires an intentional,
+reviewed checkpoint change, not recomputing an ordinary output checksum.
+Historical origin remains explicitly **unverified**. Current identities do
+not prove that the recorded dump or extractor commits produced every input.
+
+Before any output write, the builder verifies the exact candidate JSONL,
+relationship-target JSONL and target coverage-list file sets and bytes;
+the frozen baseline, five-letter revision index and parent sidecar; and all
+consumed SQLite title/body identities. It parses verified bytes directly
+and uses verified body values in memory. Missing, unexpected or substituted
+inputs fail. SQLite file layout and unused rows are outside this identity
+contract; the exact set of body titles consumed by the transform must agree
+with the checkpoint. Prior-explicit projections are comparison diagnostics,
+not membership inputs. Ordinary builds/CI remain offline.
+
+The preserved September 8 source manifest and summaries provide matching
+historical evidence for the 125,730 candidate records, frozen baseline,
+five-letter index and the selected 104,278-page SQLite projection covering
+all 5,838 consumed titles. The later seven target JSONL and seven coverage
+lists, and original parent-sidecar derivation, lack that historical proof.
+Their checkpoint hashes establish retained-input identity only. Evidence
+coverage is recorded per class in the checkpoint; no extractor execution or
+complete source-origin verification is claimed.
+
+Provenance manifest version 2 references this checkpoint and explicitly
+labels historical origin unverified. Earlier version 1 manifests remain
+readable in Git history as output identities and **recorded** source/tool
+metadata; their `dumpSha256` and tool commits were not input-verification
+receipts. The current portable checker requires version 2 and the pinned
+checkpoint. Source regeneration emits version 2 deterministically, with
+`recordedExtraction` metadata separated from the verified retained-input
+hash. Migration changes only manifest metadata: resource membership,
+provenance rows, the frozen baseline and all 725 published answers remain
+byte-identical. Future input changes require a new reviewed checkpoint and
+truthful evidence classification; the builder never auto-attests new bytes.
+
+The existing default `python3 -B scripts/test_build_accepted_guesses.py`
+command is hermetic and offline. It runs input/checker boundary regressions
+with checked-in or synthetic fixtures, including an absent-intermediates
+control. The one real retained-input integration test is explicitly skipped
+unless opted in; that skip establishes no source-regeneration pass. Run the
+real copied-input controls where all preserved inputs exist:
+
+```sh
+GRIDRACE_CORPUS_INPUT_INTEGRATION=1 python3 -B scripts/test_build_accepted_guesses.py
+```
+
+An opted-in run requires the retained corpus and fails on unavailable or
+changed inputs. Neither the builder nor the plain full source checker skips
+missing inputs; both still fail nonzero. Use a private run-owned `TMPDIR`
+for local controls and regenerated outputs. The portable checker remains
+independent of the external corpus.
 
 ## Release gates (not clearance)
 

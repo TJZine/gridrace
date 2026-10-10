@@ -122,10 +122,11 @@ import argparse
 import hashlib
 import json
 import re
-import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+import corpus_input_identity as input_identity
 
 REPO = Path(__file__).resolve().parents[1]
 PACKS = REPO / "shared/word-packs"
@@ -427,41 +428,44 @@ def run(args: argparse.Namespace) -> dict:
     # corpus inputs, doing relationship analysis, or mutating any output.
     index = load_revision_index(Path(args.revision_index))
 
-    baseline_raw = Path(args.baseline).read_bytes()
+    baseline_raw = input_identity.verified_bytes(Path(args.baseline), BASELINE_SHA256, "frozen baseline")
     baseline = baseline_raw.decode("ascii").splitlines()
-    actual_baseline_sha = sha256_bytes(baseline_raw)
-    if actual_baseline_sha != BASELINE_SHA256:
-        raise ValueError(
-            f"baseline drift: {actual_baseline_sha} != frozen {BASELINE_SHA256}; "
-            "refusing to overwrite (STOP condition)"
-        )
     baseline_set = set(baseline)
     if len(baseline_set) != len(baseline) or any(WORD.fullmatch(w) is None or w != w.lower() for w in baseline):
         raise ValueError("frozen baseline is not sorted unique lowercase ASCII-5")
 
-    chunk_paths = sorted(Path(args.wiktionary_json).glob("chunk-*.jsonl"))
-    if len(chunk_paths) != 99:
-        raise ValueError(f"expected 99 JSONL chunks, found {len(chunk_paths)}")
-    records: list[tuple[str, int, dict]] = []
-    for chunk in chunk_paths:
-        with chunk.open(encoding="utf-8") as handle:
-            for lineno, line in enumerate(handle):
-                if line.strip():
-                    records.append((chunk.name, lineno, json.loads(line)))
-
-    target_paths = sorted(Path(args.target_json).glob("target-*.jsonl"))
-    if not target_paths:
-        raise ValueError(f"target coverage empty: {args.target_json}")
-    target_records: list[tuple[str, int, dict]] = []
-    for chunk in target_paths:
-        with chunk.open(encoding="utf-8") as handle:
-            for lineno, line in enumerate(handle):
-                if line.strip():
-                    target_records.append((chunk.name, lineno, json.loads(line)))
+    attestation = input_identity.load_attestation(PACKS)
+    if attestation["baselineSha256"] != BASELINE_SHA256 or attestation["revisionIndexSha256"] != FIVE_LETTER_INDEX_SHA256:
+        raise ValueError("retained-input attestation contradicts frozen baseline/index")
+    candidate_bytes = input_identity.verified_files(
+        Path(args.wiktionary_json), "chunk-*.jsonl", attestation["candidateFiles"], "candidate JSONL"
+    )
+    target_bytes = input_identity.verified_files(
+        Path(args.target_json), "target-*.jsonl", attestation["targetFiles"], "target JSONL"
+    )
+    coverage_bytes = input_identity.verified_files(
+        Path(args.target_json), "target-*.pages.json", attestation["coverageFiles"], "target coverage"
+    )
+    parent_raw = input_identity.verified_bytes(
+        Path(args.extra_revisions), attestation["parentRevisionsSha256"], "parent revisions"
+    )
+    bodies = input_identity.verified_database_bodies(Path(args.database), attestation["databaseBodies"])
+    chunk_paths = list(candidate_bytes)
+    target_paths = list(target_bytes)
+    records = [
+        (name, lineno, json.loads(line))
+        for name, raw in candidate_bytes.items()
+        for lineno, line in enumerate(raw.decode("utf-8").splitlines()) if line.strip()
+    ]
+    target_records = [
+        (name, lineno, json.loads(line))
+        for name, raw in target_bytes.items()
+        for lineno, line in enumerate(raw.decode("utf-8").splitlines()) if line.strip()
+    ]
     target_pool = records + target_records
     target_titles = set()
-    for pages_path in sorted(Path(args.target_json).glob("target-*.pages.json")):
-        target_titles.update(json.loads(pages_path.read_text(encoding="utf-8")))
+    for raw in coverage_bytes.values():
+        target_titles.update(json.loads(raw))
 
     # Aggregate coverage invariant (fail-closed, no word-specific exceptions):
     # every relationship target that is absent from the pinned 99-chunk JSONL
@@ -548,16 +552,13 @@ def run(args: argparse.Namespace) -> dict:
             for target in sense_targets(sense):
                 reciprocal[key].add(target)
 
-    database = sqlite3.connect(f"file:{args.database}?immutable=1", uri=True)
-    body_cache: dict[str, str] = {}
+    consumed_body_titles: set[str] = set()
 
     def body_for(title: str) -> str:
-        if title not in body_cache:
-            row = database.execute(
-                "SELECT body FROM pages WHERE namespace_id=0 AND title=?", (title,)
-            ).fetchone()
-            body_cache[title] = row[0] if row else ""
-        return body_cache[title]
+        if title not in bodies:
+            raise ValueError("unexpected SQLite consumed title outside retained-input attestation")
+        consumed_body_titles.add(title)
+        return bodies[title]
 
     alt_cache: dict[str, dict[str, str]] = {}
 
@@ -623,11 +624,10 @@ def run(args: argparse.Namespace) -> dict:
                 evidences[norm].append(
                     (2, "explicit_reciprocal", head, value, pos, "", chunk_name, lineno)
                 )
-    database.close()
+    if consumed_body_titles != set(bodies):
+        raise ValueError("SQLite consumed title set differs from retained-input attestation")
 
-    extra: dict = {}
-    if args.extra_revisions and Path(args.extra_revisions).exists():
-        extra = json.loads(Path(args.extra_revisions).read_text(encoding="utf-8")).get("found", {})
+    extra = json.loads(parent_raw).get("found", {})
 
     def revision_for(page: str) -> tuple[dict, str]:
         if page in index:
@@ -753,6 +753,8 @@ def run(args: argparse.Namespace) -> dict:
             "https://dumps.wikimedia.org/enwiktionary/20260901/"
             "enwiktionary-20260901-pages-articles-multistream.xml.bz2"
         ),
+        # Preserved resource metadata records the source declaration, not an
+        # extraction execution receipt. Version 2 attests retained inputs separately.
         "wiktionaryDumpSha256": DUMP_SHA256,
         "wiktextractCommit": WIKTEXTRACT_COMMIT,
         "wikitextprocessorCommit": WIKITEXTPROCESSOR_COMMIT,
@@ -793,7 +795,7 @@ def run(args: argparse.Namespace) -> dict:
     prov_path.write_bytes(prov_bytes)
 
     manifest = {
-        "formatVersion": 1,
+        "formatVersion": 2,
         "provenanceFile": prov_path.name,
         "provenanceCount": len(provenance_rows),
         "provenanceSha256": sha256_bytes(prov_bytes),
@@ -817,13 +819,11 @@ def run(args: argparse.Namespace) -> dict:
             "targetJsonTitles": len(target_titles),
             "wiktionaryJsonRecords": len(records),
             "wiktionaryJsonChunks": len(chunk_paths),
-            "dumpSha256": DUMP_SHA256,
-            "wiktextractCommit": WIKTEXTRACT_COMMIT,
-            "wikitextprocessorCommit": WIKITEXTPROCESSOR_COMMIT,
+            "retainedInputAttestationSha256": input_identity.ATTESTATION_SHA256,
+            "historicalOrigin": "unverified",
+            "recordedExtraction": attestation["recordedExtraction"],
             "fiveLetterRevisionIndexSha256": FIVE_LETTER_INDEX_SHA256,
-            "parentRevisionsSha256": sha256_bytes(Path(args.extra_revisions).read_bytes())
-            if args.extra_revisions and Path(args.extra_revisions).exists()
-            else None,
+            "parentRevisionsSha256": sha256_bytes(parent_raw),
         },
     }
     manifest_path = Path(args.provenance_manifest)

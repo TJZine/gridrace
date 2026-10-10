@@ -47,6 +47,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
+import corpus_input_identity as input_identity
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "shared/word-packs"
 SCRIPTS = ROOT / "scripts"
@@ -106,9 +108,6 @@ PROVENANCE_KEYS = frozenset(
     }
 )
 
-DUMP_SHA256 = "0b7f554b1884e52e1c06de74cecab5e370c6b9f765711cedb0759f6d14c5e719"
-WIKTEXTRACT_COMMIT = "ccec6f120efedd84f57fe0f1631e89408e9cb62a"
-WIKITEXTPROCESSOR_COMMIT = "4deed5191c9e4cb61ee1a4c822e3f6686ae8541b"
 FIVE_LETTER_INDEX_SHA256 = "b140a40bf5d0e327d99d1ef032719b83319387a67b35defd7736e2f6264ab70d"
 WIKTIONARY_CHUNKS = 99
 WIKTIONARY_RECORDS = 125730
@@ -535,7 +534,7 @@ def validate_chain(
     )
 
     manifest = load_provenance_manifest()
-    require(manifest.get("formatVersion") == 1, "provenance manifest formatVersion must be 1")
+    require(manifest.get("formatVersion") == 2, "provenance manifest formatVersion must be 2 (retained-input identity contract)")
     require(
         manifest.get("provenanceFile") == PROVENANCE_FILE,
         "provenance manifest provenanceFile must name the provenance file",
@@ -580,17 +579,23 @@ def validate_chain(
     inputs = manifest.get("inputs")
     require(isinstance(inputs, dict), "provenance manifest inputs must be an object")
     assert isinstance(inputs, dict)
+    attestation = input_identity.load_attestation(PACKS)
     require(
-        inputs.get("dumpSha256") == DUMP_SHA256,
-        "provenance manifest dump pin does not match the pinned Wiktionary dump",
+        inputs.get("retainedInputAttestationSha256") == input_identity.ATTESTATION_SHA256
+        and inputs.get("historicalOrigin") == "unverified"
+        and inputs.get("recordedExtraction") == attestation["recordedExtraction"],
+        "provenance manifest retained-input identity/origin contract changed",
     )
     require(
-        inputs.get("wiktextractCommit") == WIKTEXTRACT_COMMIT,
-        "provenance manifest wiktextract pin changed",
+        attestation["baselineSha256"] == BASELINE_SHA256
+        and attestation["revisionIndexSha256"] == FIVE_LETTER_INDEX_SHA256
+        and attestation["parentRevisionsSha256"] == inputs.get("parentRevisionsSha256"),
+        "retained-input attestation contradicts baseline/index/parent evidence",
     )
     require(
-        inputs.get("wikitextprocessorCommit") == WIKITEXTPROCESSOR_COMMIT,
-        "provenance manifest wikitextprocessor pin changed",
+        inputs.get("targetJsonChunks") == len(attestation["targetFiles"])
+        and inputs.get("wiktionaryJsonChunks") == len(attestation["candidateFiles"]),
+        "provenance manifest file counts contradict retained-input attestation",
     )
     require(
         inputs.get("fiveLetterRevisionIndexSha256") == FIVE_LETTER_INDEX_SHA256,
@@ -843,6 +848,13 @@ def main() -> int:
             DAILY_ID, validate_daily
         )
         chain_lines, prov_raw = validate_chain(daily_pack, daily_raw)
+        # A source-input failure must precede even checker-owned manifest writes.
+        if not args.checked_in_only:
+            run_source_gate(
+                daily_raw,
+                prov_raw,
+                (PACKS / PROVENANCE_MANIFEST_FILE).read_bytes(),
+            )
         dev_manifest_path = PACKS / "development-en-US-v1.manifest.json"
         daily_manifest_path = PACKS / f"{DAILY_ID}.manifest.json"
         if args.write_manifest:
@@ -870,12 +882,6 @@ def main() -> int:
             )
         for line in chain_lines:
             print(line)
-        if not args.checked_in_only:
-            run_source_gate(
-                daily_raw,
-                prov_raw,
-                (PACKS / PROVENANCE_MANIFEST_FILE).read_bytes(),
-            )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"word-pack check failed: {error}", file=sys.stderr)
         return 1
