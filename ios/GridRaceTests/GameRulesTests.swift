@@ -52,6 +52,63 @@ final class GameRulesTests: XCTestCase {
         )
     }
 
+    func testVectorDecoderPreservesExplicitNullableValues() throws {
+        let vectors = try loadVectors(wordPack: loadWordPack())
+        let solved = try XCTUnwrap(vectors.cases.first { $0.id == "all-correct" })
+        XCTAssertEqual(solved.expected.normalizedGuess, "stone")
+        XCTAssertNil(solved.expected.validationError)
+        XCTAssertEqual(
+            solved.expected.feedback,
+            Array(repeating: Feedback.correct, count: 5)
+        )
+
+        let invalid = try XCTUnwrap(vectors.cases.first { $0.id == "invalid-length" })
+        XCTAssertEqual(invalid.expected.normalizedGuess, "four")
+        XCTAssertEqual(invalid.expected.validationError, .invalidLength)
+        XCTAssertNil(invalid.expected.feedback)
+
+        let nonAscii = try XCTUnwrap(vectors.cases.first { $0.id == "non-ascii" })
+        XCTAssertNil(nonAscii.expected.normalizedGuess)
+        XCTAssertEqual(nonAscii.expected.validationError, .nonAscii)
+        XCTAssertNil(nonAscii.expected.feedback)
+    }
+
+    func testVectorDecoderRejectsEachMissingRequiredNullableKey() throws {
+        let pack = try loadWordPack()
+        for key in ["normalizedGuess", "validationError", "feedback"] {
+            let data = try vectorDataRemovingExpectedKey(key, fromCase: "all-correct")
+            XCTAssertThrowsError(
+                try RuleVectorFile.load(from: data, wordPack: pack),
+                "missing expected.\(key)"
+            )
+        }
+    }
+
+    func testVectorDecoderRejectsMalformedExpectedSemantics() throws {
+        let pack = try loadWordPack()
+
+        let wrongFeedbackLength = try vectorDataMutatingExpected(caseID: "all-correct") {
+            $0["feedback"] = [2, 2, 2, 2]
+        }
+        XCTAssertThrowsError(
+            try RuleVectorFile.load(from: wrongFeedbackLength, wordPack: pack)
+        )
+
+        let wrongAcceptedCount = try vectorDataMutatingExpected(caseID: "all-correct") {
+            $0["acceptedGuessCount"] = 0
+        }
+        XCTAssertThrowsError(
+            try RuleVectorFile.load(from: wrongAcceptedCount, wordPack: pack)
+        )
+
+        let nilNormalizedGuessForAccepted = try vectorDataMutatingExpected(caseID: "all-correct") {
+            $0["normalizedGuess"] = NSNull()
+        }
+        XCTAssertThrowsError(
+            try RuleVectorFile.load(from: nilNormalizedGuessForAccepted, wordPack: pack)
+        )
+    }
+
     func testDuplicateFeedbackNeverExceedsAnswerFrequency() throws {
         let words = try loadWordPack().words
         for answer in words {
@@ -184,6 +241,31 @@ final class GameRulesTests: XCTestCase {
             throw ResourceError.invalidRuleVectors
         }
         return try Data(contentsOf: url)
+    }
+
+    private func vectorDataRemovingExpectedKey(
+        _ key: String,
+        fromCase caseID: String
+    ) throws -> Data {
+        try vectorDataMutatingExpected(caseID: caseID) { expected in
+            expected.removeValue(forKey: key)
+        }
+    }
+
+    private func vectorDataMutatingExpected(
+        caseID: String,
+        _ mutate: (inout [String: Any]) -> Void
+    ) throws -> Data {
+        guard var root = try JSONSerialization.jsonObject(with: vectorData()) as? [String: Any],
+              var cases = root["cases"] as? [[String: Any]],
+              let index = cases.firstIndex(where: { $0["id"] as? String == caseID }),
+              var expected = cases[index]["expected"] as? [String: Any]
+        else { throw ResourceError.invalidRuleVectors }
+
+        mutate(&expected)
+        cases[index]["expected"] = expected
+        root["cases"] = cases
+        return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
     }
 
     private var testBundle: Bundle {
