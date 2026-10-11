@@ -197,6 +197,9 @@ final class LiveMatchSession {
         if accountID == userID { resetRuntime() }
         do {
             try cleanupJournal?.capture(userID, deleting: false)
+#if DEBUG
+            LiveRecoveryDiagnostics.record(.capturedCleanup, userID: userID, hostOwner: usesAccountTransport, phase: phase)
+#endif
             try storeFactory(userID).clear()
             try cleanupJournal?.completeLive(userID)
             return .completed
@@ -220,6 +223,9 @@ final class LiveMatchSession {
         var failed = false
         for userID in cleanupJournal.liveUsers {
             do {
+#if DEBUG
+                LiveRecoveryDiagnostics.record(.capturedCleanup, userID: userID, hostOwner: usesAccountTransport, phase: phase)
+#endif
                 try storeFactory(userID).clear()
                 try cleanupJournal.completeLive(userID)
             } catch { failed = true }
@@ -298,6 +304,9 @@ final class LiveMatchSession {
             do {
                 try cleanupJournal?.capture(oldAccountID, deleting: false)
                 let oldStore = try oldStore ?? storeFactory(oldAccountID)
+#if DEBUG
+                LiveRecoveryDiagnostics.record(.accountTransitionClear, userID: oldAccountID, hostOwner: usesAccountTransport, phase: phase)
+#endif
                 try oldStore.clear()
                 try cleanupJournal?.completeLive(oldAccountID)
             } catch {

@@ -126,9 +126,15 @@ final class DailyAccountCoordinator {
         case .alreadyStarted:
             break
         case .settled(let userID):
+#if DEBUG
+            LiveRecoveryDiagnostics.record(.hostRestoreSettled, userID: userID, hostOwner: true, phase: live.phase)
+#endif
             startupState = .settled
             if userID == nil { activateGuestFallback() }
         case .failed, .notConfigured:
+#if DEBUG
+            LiveRecoveryDiagnostics.record(.hostRestoreFailed, userID: nil, hostOwner: true, phase: live.phase)
+#endif
             startupState = .settled
             activateGuestFallback()
         }
@@ -169,6 +175,9 @@ final class DailyAccountCoordinator {
 
     @discardableResult
     private func changeLiveAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
+#if DEBUG
+        LiveRecoveryDiagnostics.record(.coordinatorTransition, userID: userID, hostOwner: true, phase: live.phase)
+#endif
         guard let liveTransportFactory else { return live.changeAccount(to: userID) }
         let binding = userID.flatMap { try? liveTransportFactory($0) }
         return live.changeAccount(to: userID, transport: binding)

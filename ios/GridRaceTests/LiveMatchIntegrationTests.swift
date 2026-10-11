@@ -16,6 +16,9 @@ final class LiveMatchIntegrationTests: XCTestCase {
         let signedIn = try await account.signInForLocalTesting(
             email: admission.email, password: admission.password)
         try admission.validateIdentity(signedIn.userID)
+#if DEBUG
+        LiveRecoveryDiagnostics.record(.postSignIn, userID: signedIn.userID)
+#endif
         let service = MeasuredLiveMatchService(
             try account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
             target: target, waitForAdvance: role == "advance-guest"
@@ -26,6 +29,9 @@ final class LiveMatchIntegrationTests: XCTestCase {
             : FaultedRealtimeService(base: try account.makeLiveRealtimeService())
         let session = LiveMatchSession(service: service, realtime: realtime)
         session.changeAccount(to: signedIn.userID)
+#if DEBUG
+        LiveRecoveryDiagnostics.record(.postChangeAccount, userID: signedIn.userID, phase: session.phase)
+#endif
         if session.pendingIntent != nil { XCTAssertTrue(session.isInputLocked) }
 
         if role == "host" {
@@ -132,6 +138,9 @@ final class LiveMatchIntegrationTests: XCTestCase {
             let pending = try await service.acceptedIntent(matchID: matchID)
             let store = try LiveMatchRecoveryStore.applicationSupport(userID: signedIn.userID)
             try store.save(LiveRecoveryState(matchID: matchID, pendingIntent: pending))
+#if DEBUG
+            LiveRecoveryDiagnostics.record(.postInjection, userID: signedIn.userID, phase: session.phase, expectedMatchID: matchID)
+#endif
             print("INJECTION persisted real accepted old-round request for separate-process relaunch")
         }
 
