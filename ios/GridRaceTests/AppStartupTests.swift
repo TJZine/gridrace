@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 import XCTest
 @testable import GridRace
 
@@ -173,6 +175,210 @@ final class AppStartupTests: XCTestCase {
                        before.filter { $0.key != "daily-progress-v1.json" })
     }
 
+    func testRecoveryMessagesPreserveFailureSpecificConsequencesAndActions() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+
+        let cases: [(AppStartupModel.LoadFailure, String, [AppStartupModel.RecoveryAction])] = [
+            (
+                .bundledData,
+                "The bundled puzzle data is unavailable. Reinstall or update GridRace.",
+                [.retry]
+            ),
+            (
+                .storageUnavailable,
+                "Guest Daily Classic storage is unavailable. Try again to access your saved data.",
+                [.retry]
+            ),
+            (
+                .savedData(fixture.store),
+                "Your guest Daily Classic data could not be read. You can retry or explicitly reset guest Daily progress and history. Signed-in account data is preserved.",
+                [.retry, .resetGuest]
+            )
+        ]
+
+        for (failure, message, actions) in cases {
+            XCTAssertEqual(failure.message, message)
+            XCTAssertEqual(failure.actions, actions)
+        }
+    }
+
+    func testRecoveryRendersFullDiagnosticsAndReachesActionsThroughScrolling() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let failures: [AppStartupModel.LoadFailure] = [
+            .bundledData,
+            .storageUnavailable,
+            .savedData(fixture.store)
+        ]
+
+        for (failureIndex, failure) in failures.enumerated() {
+            for accessibility in [false, true] {
+                for landscape in [false, true] {
+                    try await GameplayContainmentHost.withHost(
+                        StartupRecoveryView(loadFailure: failure, perform: { _ in }),
+                        landscape: landscape,
+                        accessibility: accessibility
+                    ) { hosted in
+                        let constrainedFrame = landscape
+                            ? CGRect(x: 0, y: 0, width: 667, height: 375)
+                            : CGRect(x: 0, y: 0, width: 375, height: 667)
+                        let largerFrame = hosted.window.windowScene?.coordinateSpace.bounds ?? constrainedFrame
+
+                        for frame in [constrainedFrame, largerFrame] {
+                            hosted.window.frame = frame
+                            hosted.host.view.frame = hosted.window.bounds
+                            hosted.window.layoutIfNeeded()
+                            hosted.host.view.layoutIfNeeded()
+                            try await Task.sleep(for: .milliseconds(100))
+
+                            let caseID = "failure-\(failureIndex)-\(accessibility ? "AX5" : "normal")-\(landscape ? "landscape" : "portrait")-\(Int(frame.width))x\(Int(frame.height))"
+                            let expected = [failure.message] + failure.actions.map(\.title)
+                            var reached = Set<String>()
+                            var measuredContentBounds: CGRect?
+                            var messageContentFrame: CGRect?
+                            var messageVisibleIntervals: [ClosedRange<CGFloat>] = []
+                            var messageWasHorizontallyClipped = false
+
+                            func normalized(_ value: String) -> String {
+                                value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                            }
+
+                            @MainActor func observe(contentOffset: CGFloat) {
+                                let elements = hosted.elements()
+                                for expectedLabel in expected {
+                                    let expectedText = normalized(expectedLabel)
+                                    guard let element = elements.first(where: {
+                                        normalized($0.label).contains(expectedText)
+                                    }) else { continue }
+
+                                    let contentFrame = element.frame.offsetBy(dx: 0, dy: contentOffset)
+                                    measuredContentBounds = measuredContentBounds.map {
+                                        $0.union(contentFrame)
+                                    } ?? contentFrame
+
+                                    if expectedLabel == failure.message {
+                                        messageContentFrame = messageContentFrame ?? contentFrame
+                                        var visibleFrame = element.frame.intersection(hosted.viewport)
+                                        for clip in element.clips {
+                                            visibleFrame = visibleFrame.intersection(clip)
+                                        }
+                                        guard !visibleFrame.isNull, !visibleFrame.isEmpty else { continue }
+                                        if visibleFrame.width + 1 < element.frame.width {
+                                            messageWasHorizontallyClipped = true
+                                        }
+                                        messageVisibleIntervals.append(
+                                            (visibleFrame.minY + contentOffset)...(visibleFrame.maxY + contentOffset)
+                                        )
+                                        if hosted.isVisible(element) {
+                                            reached.insert(expectedLabel)
+                                        }
+                                    } else if hosted.isVisible(element) {
+                                        reached.insert(expectedLabel)
+                                    }
+                                }
+                            }
+
+                            @MainActor func attachRender(_ position: String) {
+                                let image = UIGraphicsImageRenderer(bounds: hosted.host.view.bounds).image { _ in
+                                    hosted.host.view.drawHierarchy(in: hosted.host.view.bounds, afterScreenUpdates: true)
+                                }
+                                let attachment = XCTAttachment(image: image)
+                                attachment.name = "recovery-f\(failureIndex)-\(accessibility ? "AX5" : "normal")-\(landscape ? "landscape" : "portrait")-\(Int(frame.width))x\(Int(frame.height))-\(position)"
+                                attachment.lifetime = .keepAlways
+                                self.add(attachment)
+                            }
+
+                            let scrolls = descendants(of: hosted.host.view).compactMap { $0 as? UIScrollView }
+                            let verticalScrolls = scrolls.filter { $0.contentSize.height > $0.bounds.height + 1 }
+                            // Each frame starts at the top; the previous frame's sweep
+                            // must not contaminate initial screenshots or content coordinates.
+                            for scroll in verticalScrolls {
+                                scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x,
+                                                              y: -scroll.adjustedContentInset.top), animated: false)
+                            }
+                            hosted.host.view.layoutIfNeeded()
+                            observe(contentOffset: verticalScrolls.first?.contentOffset.y ?? 0)
+                            attachRender("initial")
+                            if accessibility, frame == constrainedFrame, failure.actions.count > 1 {
+                                XCTAssertFalse(verticalScrolls.isEmpty,
+                                               "\(caseID): AX5 constrained recovery must provide a usable vertical scroll path")
+                            }
+                            // A complete AX label can survive a visually clipped Text. Measure
+                            // the rendered required elements in scroll-content coordinates and
+                            // prove that the full description is covered without vertical gaps.
+                            if let scroll = verticalScrolls.first {
+                                let minimum = -scroll.adjustedContentInset.top
+                                let maximum = max(minimum,
+                                                  scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                                let steps = max(1, Int(ceil((maximum - minimum) / max(1, scroll.bounds.height / 3))))
+                                for step in 0...steps {
+                                    let offset = minimum + (maximum - minimum) * CGFloat(step) / CGFloat(steps)
+                                    scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: offset), animated: false)
+                                    hosted.host.view.layoutIfNeeded()
+                                    observe(contentOffset: scroll.contentOffset.y)
+                                    if accessibility, failure.actions.count > 1, frame == constrainedFrame {
+                                        attachRender("scroll-\(step)")
+                                    }
+                                }
+                            }
+
+                            if let scroll = verticalScrolls.first, let measuredContentBounds {
+                                XCTAssertLessThanOrEqual(
+                                    measuredContentBounds.height,
+                                    scroll.contentSize.height + 2,
+                                    "\(caseID): recovery diagnostic and actions must occupy measured, unclipped scroll content"
+                                )
+                            }
+
+                            XCTAssertFalse(messageWasHorizontallyClipped,
+                                           "\(caseID): recovery diagnostic must remain horizontally contained")
+                            if let messageContentFrame {
+                                XCTAssertGreaterThanOrEqual(
+                                    messageContentFrame.minX,
+                                    hosted.viewport.minX - 1,
+                                    "\(caseID): recovery diagnostic starts inside the usable viewport"
+                                )
+                                XCTAssertLessThanOrEqual(
+                                    messageContentFrame.maxX,
+                                    hosted.viewport.maxX + 1,
+                                    "\(caseID): recovery diagnostic ends inside the usable viewport"
+                                )
+
+                                let intervals = messageVisibleIntervals.sorted { $0.lowerBound < $1.lowerBound }
+                                var coveredThrough = messageContentFrame.minY
+                                for interval in intervals {
+                                    guard interval.upperBound >= messageContentFrame.minY,
+                                          interval.lowerBound <= messageContentFrame.maxY else { continue }
+                                    let lower = max(interval.lowerBound, messageContentFrame.minY)
+                                    let upper = min(interval.upperBound, messageContentFrame.maxY)
+                                    if lower > coveredThrough + 1 {
+                                        XCTFail(
+                                            "\(caseID): recovery diagnostic has a vertical visibility gap before \(lower)"
+                                        )
+                                        break
+                                    }
+                                    coveredThrough = max(coveredThrough, upper)
+                                }
+                                XCTAssertGreaterThanOrEqual(
+                                    coveredThrough,
+                                    messageContentFrame.maxY - 1,
+                                    "\(caseID): scroll sweep must cover the complete recovery diagnostic"
+                                )
+                            } else {
+                                XCTFail("\(caseID): complete recovery diagnostic element was not rendered")
+                            }
+                            for action in failure.actions {
+                                XCTAssertTrue(reached.contains(action.title),
+                                              "\(caseID): recovery action \(action.title) must be reachable")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func assertFreshProgress(_ startup: AppStartupModel, fixture: Fixture,
                                      file: StaticString = #filePath, line: UInt = #line) throws {
         let app = try XCTUnwrap(startup.appModel, file: file, line: line)
@@ -184,6 +390,10 @@ final class AppStartupTests: XCTestCase {
         XCTAssertTrue(restored.rows.isEmpty, file: file, line: line)
         XCTAssertTrue(restored.draft.isEmpty, file: file, line: line)
         XCTAssertNil(restored.completion, file: file, line: line)
+    }
+
+    private func descendants(of view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { descendants(of: $0) }
     }
 
     private func packs() throws -> (tutorial: WordPack, daily: DailyWordPack) {

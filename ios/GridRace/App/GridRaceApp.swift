@@ -112,6 +112,42 @@ final class AppStartupModel {
     }
 }
 
+struct StartupRecoveryView: View {
+    let loadFailure: AppStartupModel.LoadFailure
+    let perform: (AppStartupModel.RecoveryAction) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                ContentUnavailableView(
+                    label: {
+                        Label("GridRace unavailable", systemImage: "exclamationmark.triangle")
+                    },
+                    description: {
+                        Text(loadFailure.message)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(loadFailure.actions) { action in
+                    if action == .retry {
+                        Button(action.title) { perform(action) }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("startup-recovery-\(action.rawValue)")
+                    } else {
+                        Button(action.title, role: .destructive) { perform(action) }
+                            .accessibilityIdentifier("startup-recovery-\(action.rawValue)")
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+        }
+        .accessibilityIdentifier("startup-recovery-scroll")
+    }
+}
+
 private struct AppRootView: View {
     @State private var startup = AppStartupModel()
 
@@ -120,22 +156,7 @@ private struct AppRootView: View {
             if let appModel = startup.appModel {
                 DailyAppView(app: appModel)
             } else if let loadFailure = startup.loadFailure {
-                VStack(spacing: 16) {
-                    ContentUnavailableView(
-                        "GridRace unavailable",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(loadFailure.message)
-                    )
-                    ForEach(loadFailure.actions) { action in
-                        if action == .retry {
-                            Button(action.title) { startup.perform(action) }
-                                .buttonStyle(.borderedProminent)
-                        } else {
-                            Button(action.title, role: .destructive) { startup.perform(action) }
-                        }
-                    }
-                }
-                .padding()
+                StartupRecoveryView(loadFailure: loadFailure, perform: startup.perform)
             } else {
                 ProgressView("Loading GridRace")
                     .task { startup.loadApp() }
