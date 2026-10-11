@@ -12,7 +12,12 @@ final class LiveMatchIntegrationTests: XCTestCase {
         let failedGuess = try XCTUnwrap(environment["GRIDRACE_LIVE_FAILED_GUESS"])
         let count = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? ""))
         let target = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? ""))
-        let account = SupabaseAccountService(configuration: admission.configuration)
+        // The host app restores its own account while XCTest runs. Keep this
+        // simulated device's real Keychain credentials separate from the app,
+        // with the same namespace on every process relaunch of this fixture.
+        let credentialNamespace = "GridRaceLiveIntegration.\(admission.receipt.runID.uuidString).\(admission.receipt.userID.uuidString)"
+        let account = SupabaseAccountService(configuration: admission.configuration,
+            storage: SecureAuthStorage(service: credentialNamespace))
         let signedIn = try await account.signInForLocalTesting(
             email: admission.email, password: admission.password)
         try admission.validateIdentity(signedIn.userID)
