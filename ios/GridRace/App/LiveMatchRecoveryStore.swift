@@ -167,13 +167,7 @@ struct LiveMatchRecoveryStore: LiveMatchRecoveryStoring, Sendable {
     }
 
     func clear() throws {
-#if DEBUG
-        LiveRecoveryDiagnostics.record(.clearBefore, directory: directory)
-#endif
         try PersistenceFile.removeIfPresent(at: fileURL)
-#if DEBUG
-        LiveRecoveryDiagnostics.record(.clearAfter, directory: directory)
-#endif
     }
 
     private static func isConsistent(_ state: LiveRecoveryState) -> Bool {
@@ -194,72 +188,3 @@ enum LiveMatchRecoveryError: Error, Equatable, Sendable {
     case invalidData
     case unavailable
 }
-
-#if DEBUG
-// Temporary, opt-in observations for the independent-client recovery diagnosis.
-// Never print identifiers, paths, credentials, guesses, or serialized recovery data.
-enum LiveRecoveryDiagnostics {
-    enum Stage: String {
-        case postSignIn, postChangeAccount, postInjection
-        case coordinatorTransition, accountTransitionClear, capturedCleanup
-        case hostRestoreSettled, hostRestoreFailed
-        case clearBefore, clearAfter
-    }
-
-    static func record(_ stage: Stage, userID: UUID?, hostOwner: Bool = false,
-                       phase: LiveMatchSessionPhase? = nil, expectedMatchID: UUID? = nil) {
-        guard let owned = ownedUser else { return }
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?.appending(path: "GridRace/Accounts", directoryHint: .isDirectory)
-            .appending(path: owned.uuidString.lowercased(), directoryHint: .isDirectory)
-        emit(stage, directory: directory, subjectMatches: userID == owned,
-             subjectPresent: userID != nil, hostOwner: hostOwner, phase: phase, expectedMatchID: expectedMatchID)
-    }
-
-    static func record(_ stage: Stage, directory: URL) {
-        guard let owned = ownedUser else { return }
-        guard UUID(uuidString: directory.lastPathComponent) == owned else { return }
-        emit(stage, directory: directory,
-             subjectMatches: true,
-             subjectPresent: true, hostOwner: false, phase: nil)
-    }
-
-    private static var ownedUser: UUID? {
-        let environment = ProcessInfo.processInfo.environment
-        guard environment["GRIDRACE_LIVE_RECOVERY_DIAGNOSTICS"] == "1" else { return nil }
-        return environment["GRIDRACE_LIVE_DIAGNOSTIC_USER_ID"].flatMap(UUID.init(uuidString:))
-    }
-
-    private static func emit(_ stage: Stage, directory: URL?, subjectMatches: Bool,
-                             subjectPresent: Bool, hostOwner: Bool,
-                             phase: LiveMatchSessionPhase?, expectedMatchID: UUID? = nil) {
-        let file = directory?.appending(path: "live-recovery-v1.json")
-        let exists = file.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-        var read = false
-        var decoded = false
-        var expectedMatch = false
-        var pending = false
-        if let file, let data = try? Data(contentsOf: file) {
-            read = true
-            if let state = try? JSONDecoder().decode(LiveRecoveryState.self, from: data) {
-                decoded = true
-                let expected = expectedMatchID ?? ProcessInfo.processInfo.environment["GRIDRACE_LIVE_MATCH_ID"]
-                    .flatMap(UUID.init(uuidString:))
-                expectedMatch = expected != nil && state.matchID == expected
-                pending = state.pendingIntent != nil
-            }
-        }
-        let phaseCode: String
-        switch phase {
-        case .inactive: phaseCode = "inactive"
-        case .recovering: phaseCode = "recovering"
-        case .ready: phaseCode = "ready"
-        case .unavailable: phaseCode = "unavailable"
-        case .needsSignIn: phaseCode = "needs_sign_in"
-        case .storageUnavailable: phaseCode = "storage_unavailable"
-        case nil: phaseCode = "unobserved"
-        }
-        print("RECOVERY_DIAGNOSTIC stage=\(stage.rawValue) subject_present=\(subjectPresent) subject_owned=\(subjectMatches) host_owner_observed=\(hostOwner) file_exists=\(exists) read_ok=\(read) decode_ok=\(decoded) expected_match=\(expectedMatch) pending=\(pending) phase=\(phaseCode)")
-    }
-}
-#endif

@@ -19,12 +19,6 @@ fi
 [[ ${GRIDRACE_LOCAL_INTEGRATION:-} == 1 ]] || {
   echo "UNAVAILABLE: set GRIDRACE_LOCAL_INTEGRATION=1 after controller inventory" >&2; exit 2;
 }
-diagnostic_mode=${GRIDRACE_LIVE_DIAGNOSTIC_MODE:-}
-[[ -z "$diagnostic_mode" || "$diagnostic_mode" == product3-prefix ]] || {
-  echo "REFUSED: unsupported diagnostic mode" >&2; exit 2;
-}
-diagnostic_enabled=0
-[[ -z "$diagnostic_mode" ]] || diagnostic_enabled=1
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 source "$repo_root/scripts/scan_client_credentials.sh"
@@ -69,35 +63,6 @@ cleanup() {
   for pid in "$host_pid" "$guest_pid"; do
     [[ -z "$pid" ]] || { kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; }
   done
-  # Freeze and preserve only this run's failed containers before fixture cleanup.
-  # No Keychain export. Raw recovery copies stay private and are never printed.
-  if [[ $diagnostic_enabled == 1 && $original_status != 0 ]]; then
-    local diagnostic_container diagnostic_index=0 diagnostic_user diagnostic_file diagnostic_destination
-    mkdir -p "$work_dir/failed-recovery"
-    chmod 700 "$work_dir/failed-recovery"
-    for simulator in ${proof_simulators[@]+"${proof_simulators[@]}"}; do
-      xcrun simctl terminate "$simulator" com.example.GridRace >/dev/null 2>&1
-      diagnostic_container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data 2>/dev/null)
-      xcrun simctl shutdown "$simulator" >/dev/null 2>&1
-      diagnostic_destination="$work_dir/failed-recovery/client-$diagnostic_index"
-      mkdir -p "$diagnostic_destination"
-      chmod 700 "$diagnostic_destination"
-      for diagnostic_user in ${created_users[@]+"${created_users[@]}"}; do
-        diagnostic_file="$diagnostic_container/Library/Application Support/GridRace/Accounts/$diagnostic_user/live-recovery-v1.json"
-        if [[ -f "$diagnostic_file" ]]; then
-          cp "$diagnostic_file" "$diagnostic_destination/$diagnostic_user.json" || cleanup_failed=1
-          chmod 600 "$diagnostic_destination/$diagnostic_user.json"
-        fi
-      done
-      diagnostic_file="$diagnostic_container/Library/Application Support/GridRace/account-cleanup-v1.json"
-      if [[ -f "$diagnostic_file" ]]; then
-        cp "$diagnostic_file" "$diagnostic_destination/account-cleanup-v1.json" || cleanup_failed=1
-        chmod 600 "$diagnostic_destination/account-cleanup-v1.json"
-      fi
-      diagnostic_index=$((diagnostic_index+1))
-    done
-    echo "RECOVERY_DIAGNOSTIC stage=failure_preservation owned_simulators_retained=true"
-  fi
   # Also capture a Create whose response/process failed before normal registration.
   for user_id in ${created_users[@]+"${created_users[@]}"}; do
     sql_scalar "delete from public.matches where id in (select match_id from public.match_members where auth_user_id='$user_id')" >/dev/null || cleanup_failed=1
@@ -113,9 +78,7 @@ cleanup() {
   fi
   for simulator in ${proof_simulators[@]+"${proof_simulators[@]}"}; do
     xcrun simctl shutdown "$simulator" >/dev/null 2>&1
-    if [[ $diagnostic_enabled != 1 || $original_status == 0 ]]; then
-      xcrun simctl delete "$simulator" >/dev/null 2>&1 || cleanup_failed=1
-    fi
+    xcrun simctl delete "$simulator" >/dev/null 2>&1 || cleanup_failed=1
   done
   check_lock || { echo "FAIL: protected package lock changed" >&2; cleanup_failed=1; }
   echo "CLEANUP owned fixtures/containers only; proof retained at $work_dir"
@@ -185,42 +148,6 @@ os.chmod(path,0o600)
 RECEIPT
   cp "$receipt_path" "$work_dir/fixture-$user_id-$purpose.json"
 }
-diagnostic_prelaunch() {
-  [[ $diagnostic_enabled == 1 ]] || return 0
-  local simulator=$1 user_id=$2 match_id=$3 log=$4 container
-  container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data)
-  python3 - "$container" "$work_dir/container-$simulator.txt" "$user_id" "$match_id" "${log%.log}.recovery-diagnostic.json" <<'DIAGNOSTIC'
-import json,os,sys
-from pathlib import Path
-container,prior_path,user,expected,report_path=sys.argv[1:]
-prior=Path(prior_path)
-known=prior.exists()
-continuous=known and prior.read_text()==container
-prior.write_text(container)
-os.chmod(prior,0o600)
-file=Path(container)/'Library/Application Support/GridRace/Accounts'/user/'live-recovery-v1.json'
-report=dict(stage='pre_launch',prior_container_observed=known,container_continuous=continuous,
-            file_exists=file.is_file(),read_ok=False,decode_ok=False,expected_match=False,pending=False)
-if file.is_file():
-    try:
-        raw=file.read_bytes()
-        report['read_ok']=True
-        # Keep the exact pre-launch evidence private, never emit its contents.
-        copy=Path(report_path).with_suffix('.recovery-private.json')
-        copy.write_bytes(raw)
-        os.chmod(copy,0o600)
-        state=json.loads(raw)
-        report['decode_ok']=isinstance(state,dict)
-        if isinstance(state,dict):
-            report['expected_match']=bool(expected) and state.get('matchID','').lower()==expected.lower()
-            report['pending']=state.get('pendingIntent') is not None
-    except (OSError,ValueError,AttributeError):
-        pass
-Path(report_path).write_text(json.dumps(report))
-os.chmod(report_path,0o600)
-print('RECOVERY_DIAGNOSTIC '+' '.join(f'{k}={str(v).lower()}' for k,v in report.items()))
-DIAGNOSTIC
-}
 create_user() {
   local suffix response
   suffix=$(uuidgen | tr '[:upper:]' '[:lower:]')
@@ -242,7 +169,6 @@ run_client() {
   if [[ $email == "$host_email" ]]; then user_id=$host_id
   elif [[ $email == "$guest_email" ]]; then user_id=$guest_id
   else echo "REFUSED: credentials outside owned pair" >&2; return 1; fi
-  diagnostic_prelaunch "$simulator" "$user_id" "$match_id" "$log"
   write_receipt "$simulator" live "$email" "$user_id"
   while IFS='=' read -r name value; do
     xcrun simctl spawn "$simulator" launchctl setenv "$name" "$value"
@@ -250,8 +176,6 @@ run_client() {
 GRIDRACE_LOCAL_INTEGRATION=1
 GRIDRACE_FIXTURE_RUN_ID=$run_tag
 GRIDRACE_FIXTURE_RECEIPT=$receipt_name
-GRIDRACE_LIVE_RECOVERY_DIAGNOSTICS=$diagnostic_enabled
-GRIDRACE_LIVE_DIAGNOSTIC_USER_ID=$user_id
 GRIDRACE_LIVE_ROLE=$role
 GRIDRACE_LIVE_SCENARIO=$scenario
 GRIDRACE_LIVE_EMAIL=$email
@@ -394,10 +318,6 @@ for count in 1 3 5; do
     assert_sql_reveal "$target" "$count"
     [[ $(sql_scalar "select count(*) from public.player_rounds p join public.rounds r on r.id=p.round_id where r.match_id='$match_id' and p.state='failed' and p.accepted_guess_count=6 and p.efficiency_points=0 and p.placement=1") == "$((target*2))" ]]
     echo "PASS two-process product $count round $target SQL failed/tie/history"
-    if [[ $diagnostic_mode == product3-prefix && $count == 3 && $target == 2 ]]; then
-      echo "RECOVERY_DIAGNOSTIC stage=prefix_complete full_matrix_complete=false"
-      exit 0
-    fi
   done
   launch_round resume resume product "$count" "$count"
 done
