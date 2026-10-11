@@ -19,7 +19,7 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
     private let client: SupabaseClient
     private let lease: AuthClientLease?
     private let pageSize: Int
-    private let fetchProgress: @Sendable () async throws -> [DailyProgressDTO]
+    private let fetchProgress: @Sendable (String?) async throws -> [DailyProgressDTO]
     private let fetchResultsPage: @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
 
     init(lease: AuthClientLease, pageSize: Int = 1000) {
@@ -28,11 +28,11 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
         precondition(pageSize > 0, "Imported-results page size must be positive")
         self.client = client
         self.pageSize = pageSize
-        fetchProgress = {
+        fetchProgress = { puzzleID in
             try lease.check()
-            let rows: [DailyProgressDTO] = try await client
-                .from("daily_progress")
-                .select()
+            var request = client.from("daily_progress").select()
+            if let puzzleID { request = request.eq("puzzle_id", value: puzzleID) }
+            let rows: [DailyProgressDTO] = try await request
                 .order("puzzle_day", ascending: false)
                 .limit(1)
                 .execute()
@@ -64,7 +64,7 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
     init(
         client: SupabaseClient,
         pageSize: Int = 1000,
-        fetchProgress: @escaping @Sendable () async throws -> [DailyProgressDTO],
+        fetchProgress: @escaping @Sendable (String?) async throws -> [DailyProgressDTO],
         fetchResultsPage: @escaping @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
     ) {
         precondition(pageSize > 0, "Imported-results page size must be positive")
@@ -75,13 +75,17 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
         self.fetchResultsPage = fetchResultsPage
     }
 
-    func pull() async throws -> DailyCloudSnapshot {
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot {
         do {
             try lease?.check()
-            async let progressRequest = fetchProgress()
+            async let progressRequest = fetchProgress(puzzleID)
             let importedResults = try await fetchAllImportedResults()
             let progress = try await progressRequest
             try lease?.check()
+            guard progress.count <= 1 else { throw DailySyncRemoteError.invalidData }
+            if let puzzleID, let row = progress.first, row.puzzleID != puzzleID {
+                throw DailySyncRemoteError.invalidData
+            }
             return DailyCloudSnapshot(progress: progress.first, importedResults: importedResults)
         } catch let error as DailySyncRemoteError {
             throw error

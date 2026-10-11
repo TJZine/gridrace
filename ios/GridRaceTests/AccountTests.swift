@@ -1467,7 +1467,8 @@ final class AccountModelTests: XCTestCase {
         service.deleteError = TestError.failed
         await model.deleteAccount()
         XCTAssertNil(deletedUserID)
-        XCTAssertEqual(model.session?.userID, userID)
+        XCTAssertNil(model.session, "Uncertain deletion must hide the old effective account")
+        XCTAssertEqual(model.authRecovery?.action, .deletion)
 
         service.deleteError = nil
         await model.deleteAccount()
@@ -2068,7 +2069,7 @@ final class DailySyncLifecycleTests: XCTestCase {
 }
 
 private actor UnavailableDailyRemote: DailySyncRemote {
-    func pull() async throws -> DailyCloudSnapshot {
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot {
         throw DailySyncRemoteError.unavailable
     }
 
@@ -2151,7 +2152,7 @@ private actor CoordinatorDailyRemote: DailySyncRemote {
         suspendedPull?.resume()
         suspendedPull = nil
     }
-    func pull() async throws -> DailyCloudSnapshot {
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot {
         if shouldSuspend {
             shouldSuspend = false
             await withCheckedContinuation { suspendedPull = $0 }
@@ -2161,7 +2162,7 @@ private actor CoordinatorDailyRemote: DailySyncRemote {
             shouldFail = false
             throw DailySyncRemoteError.unavailable
         }
-        return DailyCloudSnapshot(progress: canonicalProgress, importedResults: results.values.sorted { $0.puzzleID < $1.puzzleID })
+        return DailyCloudSnapshot(progress: canonicalProgress.flatMap { puzzleID == nil || $0.puzzleID == puzzleID ? $0 : nil }, importedResults: results.values.sorted { $0.puzzleID < $1.puzzleID })
     }
     func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {
         progressUploads.append(progress)
@@ -2364,5 +2365,113 @@ extension AccountModelTests {
             XCTAssertEqual(retried, [user])
             XCTAssertFalse(model.canRetryDeletedDailyData)
         }
+    }
+}
+
+@MainActor
+extension DailyAccountCoordinatorTests {
+    func testConfirmedDeletionColdRecoveryKeepsIndependentDailyAndLiveScopeWithoutRemoteReplay() async throws {
+        for failures in [(true, false), (false, true), (true, true)] {
+            let root = FileManager.default.temporaryDirectory.appending(path: "ColdDeletion-\(UUID())")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let user = UUID(), other = UUID(), service = AccountServiceMock()
+            service.appleSession = AccountSession(userID: user, expiresAt: .distantFuture)
+            service.loadedProfile = PlayerProfile(userID: user, displayName: "Fixture", avatarSeed: "fixture", setupCompleted: true, createdAt: .now, updatedAt: .now)
+            let guest = DailyClassicStore(directory: root.appending(path: "Guest"))
+            let liveStore = AccountLifecycleLiveStore(LiveRecoveryState(pendingIntent: .create(requestID: UUID())))
+            var rejectsDaily = false
+            func make(_ accountService: AccountServiceMock) throws -> DailyAccountCoordinator {
+                try DailyAccountCoordinator(dailyPack: DailyWordPack.load(bundle: .main),
+                    tutorialPack: WordPack.load(bundle: .main), guestStore: guest, accountService: nil,
+                    accountModelService: accountService, dailyRemoteFactory: { _ in UnavailableDailyRemote() },
+                    accountStoreFactory: { id in
+                        if id == user && rejectsDaily { throw TestError.failed }
+                        return AccountDailyClassicStore(rootDirectory: root, userID: id)
+                    }, liveTransportFactory: accountLifecycleTransport,
+                    liveStoreFactory: { _ in liveStore })
+            }
+            let first = try make(service)
+            first.daily.typeLetter("G")
+            let guestBefore = try guest.loadProgress()
+            await first.account.signInWithApple(idToken: "synthetic", rawNonce: "synthetic")
+            let otherStore = AccountDailyClassicStore(rootDirectory: root, userID: other)
+            try FileManager.default.createDirectory(at: otherStore.directory, withIntermediateDirectories: true)
+            let sentinel = Data("unrelated account".utf8)
+            let sentinelURL = otherStore.directory.appending(path: "sentinel")
+            try sentinel.write(to: sentinelURL)
+            rejectsDaily = failures.0
+            liveStore.rejectsClears = failures.1
+            await first.account.deleteAccount()
+            XCTAssertEqual(service.deleteCount, 1)
+            let coldService = AccountServiceMock()
+            let cold = try make(coldService)
+            await cold.start()
+            XCTAssertNil(cold.account.session)
+            XCTAssertEqual(cold.account.canRetryDeletedDailyData, failures.0)
+            XCTAssertEqual(cold.live.hasPendingAccountCleanup(for: user), failures.1)
+            XCTAssertNil(cold.live.pendingIntent)
+            rejectsDaily = false
+            await cold.account.retryDeletedDailyData()
+            liveStore.rejectsClears = false
+            cold.live.discardRecovery()
+            XCTAssertFalse(cold.account.canRetryDeletedDailyData)
+            XCTAssertFalse(cold.live.hasPendingAccountCleanup(for: user))
+            XCTAssertEqual(coldService.deleteCount, 0)
+            XCTAssertEqual(try guest.loadProgress(), guestBefore)
+            XCTAssertEqual(try Data(contentsOf: sentinelURL), sentinel)
+            let journal = AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: guest.directory))
+            XCTAssertTrue(journal.records.isEmpty)
+        }
+    }
+}
+
+private final class AccountJournalFaultStorage: AccountCleanupJournalStoring {
+    var records: [AccountCleanupRecord] = []
+    var rejectsWrites = false
+    var rejectsConfirmation = false
+    func load() throws -> [AccountCleanupRecord] { records }
+    func save(_ records: [AccountCleanupRecord]) throws {
+        if rejectsWrites || (rejectsConfirmation && records.contains(where: { $0.daily == .required })) {
+            throw TestError.failed
+        }
+        self.records = records
+    }
+}
+
+@MainActor
+extension AccountModelTests {
+    func testJournalFailureBeforeDispatchHidesAccountAndRetainsRetryAndSignOutEscape() async throws {
+        let user = UUID(), service = AccountServiceMock(), storage = AccountJournalFaultStorage()
+        service.appleSession = AccountSession(userID: user, expiresAt: .distantFuture)
+        service.loadedProfile = PlayerProfile(userID: user, displayName: "Fixture", avatarSeed: "fixture", setupCompleted: true, createdAt: .now, updatedAt: .now)
+        let journal = AccountCleanupJournal(storage: storage)
+        let model = AccountModel(service: service, cleanupJournal: journal)
+        await model.signInWithApple(idToken: "synthetic", rawNonce: "synthetic")
+        storage.rejectsWrites = true
+        await model.deleteAccount()
+        XCTAssertEqual(service.deleteCount, 0)
+        XCTAssertNil(model.session)
+        XCTAssertEqual(model.authRecovery?.action, .deletion)
+        storage.rejectsWrites = false
+        await model.retryAuthRecovery()
+        XCTAssertEqual(service.deleteCount, 1)
+        XCTAssertEqual(AccountCleanupJournal(storage: storage).dailyUsers, [user])
+    }
+
+    func testConfirmedRemoteDeletionIsNeverRepeatedForJournalConfirmationFailure() async throws {
+        let user = UUID(), service = AccountServiceMock(), storage = AccountJournalFaultStorage()
+        service.appleSession = AccountSession(userID: user, expiresAt: .distantFuture)
+        service.loadedProfile = PlayerProfile(userID: user, displayName: "Fixture", avatarSeed: "fixture", setupCompleted: true, createdAt: .now, updatedAt: .now)
+        let journal = AccountCleanupJournal(storage: storage)
+        let model = AccountModel(service: service, cleanupJournal: journal)
+        await model.signInWithApple(idToken: "synthetic", rawNonce: "synthetic")
+        storage.rejectsConfirmation = true
+        await model.deleteAccount()
+        XCTAssertEqual(service.deleteCount, 1)
+        XCTAssertEqual(model.authRecovery?.action, .deletion)
+        storage.rejectsConfirmation = false
+        await model.retryAuthRecovery()
+        XCTAssertEqual(service.deleteCount, 1)
+        XCTAssertEqual(AccountCleanupJournal(storage: storage).dailyUsers, [user])
     }
 }

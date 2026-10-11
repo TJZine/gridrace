@@ -7,6 +7,7 @@ final class DailyAccountCoordinator {
     private let now: @MainActor () -> Date
     private let dailyPack: DailyWordPack
     private let guestStore: DailyClassicStore
+    private let cleanupJournal: AccountCleanupJournal
     private let guestDaily: DailyClassicModel
     private enum StartupState: Equatable { case notStarted, restoring, settled, retryable }
     private var startupState = StartupState.notStarted
@@ -53,7 +54,8 @@ final class DailyAccountCoordinator {
         },
         hasPendingDeletedLiveCleanup: { [weak self] userID in
             self?.live.hasPendingAccountCleanup(for: userID) ?? true
-        }
+        },
+        cleanupJournal: cleanupJournal
     )
 
     init(
@@ -70,6 +72,7 @@ final class DailyAccountCoordinator {
         liveStoreFactory: @escaping LiveMatchSession.StoreFactory = {
             try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         },
+        cleanupJournal: AccountCleanupJournal? = nil,
         now: @escaping @MainActor () -> Date = { Date() }
     ) throws {
         self.now = now
@@ -78,12 +81,14 @@ final class DailyAccountCoordinator {
         }
         self.dailyPack = dailyPack
         self.guestStore = guestStore
+        let journal = cleanupJournal ?? AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: guestStore.directory))
+        self.cleanupJournal = journal
         self.dailyRemoteFactory = dailyRemoteFactory ?? accountService.map { service in
             { userID in try service.makeDailySyncRemote(userID: userID) }
         }
         self.accountModelService = accountModelService ?? accountService
         self.accountStoreFactory = accountStoreFactory
-        live = LiveMatchSession(service: nil, realtime: nil, storeFactory: liveStoreFactory)
+        live = LiveMatchSession(service: nil, realtime: nil, storeFactory: liveStoreFactory, cleanupJournal: journal)
         let guestDaily = try DailyClassicModel(
             pack: dailyPack, store: guestStore,
             persistenceStartup: self.accountModelService == nil ? .active : .prepared,
@@ -449,7 +454,8 @@ final class DailyAccountCoordinator {
     }
 
     private func deleteLocalAccount(_ userID: UUID) throws {
-        let liveOutcome = activateGuest()
+        if currentUserID == userID || activationUserID == userID { activateGuest() }
+        let liveOutcome = live.cleanupCapturedAccount(userID)
         var dailyFailed = false
         do { try removeDeletedDailyCache(userID) } catch { dailyFailed = true }
         if dailyFailed || liveOutcome == .recoveryCleanupPending {
@@ -460,6 +466,7 @@ final class DailyAccountCoordinator {
 
     private func removeDeletedDailyCache(_ userID: UUID) throws {
         try accountStoreFactory(userID).deleteAccountCache()
+        try cleanupJournal.completeDaily(userID)
     }
 
     private func hasGuestDailyData() -> Bool {

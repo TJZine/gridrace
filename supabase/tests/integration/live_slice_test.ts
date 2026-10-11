@@ -2538,25 +2538,25 @@ function required(name: string): string {
 }
 
 function localApiUrl(value: string): string {
-  const url = new URL(value);
-  assert(
-    url.protocol === "http:" &&
-      ["127.0.0.1", "localhost"].includes(url.hostname) &&
-      url.port === "54321",
-    "API_URL must target local Supabase",
+  const origin = /^http:\/\/(127\.0\.0\.1|localhost):([1-9][0-9]*)$/.exec(
+    value,
   );
-  return url.origin;
+  assert(
+    origin && Number(origin[2]) <= 65535,
+    "API_URL must target an exact unlinked loopback origin",
+  );
+  return value;
 }
 
 function localDatabase(value: string): LocalDatabase {
-  const url = new URL(value);
+  const local =
+    /^(postgres|postgresql):\/\/postgres:postgres@(127\.0\.0\.1|localhost):([1-9][0-9]*)\/postgres$/
+      .exec(value);
   assert(
-    ["postgres:", "postgresql:"].includes(url.protocol) &&
-      ["127.0.0.1", "localhost"].includes(url.hostname) &&
-      url.port === "54322" &&
-      url.pathname === "/postgres",
-    "DB_URL must target local Supabase",
+    local && Number(local[3]) <= 65535,
+    "DB_URL must target local Supabase postgres",
   );
+  const url = new URL(value);
   const password = decodeURIComponent(url.password);
   const args = [
     "--host",

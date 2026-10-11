@@ -63,13 +63,13 @@ struct AccountDailyClassicStore: DailyClassicStoring, Sendable {
     func save(_ history: DailyClassicHistory) throws { try dailyStore.save(history) }
 
     func loadSyncMetadata() throws -> DailySyncMetadata {
-        guard FileManager.default.fileExists(atPath: metadataURL.path) else {
+        guard let data = try PersistenceFile.readIfPresent(at: metadataURL) else {
             return DailySyncMetadata()
         }
         do {
             let metadata = try JSONDecoder().decode(
                 DailySyncMetadata.self,
-                from: Data(contentsOf: metadataURL)
+                from: data
             )
             guard metadata.formatVersion == 1 else { throw DailySyncError.invalidLocalData }
             return metadata
@@ -84,7 +84,6 @@ struct AccountDailyClassicStore: DailyClassicStoring, Sendable {
     }
 
     func deleteAccountCache() throws {
-        guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
+        try PersistenceFile.removeIfPresent(at: directory, expectedType: .typeDirectory)
     }
 }

@@ -723,6 +723,49 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertFalse(model.game.isComplete)
     }
 
+    func testTerminalFallbackSettlesOwnIdentityAcrossColdClockChanges() throws {
+        for offset in [-1, 0, 1] {
+            let fixture = try Fixture()
+            let store = FailingStore()
+            let pack = try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
+                "formatVersion": 1, "id": "daily-classic-en-US-v1", "scheduleVersion": 1,
+                "locale": "en-US", "wordLength": 5, "epochDay": fixture.epochDay,
+                "acceptedGuesses": ["adore", "civic", "stone"], "answers": ["adore", "stone", "civic"]
+            ]))
+            var now = fixture.date(day: fixture.epochDay + 1, seconds: 100)
+            func restore() throws -> DailyClassicModel {
+                try DailyClassicModel(pack: pack, store: store, defaults: fixture.defaults, now: { now })
+            }
+            var model = try restore()
+            fixture.type("stone", into: model)
+            store.historySaveFailures = 100
+            model.submitGuess()
+            let terminal = try XCTUnwrap(store.savedProgress)
+            XCTAssertNotNil(terminal.completion)
+            XCTAssertNil(store.savedHistory)
+            // The durable terminal copy survives even if subsequent fallback writes fail.
+            store.progressSaveFailures = 100
+            now = fixture.date(day: fixture.epochDay + 1 + offset, seconds: 100)
+            for _ in 0..<2 {
+                model = try restore()
+                XCTAssertEqual(model.puzzle.day, terminal.puzzleDay)
+                XCTAssertTrue(model.game.isComplete)
+                XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+                XCTAssertEqual(store.savedProgress, terminal)
+                XCTAssertNil(store.savedHistory)
+            }
+            store.historySaveFailures = 0
+            store.progressSaveFailures = 0
+            XCTAssertTrue(model.retryPersistence())
+            model.refreshForCurrentDay()
+            XCTAssertEqual(model.puzzle.day, fixture.epochDay + 1 + offset)
+            model = try restore()
+            XCTAssertEqual(try store.loadHistory().completedResults.map(\.puzzleID), [terminal.puzzleID])
+            XCTAssertEqual(model.history.statistics.gamesPlayed, 1)
+            XCTAssertEqual(model.game.isComplete, offset == 0)
+        }
+    }
+
     func testAccountTerminalFallbackRolloverPreservesOtherAccountAndGuestFiles() throws {
         let fixture = try Fixture()
         let store = AccountDailyClassicStore(rootDirectory: fixture.directory, userID: UUID())

@@ -17,11 +17,15 @@ final class AccountModel {
     private let didFinishRestoration: @MainActor (RestorationOutcome) -> Void
     private let didCompleteSignedOutIntent: @MainActor () -> Void
     private let service: (any AccountServicing)?
+    private let cleanupJournal: AccountCleanupJournal?
     private let didChangeSession: @MainActor (UUID?) -> Void
     private let didSignOut: @MainActor (UUID) async -> Bool
     private let didDeleteAccount: @MainActor (UUID) async throws -> Void
     private let retryDeletedDailyCleanup: (@MainActor (UUID) async throws -> Void)?
-    private(set) var pendingDeletedDailyUserIDs: Set<UUID> = []
+    private var confirmedDeletions: [UUID: ConfirmedAccountDeletion] = [:]
+    private var deletingUserID: UUID?
+    private var memoryPendingDaily: Set<UUID> = []
+    var pendingDeletedDailyUserIDs: Set<UUID> { memoryPendingDaily.union(cleanupJournal?.dailyUsers ?? []) }
     var canRetryDeletedDailyData: Bool { !pendingDeletedDailyUserIDs.isEmpty && retryDeletedDailyCleanup != nil }
     private var deletedLiveUserIDs: Set<UUID> = []
     private let hasPendingDeletedLiveCleanup: (@MainActor (UUID) -> Bool)?
@@ -58,6 +62,9 @@ final class AccountModel {
 
     var isConfigured: Bool { service != nil }
     var isSignedIn: Bool { session != nil }
+    var allowsAccountSignIn: Bool {
+        authRecovery == nil || authRecovery?.action == .deletionReauthentication || authRecovery?.action == .deletion
+    }
     var needsProfileSetup: Bool { profile?.needsSetup == true }
 
     init(
@@ -68,9 +75,13 @@ final class AccountModel {
         didSignOut: @escaping @MainActor (UUID) async -> Bool = { _ in true },
         didDeleteAccount: @escaping @MainActor (UUID) async throws -> Void = { _ in },
         retryDeletedDailyCleanup: (@MainActor (UUID) async throws -> Void)? = nil,
-        hasPendingDeletedLiveCleanup: (@MainActor (UUID) -> Bool)? = nil
+        hasPendingDeletedLiveCleanup: (@MainActor (UUID) -> Bool)? = nil,
+        cleanupJournal: AccountCleanupJournal? = nil
     ) {
         self.service = service
+        self.cleanupJournal = cleanupJournal
+        memoryPendingDaily = cleanupJournal?.dailyUsers ?? []
+        deletedLiveUserIDs = cleanupJournal?.liveUsers ?? []
         self.didChangeSession = didChangeSession
         self.didFinishRestoration = didFinishRestoration
         self.didCompleteSignedOutIntent = didCompleteSignedOutIntent
@@ -134,6 +145,13 @@ final class AccountModel {
         let outcome: RestorationOutcome
         do {
             let restored = try await service.restoreSession()
+            if let retiredUserID = service.retiredCleanupUserID {
+                try cleanupJournal?.capture(retiredUserID, deleting: false)
+                if cleanupJournal != nil {
+                    let state = await service.retrySignedOutCleanup()
+                    authRecovery = state.recovery
+                }
+            }
             try Task.checkCancellation()
             if restorationSessionGeneration == sessionGeneration, restorationGeneration == restoration {
                 receive(restored)
@@ -182,7 +200,7 @@ final class AccountModel {
             receive(session)
         } catch is CancellationError {
         } catch {
-            presentError("Sign in didn't finish. Try again.")
+            presentSignInFailure(error, fallback: "Sign in didn't finish. Try again.")
         }
     }
 
@@ -197,10 +215,18 @@ final class AccountModel {
             receive(session)
         } catch is CancellationError {
         } catch {
-            presentError("Local sign in didn't finish. Check the local account and try again.")
+            presentSignInFailure(error, fallback: "Local sign in didn't finish. Check the local account and try again.")
         }
     }
     #endif
+
+    private func presentSignInFailure(_ error: any Error, fallback: String) {
+        if (error as? AccountServiceError) == .deletionRequiresSameAccount {
+            presentError("Sign in to the same account that requested deletion. A different account cannot replace its deletion authorization.")
+        } else if (error as? AccountServiceError) == .deletionAuthorizationPending {
+            presentError("Retry the pending account deletion first. A new sign-in cannot replace its original authorization.")
+        } else { presentError(fallback) }
+    }
 
     func retryProfile() async {
         guard let session else { return }
@@ -239,15 +265,20 @@ final class AccountModel {
     }
 
     func signOut() async {
-        guard let service, session != nil || authRecovery?.action == .restore, beginWork() else { return }
-        let effectiveUserID = session?.userID
+        guard let service, session != nil || authRecovery != nil, beginWork() else { return }
+        let effectiveUserID = session?.userID ?? service.pendingDeletionUserID
         restorationSessionGeneration = nil
+        clearAccountState()
+        didChangeSession(nil)
         defer { isWorking = false }
         let outcome = await service.signOut()
         clearAccountState()
         authRecovery = outcome.localRecovery
         let retiredUserID = outcome.retiredUserID ?? effectiveUserID
         let removedRecovery = if let retiredUserID { await didSignOut(retiredUserID) } else { true }
+        if removedRecovery, cleanupJournal != nil, cleanupJournal?.isUnavailable == false {
+            authRecovery = await service.retrySignedOutCleanup().recovery
+        }
         didCompleteSignedOutIntent()
         if outcome.localRecovery != nil {
             presentError("You’re signed out, but saved account credentials need cleanup. Retry account cleanup before signing in again.")
@@ -259,12 +290,23 @@ final class AccountModel {
     }
 
     func retryAuthRecovery() async {
-        guard let service, let authRecovery, beginWork() else { return }
+        guard let service, let authRecovery else { return }
+        if authRecovery.action == .deletion || authRecovery.action == .deletionReauthentication {
+            if let userID = service.pendingDeletionUserID ?? deletingUserID {
+                await deleteAccount(userID: userID, retryCaptured: true)
+            }
+            return
+        }
+        guard beginWork() else { return }
         defer { isWorking = false }
         if authRecovery.action == .restore {
             await restoreSession()
         } else {
             restorationSessionGeneration = nil
+            if let retiredUserID = service.retiredCleanupUserID {
+                do { try cleanupJournal?.capture(retiredUserID, deleting: false) }
+                catch { presentError("Saved cleanup instructions could not be recorded. Restore storage access and retry."); return }
+            }
             let state = await service.retrySignedOutCleanup()
             receiveAuthState(state)
             if state.session == nil { didCompleteSignedOutIntent() }
@@ -273,25 +315,68 @@ final class AccountModel {
     }
 
     func deleteAccount() async {
-        guard let service, let userID = session?.userID, beginWork() else { return }
+        guard let userID = session?.userID ?? deletingUserID ?? service?.pendingDeletionUserID else { return }
+        await deleteAccount(userID: userID)
+    }
+    private func deleteAccount(userID: UUID, retryCaptured: Bool = false) async {
+        guard let service, beginWork() else { return }
         restorationSessionGeneration = nil
+        deletingUserID = userID
         defer { isWorking = false }
         do {
-            let confirmed = try await service.deleteAccount()
+            // Fences are synchronous; a failed intent write must not leave old
+            // account screens/consumers active while preventing remote dispatch.
+            let hidesCurrentAccount = session == nil || session?.userID == userID
+            if hidesCurrentAccount { clearAccountState() }
+            do { if !retryCaptured { try service.prepareAccountDeletion(userID: userID) } }
+            catch { if hidesCurrentAccount { didChangeSession(nil) }; throw error }
+            if hidesCurrentAccount { didChangeSession(nil) }
+            try cleanupJournal?.capture(userID, deleting: true)
+            let confirmed: ConfirmedAccountDeletion
+            if let previous = confirmedDeletions[userID] { confirmed = previous }
+            else {
+                confirmed = retryCaptured ? try await service.retryAccountDeletion(userID: userID)
+                    : try await service.deleteAccount(userID: userID)
+                confirmedDeletions[userID] = confirmed
+            }
+            var durableConfirmation = true
+            do { try cleanupJournal?.confirmDeletion(userID) }
+            catch { durableConfirmation = false; memoryPendingDaily.insert(userID) }
+            memoryPendingDaily.formUnion(cleanupJournal?.dailyUsers ?? [])
+            deletedLiveUserIDs.formUnion(cleanupJournal?.liveUsers ?? [])
             // Remote deletion is already final. Local Auth trouble never skips captured-user cleanup.
             var unknownLocalFailure = false
-            do { try await didDeleteAccount(userID) }
+            do { try await didDeleteAccount(userID); memoryPendingDaily.remove(userID) }
             catch let failure as AccountLocalDeletionFailure {
-                if let userID = failure.dailyCacheUserID { pendingDeletedDailyUserIDs.insert(userID) }
+                if let userID = failure.dailyCacheUserID { memoryPendingDaily.insert(userID) }
+                else { memoryPendingDaily.remove(userID) }
                 if failure.liveRecoveryPending { deletedLiveUserIDs.insert(userID) }
             } catch { unknownLocalFailure = true }
-            clearAccountState()
+            if session == nil || session?.userID == userID { clearAccountState() }
             authRecovery = confirmed.localRecovery
+            // The durable local obligation now owns cleanup independently.
+            do {
+                if durableConfirmation {
+                    try service.acknowledgeAccountDeletion(userID: userID)
+                    confirmedDeletions[userID] = nil
+                    if authRecovery?.action == .deletion { authRecovery = nil }
+                } else {
+                    authRecovery = AccountAuthRecovery(action: .deletion, storageIssue: nil)
+                }
+            }
+            catch { authRecovery = AccountAuthRecovery(action: .deletion, storageIssue: error as? AuthStorageIssue) }
+            if durableConfirmation && authRecovery?.action != .deletion { deletingUserID = nil }
             didCompleteSignedOutIntent()
             presentDeletionRecovery(unknownLocalFailure: unknownLocalFailure)
         } catch is CancellationError {
         } catch {
-            presentError("Your account couldn't be deleted. No local data was removed. Try again.")
+            authRecovery = AccountAuthRecovery(action: service.deletionNeedsReauthentication ? .deletionReauthentication : .deletion,
+                                               storageIssue: error as? AuthStorageIssue)
+            if service.deletionNeedsReauthentication {
+                presentError("Sign in to the same account to finish deletion. The server rejected the original deletion authorization.")
+                return
+            }
+            presentError("Account deletion needs attention. You can keep playing and retry the captured deletion, or sign out on this device.")
         }
     }
 
@@ -302,7 +387,8 @@ final class AccountModel {
         for userID in capturedUsers {
             do {
                 try await retryDeletedDailyCleanup(userID)
-                pendingDeletedDailyUserIDs.remove(userID)
+                try cleanupJournal?.completeDaily(userID)
+                memoryPendingDaily.remove(userID)
             } catch {} // Retain each failed captured account for the next explicit retry.
         }
         presentDeletionRecovery(unknownLocalFailure: false)
@@ -314,6 +400,7 @@ final class AccountModel {
         if !pendingDeletedDailyUserIDs.isEmpty { actions.append("Retry Daily cleanup to remove the deleted account’s saved Daily data.") }
         let hasLiveCleanup = deletedLiveUserIDs.contains { hasPendingDeletedLiveCleanup?($0) ?? true }
         if hasLiveCleanup { actions.append("Open Live Race to retry or discard saved live data.") }
+        if cleanupJournal?.isUnavailable == true { actions.append("Saved cleanup instructions are unavailable. Restore storage access and retry cleanup.") }
         if unknownDeletionCleanupFailure { actions.append("Some local data could not be removed. Use its recovery controls before sharing this device.") }
         return actions.isEmpty ? nil : "Your account was deleted. " + actions.joined(separator: " ")
     }

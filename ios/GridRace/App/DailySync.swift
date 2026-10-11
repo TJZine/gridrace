@@ -518,9 +518,14 @@ enum DailyResultConflictState: Equatable, Sendable {
 }
 
 protocol DailySyncRemote: Sendable {
-    func pull() async throws -> DailyCloudSnapshot
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot
     func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome
     func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome
+}
+
+extension DailySyncRemote {
+    /// Latest progress discovery is used only when no selected durable slot exists.
+    func pull() async throws -> DailyCloudSnapshot { try await pull(puzzleID: nil) }
 }
 
 /// Synchronous invalidation token for an account sync lifecycle. The coordinator
@@ -723,7 +728,7 @@ final class DailySyncEngine {
 
     /// Only immutable completions may supersede an accepted unsaved attempt.
     func authoritativeCompletion(for progress: DailyClassicProgress) async throws -> DailyCompletedResult? {
-        let cloud = try await remote.pull()
+        let cloud = try await remote.pull(puzzleID: progress.puzzleID)
         try Task.checkCancellation()
         guard !lifecycle.isInvalidated, owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
         return cloud.importedResults.map(\.domain).first {
@@ -818,12 +823,23 @@ final class DailySyncEngine {
     func synchronize() async throws -> DailySyncStatus {
         do {
             try Task.checkCancellation()
-            let pulled = try await remote.pull()
+            // The activated model's durable slot owns selection. A different device's
+            // latest day must not evict its accepted rows before upload.
+            let selectedPuzzleID = try store.loadProgress()?.puzzleID
+            let pulled = try await remote.pull(puzzleID: selectedPuzzleID)
             try Task.checkCancellation()
+            guard !lifecycle.isInvalidated, owns(pulled), isValid(pulled) else {
+                throw DailySyncError.invalidCloudData
+            }
             let existingMetadata = try store.loadSyncMetadata()
+            let localProgressBefore = try store.loadProgress()
             let cloud = DailyCloudSnapshot(
                 progress: pulled.progress.flatMap {
-                    existingMetadata.ignoredProgress.contains($0.puzzleID) ? nil : $0
+                    // Selection may have changed while pull was suspended.
+                    if let localProgressBefore, localProgressBefore.puzzleID != $0.puzzleID {
+                        return nil
+                    }
+                    return existingMetadata.ignoredProgress.contains($0.puzzleID) ? nil : $0
                 },
                 importedResults: pulled.importedResults.filter {
                     !existingMetadata.ignoredResults.contains($0.puzzleID)
@@ -831,7 +847,6 @@ final class DailySyncEngine {
             )
             guard !lifecycle.isInvalidated, owns(cloud), isValid(cloud) else { throw DailySyncError.invalidCloudData }
 
-            let localProgressBefore = try store.loadProgress()
             let localHistoryBefore = try store.loadHistory()
             let reconciliation = try DailySyncReconciler.reconcile(
                 localProgress: localProgressBefore,

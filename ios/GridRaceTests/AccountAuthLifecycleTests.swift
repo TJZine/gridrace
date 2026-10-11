@@ -45,6 +45,12 @@ private actor AuthHTTPFixture {
     var expiry: TimeInterval = 3600
     var failsRefresh = false
     var failsRefreshHTTP = false
+    var deletionHeaders: [String] = []
+    var losesDeletionResponses = 0
+    func loseNextDeletionResponse() { losesDeletionResponses += 1 }
+    func deletionAuthorizations() -> [String] { deletionHeaders }
+    var deletionStatus = 200
+    func setDeletionResponse(_ bytes: Data, status: Int) { deletionPayload = bytes; deletionStatus = status }
     var deletionPayload = Data(#"{"data":{"deleted":true}}"#.utf8)
     var profilePayload: Data?
     var profileSavePayload: Data?
@@ -76,12 +82,17 @@ private actor AuthHTTPFixture {
         } == true
         let route = refresh ? "refresh" : url.lastPathComponent
         requests.append(route)
+        if route == "delete-account" { deletionHeaders.append(request.value(forHTTPHeaderField: "Authorization") ?? "") }
         let now = Date(), user = userID, duration = expiry
         let session = Session(accessToken: "synthetic-access-\(requests.count)", tokenType: "bearer", expiresIn: duration,
             expiresAt: now.addingTimeInterval(duration).timeIntervalSince1970,
             refreshToken: "synthetic-refresh-\(requests.count)",
             user: User(id: user, appMetadata: [:], userMetadata: [:], aud: "authenticated", createdAt: now, updatedAt: now))
         if holds.remove(route) != nil { await withCheckedContinuation { pending[route] = $0 } }
+        if route == "delete-account", losesDeletionResponses > 0 {
+            losesDeletionResponses -= 1
+            throw URLError(.networkConnectionLost)
+        }
         if refresh && failsRefreshHTTP {
             return (Data(#"{"error":"synthetic refresh rejection","error_code":"bad_request"}"#.utf8),
                 HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
@@ -90,7 +101,9 @@ private actor AuthHTTPFixture {
         let data: Data
         switch route {
         case "logout": data = Data()
-        case "delete-account": data = deletionPayload
+        case "delete-account":
+            return (deletionPayload, HTTPURLResponse(url: url, statusCode: deletionStatus, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"])!)
         case "create-match":
             data = try JSONSerialization.data(withJSONObject: ["data": ["match_id": user.uuidString]])
         case "profiles":
@@ -174,9 +187,10 @@ final class AccountAuthLifecycleTests: XCTestCase {
             }, clock: clock, sleep: sleep, notificationCenter: notificationCenter,
             beforeChannelRemoval: beforeChannelRemoval)
     }
-    private func wait(_ condition: () async -> Bool) async throws {
+    private func wait(_ condition: @MainActor () async -> Bool) async throws {
         for _ in 0..<500 { if await condition() { return }; try await Task.sleep(for: .milliseconds(2)) }
         XCTFail("Controlled Auth condition did not settle")
+        throw URLError(.timedOut)
     }
     private func login(_ service: SupabaseAccountService) async throws -> AccountSession {
         try await service.signInForLocalTesting(email: "fixture@example.invalid", password: "synthetic")
@@ -823,21 +837,60 @@ extension AccountAuthLifecycleTests {
         _ = await service.signOut()
     }
 
-    func testInvalidDeletionConfirmationKeepsEffectiveAccountAndNeverRunsLocalCleanup() async throws {
+    func testInvalidDeletionConfirmationFencesAccountAndRetainsOriginalOperationUntilConfirmed() async throws {
         for bytes in [Data(#"{"data":{"deleted":false}}"#.utf8), Data("{}".utf8)] {
-            let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
-            let original = try await login(service)
+            let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+            let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+            let service = service(http, storage: storage, host: host)
+            let original = try await login(service), originalLease = try service.activeBinding()
             await http.setDeletionPayload(bytes)
             var deleted: [UUID] = []
             let model = AccountModel(service: service, didDeleteAccount: { deleted.append($0) })
             await model.start()
             try await wait { model.session?.userID == original.userID }
-            await model.deleteAccount()
-            XCTAssertTrue(deleted.isEmpty)
-            XCTAssertEqual(model.session?.userID, original.userID)
-            XCTAssertEqual(try service.activeBinding().userID, original.userID)
+            await http.hold("delete-account")
+            let deleting = Task { await model.deleteAccount() }
+            try await wait { await http.suspended("delete-account") }
+            let captured = try XCTUnwrap(storage.retrieve(key: service.deletionKey))
+            let capturedObject = try JSONSerialization.jsonObject(with: captured)
+            let canonicalCaptured = try JSONSerialization.data(withJSONObject: capturedObject, options: .sortedKeys)
+            await http.release("delete-account")
+            await deleting.value
+            XCTAssertTrue(deleted.isEmpty, "An invalid response must never acknowledge remote deletion")
+            XCTAssertNil(model.session, "An invalid response cannot establish continued account authority")
+            XCTAssertThrowsError(try service.activeBinding())
+            XCTAssertThrowsError(try originalLease.check())
             XCTAssertNotNil(try storage.retrieve(key: service.sessionKey))
-            XCTAssertTrue(model.errorMessage?.contains("No local data was removed") == true)
+            XCTAssertEqual(model.authRecovery?.action, .deletion)
+            XCTAssertTrue(model.errorMessage?.contains("deletion needs attention") == true)
+            await model.retryAuthRecovery() // A second invalid response stays uncertain.
+            XCTAssertTrue(deleted.isEmpty)
+            let cold = self.service(http, storage: storage, host: host)
+            let coldModel = AccountModel(service: cold, didDeleteAccount: { deleted.append($0) })
+            await coldModel.start()
+            try await wait { coldModel.authRecovery?.action == .deletion }
+            XCTAssertNil(coldModel.session)
+            XCTAssertThrowsError(try cold.activeBinding())
+            XCTAssertEqual(coldModel.authRecovery?.action, .deletion)
+            await coldModel.retryAuthRecovery() // Invalid confirmation survives cold restoration.
+            XCTAssertTrue(deleted.isEmpty)
+            let retained = try XCTUnwrap(storage.retrieve(key: cold.deletionKey))
+            let retainedObject = try JSONSerialization.jsonObject(with: retained)
+            let canonicalRetained = try JSONSerialization.data(withJSONObject: retainedObject, options: .sortedKeys)
+            XCTAssertTrue(canonicalCaptured == canonicalRetained, "Compare operation identity privately, without printing its bearer")
+            await http.setDeletionPayload(Data(#"{"data":{"deleted":true}}"#.utf8))
+            await coldModel.retryAuthRecovery()
+            XCTAssertEqual(deleted, [original.userID])
+            XCTAssertNil(try storage.retrieve(key: cold.deletionKey))
+            await coldModel.retryAuthRecovery()
+            XCTAssertEqual(deleted, [original.userID], "Confirmed local handoff must run only once")
+            let headers = await http.deletionAuthorizations()
+            XCTAssertEqual(headers.count, 4)
+            let firstHeader = try XCTUnwrap(headers.first)
+            XCTAssertFalse(firstHeader.isEmpty)
+            XCTAssertTrue(headers.allSatisfy { $0 == firstHeader }, "Invalid responses must never replace captured authorization")
+            let signIns = await http.count("token")
+            XCTAssertEqual(signIns, 1)
             _ = await service.signOut()
         }
     }
@@ -986,5 +1039,585 @@ extension AccountAuthLifecycleTests {
         let saved = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: service.sessionKey)))
         XCTAssertEqual(saved.user.id, next)
         _ = await service.signOut()
+    }
+}
+
+@MainActor
+extension AccountAuthLifecycleTests {
+    func testDeletionRetryPreservesCapturedHeaderWithAndWithoutIssuedRefresh() async throws {
+        for refresh in [false, true] {
+            let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+            let user = try await login(service)
+            let lease = try service.activeBinding()
+            var refreshing: Task<AccountSession?, Error>?
+            if refresh {
+                await http.hold("refresh")
+                refreshing = Task { try await service.refreshSession() }
+                try await wait { await http.suspended("refresh") }
+            }
+            await http.loseNextDeletionResponse()
+            do { _ = try await service.deleteAccount(); XCTFail("Expected controlled loss") } catch {}
+            XCTAssertThrowsError(try lease.check(), "Pending deletion fences every old consumer")
+            if refresh {
+                await http.release("refresh")
+                do { _ = try await refreshing?.value; XCTFail("Refresh cannot reactivate deleting A") }
+                catch is CancellationError {}
+            }
+            let confirmed = try await service.deleteAccount()
+            XCTAssertNil(confirmed.localRecovery)
+            let headers = await http.deletionAuthorizations()
+            XCTAssertEqual(headers.count, 2)
+            XCTAssertFalse(headers[0].isEmpty)
+            XCTAssertTrue(headers[0] == headers[1], "Compare privately; never print bearer values")
+            try service.acknowledgeAccountDeletion(userID: user.userID)
+            XCTAssertNil(try storage.retrieve(key: service.deletionKey))
+        }
+    }
+
+    func testDeletionSecureWriteFailureStopsDispatchAndRetryPersistsBeforeSending() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let user = try await login(service), lease = try service.activeBinding()
+        storage.fail(.store, key: service.deletionKey)
+        do { _ = try await service.deleteAccount(); XCTFail("Secure write failure accepted") } catch {}
+        let count = await http.count("delete-account")
+        XCTAssertEqual(count, 0)
+        XCTAssertThrowsError(try lease.check())
+        storage.recover()
+        _ = try await service.deleteAccount()
+        try service.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testUncertainDeletionColdRestoreKeepsAuthorizationWithoutConsumerLease() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let user = try await login(first)
+        await http.loseNextDeletionResponse()
+        do { _ = try await first.deleteAccount(); XCTFail("Expected response loss") } catch {}
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        XCTAssertEqual(cold.pendingDeletionUserID, user.userID)
+        XCTAssertThrowsError(try cold.activeBinding())
+        _ = try await cold.deleteAccount()
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] == headers[1])
+        try cold.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testConfirmedSecureWriteFailureAndColdReadFailureRetainOriginalRecovery() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let user = try await login(first)
+        await http.hold("delete-account")
+        let deleting = Task { try await first.deleteAccount() }
+        try await wait { await http.suspended("delete-account") }
+        storage.fail(.store, key: first.deletionKey)
+        await http.release("delete-account")
+        let confirmed = try await deleting.value
+        XCTAssertEqual(confirmed.localRecovery?.action, .deletion)
+        storage.recover()
+        // In-memory confirmation retires securely without another remote request.
+        _ = try await first.deleteAccount()
+        let count = await http.count("delete-account")
+        XCTAssertEqual(count, 1)
+        storage.fail(.read, key: first.deletionKey)
+        let cold = service(http, storage: storage, host: host)
+        do { _ = try await cold.restoreSession(); XCTFail("Unavailable secure record was ignored") } catch {}
+        XCTAssertThrowsError(try cold.activeBinding())
+        storage.recover()
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        XCTAssertEqual(cold.pendingDeletionUserID, user.userID)
+        _ = try await cold.deleteAccount()
+        let afterCold = await http.count("delete-account")
+        XCTAssertEqual(afterCold, 1, "Persisted confirmed state never repeats server deletion")
+        try cold.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testColdOriginalDeletionDoesNotHideOrRetireLaterAccountCredentials() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let original = try await login(first)
+        await http.loseNextDeletionResponse()
+        do { _ = try await first.deleteAccount(); XCTFail("Expected loss") } catch {}
+        _ = await first.signOut()
+        let later = UUID()
+        await http.setUser(later)
+        _ = try await login(first)
+        let savedLater = try XCTUnwrap(storage.retrieve(key: first.sessionKey))
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertEqual(restored?.userID, later)
+        _ = try await cold.deleteAccount(userID: original.userID)
+        XCTAssertEqual(try cold.activeBinding().userID, later)
+        XCTAssertTrue(try storage.retrieve(key: cold.sessionKey) == savedLater)
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] == headers[1])
+        try cold.acknowledgeAccountDeletion(userID: original.userID)
+        XCTAssertEqual(try cold.activeBinding().userID, later)
+        _ = await cold.signOut()
+    }
+
+    func testExpiredMissingReceiptRequiresExplicitSameAccountProofAcrossColdRestore() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let original = try await login(first)
+        let sdkSession = try XCTUnwrap(try first.activeBinding().lifetime.client.auth.currentSession)
+        await http.loseNextDeletionResponse() // Synthetic no-delivery uncertainty, no receipt.
+        do { _ = try await first.deleteAccount(); XCTFail("Expected uncertainty") } catch {}
+        let expired = Session(accessToken: sdkSession.accessToken, tokenType: sdkSession.tokenType,
+            expiresIn: sdkSession.expiresIn, expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970,
+            refreshToken: sdkSession.refreshToken, user: sdkSession.user)
+        try storage.store(key: first.sessionKey, value: JSONEncoder().encode(expired))
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        XCTAssertFalse(cold.deletionNeedsReauthentication, "Device expiry is not missing-receipt proof")
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        do { _ = try await cold.deleteAccount(); XCTFail("Original authorization should be rejected") }
+        catch { XCTAssertEqual(error as? AccountServiceError, .deletionRequiresSameAccount) }
+        XCTAssertTrue(cold.deletionNeedsReauthentication)
+        let originalHeaders = await http.deletionAuthorizations()
+        XCTAssertEqual(originalHeaders.count, 2)
+        XCTAssertTrue(originalHeaders[0] == originalHeaders[1])
+        let afterRejection = service(http, storage: storage, host: host)
+        let coldRejectedSession = try await afterRejection.restoreSession()
+        XCTAssertNil(coldRejectedSession)
+        XCTAssertTrue(afterRejection.deletionNeedsReauthentication)
+        let later = UUID()
+        await http.setUser(later)
+        let signedInB = try await login(afterRejection)
+        XCTAssertEqual(signedInB.userID, later)
+        do { _ = try await afterRejection.deleteAccount(userID: original.userID); XCTFail("B cannot replace A's rejected operation") }
+        catch { XCTAssertEqual(error as? AccountServiceError, .deletionRequiresSameAccount) }
+        XCTAssertEqual(afterRejection.pendingDeletionUserID, original.userID)
+        XCTAssertTrue(afterRejection.deletionNeedsReauthentication)
+        XCTAssertEqual(try afterRejection.activeBinding().userID, later)
+        _ = await afterRejection.signOut()
+        await http.setUser(original.userID)
+        let fresh = try await login(afterRejection)
+        XCTAssertEqual(fresh.userID, original.userID)
+        XCTAssertEqual(try afterRejection.activeBinding().userID, original.userID)
+        let requestsBeforeExplicitDelete = await http.count("delete-account")
+        XCTAssertEqual(requestsBeforeExplicitDelete, 2, "Fresh sign-in must not dispatch deletion")
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        _ = try await afterRejection.deleteAccount()
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 3)
+        XCTAssertTrue(headers[0] != headers[2], "Only explicit new operation uses fresh same-A proof")
+        try afterRejection.acknowledgeAccountDeletion(userID: original.userID)
+    }
+
+    func testTypedDeletionReauthenticationModelEnablesSameAccountSignInWithoutAutomaticDelete() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let user = try await login(service)
+        var cleaned: [UUID] = []
+        let model = AccountModel(service: service, didDeleteAccount: { cleaned.append($0) })
+        await model.start()
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        await model.deleteAccount()
+        XCTAssertNil(model.session)
+        XCTAssertEqual(model.authRecovery?.action, .deletionReauthentication)
+        XCTAssertTrue(model.allowsAccountSignIn)
+        XCTAssertTrue(cleaned.isEmpty)
+        await model.signInForLocalTesting(email: "fixture@example.invalid", password: "synthetic")
+        XCTAssertEqual(model.session?.userID, user.userID)
+        let beforeExplicitDelete = await http.count("delete-account")
+        XCTAssertEqual(beforeExplicitDelete, 1)
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        await model.deleteAccount()
+        XCTAssertEqual(cleaned, [user.userID])
+        XCTAssertNil(model.session)
+        XCTAssertNil(model.authRecovery)
+        XCTAssertNil(try storage.retrieve(key: service.deletionKey))
+    }
+
+    func testExpiredCommittedReceiptKeepsOriginalAuthorizationAcrossColdRestore() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let user = try await login(first)
+        let original = try XCTUnwrap(try first.activeBinding().lifetime.client.auth.currentSession)
+        await http.loseNextDeletionResponse()
+        do { _ = try await first.deleteAccount(); XCTFail("Expected lost response") } catch {}
+        let expired = Session(accessToken: original.accessToken, tokenType: original.tokenType,
+            expiresIn: original.expiresIn, expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970,
+            refreshToken: original.refreshToken, user: original.user)
+        try storage.store(key: first.sessionKey, value: JSONEncoder().encode(expired))
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        _ = try await cold.deleteAccount() // Success receipt is authoritative before Auth expiry.
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] == headers[1])
+        XCTAssertFalse(cold.deletionNeedsReauthentication)
+        try cold.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testGeneric401AndFailedTypedRejectionPersistenceNeverPermitBearerReplacement() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let user = try await login(service)
+        await http.setDeletionResponse(Data(#"{"message":"Unauthorized"}"#.utf8), status: 401)
+        do { _ = try await service.deleteAccount(); XCTFail("Expected generic rejection") } catch {}
+        XCTAssertFalse(service.deletionNeedsReauthentication)
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        await http.hold("delete-account")
+        let rejected = Task { try await service.deleteAccount() }
+        try await wait { await http.suspended("delete-account") }
+        storage.fail(.store, key: service.deletionKey)
+        await http.release("delete-account")
+        do { _ = try await rejected.value; XCTFail("Undurable rejection accepted") } catch {}
+        XCTAssertFalse(service.deletionNeedsReauthentication)
+        storage.recover()
+        do { _ = try await service.deleteAccount(); XCTFail("Expected typed rejection") } catch {}
+        XCTAssertTrue(service.deletionNeedsReauthentication)
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 3)
+        XCTAssertTrue(headers[0] == headers[1] && headers[1] == headers[2])
+        XCTAssertEqual(service.pendingDeletionUserID, user.userID)
+        _ = await service.signOut()
+        XCTAssertTrue(service.deletionNeedsReauthentication, "Sign-out must retain authoritative rejection scope")
+        await http.setUser(user.userID)
+        _ = try await login(service)
+        let priorRecord = try storage.retrieve(key: service.deletionKey)
+        storage.fail(.store, key: service.deletionKey)
+        do { _ = try await service.deleteAccount(); XCTFail("Undurable fresh operation dispatched") } catch {}
+        XCTAssertTrue(service.deletionNeedsReauthentication)
+        XCTAssertTrue(try storage.retrieve(key: service.deletionKey) == priorRecord)
+        let beforeRetry = await http.count("delete-account")
+        XCTAssertEqual(beforeRetry, 3)
+        storage.recover()
+        _ = await service.signOut()
+        _ = try await login(service)
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        _ = try await service.deleteAccount()
+        try service.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testUncertainAAllowsBModelOwnDeletionAndAcknowledgmentRetainsAThroughColdRecovery() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let service = service(http, storage: storage, host: host)
+        let original = try await login(service)
+        await http.loseNextDeletionResponse()
+        do { _ = try await service.deleteAccount(); XCTFail("Expected A uncertainty") } catch {}
+        let capturedABytes = try XCTUnwrap(storage.retrieve(key: service.deletionKey))
+        _ = await service.signOut()
+        let later = UUID()
+        await http.setUser(later)
+        _ = try await login(service)
+        var cleaned: [UUID] = []
+        let model = AccountModel(service: service, didDeleteAccount: { cleaned.append($0) })
+        await model.start()
+        XCTAssertEqual(model.session?.userID, later)
+        await model.deleteAccount()
+        XCTAssertEqual(cleaned, [later], "Current B's Delete action must never target captured A")
+        XCTAssertNil(model.session)
+        let remaining = try XCTUnwrap(storage.retrieve(key: service.deletionKey))
+        let document = try XCTUnwrap(JSONSerialization.jsonObject(with: remaining) as? [String: Any])
+        let records = try XCTUnwrap(document["records"] as? [[String: Any]])
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0]["userID"] as? String, original.userID.uuidString)
+        let before = try XCTUnwrap(JSONSerialization.jsonObject(with: capturedABytes) as? [String: Any])
+        let originalRecords = try XCTUnwrap(before["records"] as? [[String: Any]])
+        XCTAssertTrue(records[0]["bearer"] as? String == originalRecords[0]["bearer"] as? String)
+        let cold = self.service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        XCTAssertEqual(cold.pendingDeletionUserID, original.userID)
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        do { _ = try await cold.deleteAccount(userID: original.userID); XCTFail("Expected missing A receipt") } catch {}
+        XCTAssertTrue(cold.deletionNeedsReauthentication)
+        await http.setUser(original.userID)
+        _ = try await login(cold)
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        _ = try await cold.deleteAccount(userID: original.userID)
+        try cold.acknowledgeAccountDeletion(userID: original.userID)
+        XCTAssertNil(try storage.retrieve(key: cold.deletionKey))
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 4)
+        XCTAssertTrue(headers[0] != headers[1]) // B's own authorization.
+        XCTAssertTrue(headers[0] == headers[2]) // Original A receipt lookup.
+        XCTAssertTrue(headers[0] != headers[3]) // Explicit fresh same-A operation.
+    }
+
+    func testHeldADeletionNeverSuppliesBConfirmationOrLosesEitherSecureRecord() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let original = try await login(service)
+        await http.hold("delete-account")
+        let deletingA = Task { try await service.deleteAccount(userID: original.userID) }
+        try await wait { await http.suspended("delete-account") }
+        _ = await service.signOut()
+        let later = UUID()
+        await http.setUser(later)
+        _ = try await login(service)
+        _ = try await service.deleteAccount(userID: later)
+        let beforeARelease = await http.count("delete-account")
+        XCTAssertEqual(beforeARelease, 2, "B needs its own dispatch, not A's held task")
+        try service.acknowledgeAccountDeletion(userID: later)
+        XCTAssertEqual(service.pendingDeletionUserID, original.userID)
+        await http.release("delete-account")
+        _ = try await deletingA.value
+        try service.acknowledgeAccountDeletion(userID: original.userID)
+        XCTAssertNil(try storage.retrieve(key: service.deletionKey))
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] != headers[1])
+    }
+
+    func testLegacySingleSecureDeletionRecordMigratesWithoutChangingOriginalAuthorization() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let user = try await login(first)
+        await http.loseNextDeletionResponse()
+        do { _ = try await first.deleteAccount(); XCTFail("Expected response loss") } catch {}
+        let bytes = try XCTUnwrap(storage.retrieve(key: first.deletionKey))
+        let document = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        let legacy = try XCTUnwrap((document["records"] as? [[String: Any]])?.first)
+        try storage.store(key: first.deletionKey, value: JSONSerialization.data(withJSONObject: legacy))
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertNil(restored)
+        _ = try await cold.deleteAccount(userID: user.userID)
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] == headers[1])
+        try cold.acknowledgeAccountDeletion(userID: user.userID)
+    }
+
+    func testLatePredecessorReceiptSurvivesSuccessorAndColdRestoreWithoutRetiringB() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let first = service(http, storage: storage, host: host)
+        let original = try await login(first)
+        // Synthetic accepted-but-not-yet-committed predecessor. The controller's
+        // independent real backend lock race establishes that server premise.
+        await http.loseNextDeletionResponse()
+        do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Expected lost response") } catch {}
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Expected typed missing-auth observation") } catch {}
+        XCTAssertTrue(first.deletionNeedsReauthentication)
+        await http.setUser(original.userID)
+        _ = try await login(first)
+        try first.prepareAccountDeletion(userID: original.userID)
+        // The old accepted request now commits; the successor has no receipt and
+        // its Auth identity is already deleted, so only the predecessor can recover.
+        do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Successor should lack Auth") } catch {}
+        let later = UUID()
+        await http.setUser(later)
+        _ = try await login(first)
+        let savedB = try XCTUnwrap(storage.retrieve(key: first.sessionKey))
+        let cold = service(http, storage: storage, host: host)
+        let restored = try await cold.restoreSession()
+        XCTAssertEqual(restored?.userID, later)
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        _ = try await cold.retryAccountDeletion(userID: original.userID)
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 4)
+        XCTAssertTrue(headers[0] == headers[1])
+        XCTAssertTrue(headers[0] != headers[2])
+        XCTAssertTrue(headers[0] == headers[3], "Cold receipt check must retain the predecessor authorization")
+        XCTAssertEqual(try cold.activeBinding().userID, later)
+        XCTAssertTrue(try storage.retrieve(key: cold.sessionKey) == savedB)
+        let document = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(storage.retrieve(key: cold.deletionKey))) as? [String: Any])
+        let record = try XCTUnwrap((document["records"] as? [[String: Any]])?.first)
+        XCTAssertEqual(record["confirmed"] as? Bool, true)
+        XCTAssertEqual((record["predecessors"] as? [[String: Any]])?.count, 1,
+                       "Confirmed ancestry stays secure until durable local handoff")
+        storage.fail(.remove, key: cold.deletionKey)
+        XCTAssertThrowsError(try cold.acknowledgeAccountDeletion(userID: original.userID))
+        storage.recover()
+        try cold.acknowledgeAccountDeletion(userID: original.userID)
+        XCTAssertNil(try storage.retrieve(key: cold.deletionKey))
+        XCTAssertEqual(try cold.activeBinding().userID, later)
+        _ = await cold.signOut()
+    }
+
+    func testTypedRejectionStillAllowsExplicitCapturedReceiptCheckWithoutFreshSignIn() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let user = try await login(service)
+        var cleaned: [UUID] = []
+        let model = AccountModel(service: service, didDeleteAccount: { cleaned.append($0) })
+        await model.start()
+        await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
+        await model.deleteAccount()
+        XCTAssertEqual(model.authRecovery?.action, .deletionReauthentication)
+        await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
+        await model.retryAuthRecovery() // The predecessor committed after rejection.
+        XCTAssertEqual(cleaned, [user.userID])
+        let signIns = await http.count("token")
+        XCTAssertEqual(signIns, 1)
+        let headers = await http.deletionAuthorizations()
+        XCTAssertEqual(headers.count, 2)
+        XCTAssertTrue(headers[0] == headers[1])
+        XCTAssertNil(try storage.retrieve(key: service.deletionKey))
+    }
+
+    func testConcurrentDeletionAndCancellationShareOneDispatchAndRetainConfirmation() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
+        let user = try await login(service)
+        await http.hold("delete-account")
+        let first = Task { try await service.deleteAccount() }
+        try await wait { await http.suspended("delete-account") }
+        let second = Task { try await service.deleteAccount() }
+        first.cancel()
+        await http.release("delete-account")
+        _ = try await first.value
+        _ = try await second.value
+        let count = await http.count("delete-account")
+        XCTAssertEqual(count, 1)
+        _ = try await service.deleteAccount() // Confirmed local retry performs no network mutation.
+        let after = await http.count("delete-account")
+        XCTAssertEqual(after, 1)
+        storage.fail(.remove, key: service.deletionKey)
+        XCTAssertThrowsError(try service.acknowledgeAccountDeletion(userID: user.userID))
+        storage.recover()
+        try service.acknowledgeAccountDeletion(userID: user.userID)
+    }
+}
+
+/// Real local upstream responses, with only response delivery under test control.
+/// Neither credentials nor headers enter diagnostic output or ordinary files.
+private actor DeletionReceiptProxy {
+    private let upstream = URLSession(configuration: .ephemeral)
+    private var refreshContinuation: CheckedContinuation<Void, Never>?
+    private var heldRefresh = false
+    private var deletionHeaders: [String] = []
+    private var droppedCommittedResponse = false
+    private var refreshChangedBearer = false
+    private var initialBearer: String?
+    func isRefreshHeld() -> Bool { heldRefresh }
+    func releaseRefresh() { refreshContinuation?.resume(); refreshContinuation = nil }
+    func proof() -> (same: Bool, count: Int, dropped: Bool, refreshed: Bool) {
+        (deletionHeaders.count == 2 && !deletionHeaders[0].isEmpty && deletionHeaders[0] == deletionHeaders[1],
+         deletionHeaders.count, droppedCommittedResponse, refreshChangedBearer)
+    }
+    func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        // URLSession may represent a body as a stream at this boundary.
+        var forwarded = request
+        if forwarded.httpBody == nil, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var bytes = Data(), buffer = [UInt8](repeating: 0, count: 1024)
+            while true {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count < 0 { throw stream.streamError ?? URLError(.cannotDecodeRawData) }
+                if count == 0 { break }
+                bytes.append(contentsOf: buffer.prefix(count))
+            }
+            forwarded.httpBodyStream = nil
+            forwarded.httpBody = bytes
+        }
+        let url = request.url!
+        let refresh = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains {
+            $0.name == "grant_type" && $0.value == "refresh_token"
+        } == true
+        let deletion = url.lastPathComponent == "delete-account"
+        if deletion {
+            let header = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            deletionHeaders.append(header)
+            initialBearer = header
+        }
+        let result = try await upstream.data(for: forwarded)
+        if refresh {
+            guard let response = result.1 as? HTTPURLResponse, response.statusCode == 200,
+                  let body = try JSONSerialization.jsonObject(with: result.0) as? [String: Any],
+                  let issued = body["access_token"] as? String else { throw ProbeFailure.refreshRejected }
+            heldRefresh = true
+            await withCheckedContinuation { refreshContinuation = $0 }
+            refreshChangedBearer = initialBearer != nil && initialBearer != "Bearer " + issued
+        }
+        if deletion, !droppedCommittedResponse {
+            guard let response = result.1 as? HTTPURLResponse, response.statusCode == 200,
+                  let body = try JSONSerialization.jsonObject(with: result.0) as? [String: Any],
+                  let data = body["data"] as? [String: Any], data["deleted"] as? Bool == true else {
+                throw ProbeFailure.deletionRejected
+            }
+            droppedCommittedResponse = true
+            throw URLError(.networkConnectionLost)
+        }
+        return result
+    }
+    private enum ProbeFailure: Error { case refreshRejected, deletionRejected }
+}
+
+private final class DeletionReceiptProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var fixture: (origin: String, proxy: DeletionReceiptProxy)?
+    private var loading: Task<Void, Never>?
+    static func install(origin: String, proxy: DeletionReceiptProxy) { lock.withLock { fixture = (origin, proxy) } }
+    static func uninstall() { lock.withLock { fixture = nil } }
+    override class func canInit(with request: URLRequest) -> Bool {
+        lock.withLock { fixture.map { request.url?.absoluteString.hasPrefix($0.origin + "/") == true } ?? false }
+    }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let proxy = Self.lock.withLock({ Self.fixture?.proxy }) else { return }
+        let outgoing = request
+        loading = Task { @Sendable [self, proxy, outgoing] in
+            do {
+                let (data, response) = try await proxy.fetch(outgoing)
+                self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                self.client?.urlProtocol(self, didLoad: data)
+                self.client?.urlProtocolDidFinishLoading(self)
+            } catch { self.client?.urlProtocol(self, didFailWithError: error) }
+        }
+    }
+    override func stopLoading() { loading?.cancel() }
+}
+
+@MainActor
+extension AccountAuthLifecycleTests {
+    func testLocalCommittedDeletionReceiptAfterLostResponseAndIssuedRefreshWhenConfigured() async throws {
+        let admission = try LocalIntegrationAdmission.admit(environment: ProcessInfo.processInfo.environment, purpose: .daily)
+        let proxy = DeletionReceiptProxy()
+        DeletionReceiptProtocol.install(origin: admission.configuration.projectURL.absoluteString, proxy: proxy)
+        defer { DeletionReceiptProtocol.uninstall() }
+        // Memory here deliberately isolates this admitted disposable user's secrets
+        // from the simulator's persistent Keychain. Production uses SecureAuthStorage.
+        let service = SupabaseAccountService(configuration: admission.configuration, storage: AuthMemoryStorage(), network: {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [DeletionReceiptProtocol.self]
+            return URLSession(configuration: configuration)
+        })
+        let user = try await service.signInForLocalTesting(email: admission.email, password: admission.password)
+        do { try admission.validateIdentity(user.userID) }
+        catch { _ = await service.signOut(); throw error }
+        // Auth may mint identical JWT claims within one second. Require a truly
+        // distinct already-issued credential for this receipt-identity proof.
+        try await Task.sleep(for: .seconds(1.1))
+        let refresh = Task { try await service.refreshSession() }
+        do {
+            try await wait { await proxy.isRefreshHeld() }
+            do { _ = try await service.deleteAccount(); XCTFail("Committed first response was not lost") }
+            catch let error as URLError { XCTAssertEqual(error.code, .networkConnectionLost) }
+            await proxy.releaseRefresh()
+            do { _ = try await refresh.value; XCTFail("Deleting consumer regained authority") }
+            catch is CancellationError {}
+            _ = try await service.deleteAccount()
+            let proof = await proxy.proof()
+            XCTAssertEqual(proof.count, 2)
+            XCTAssertTrue(proof.same)
+            XCTAssertTrue(proof.dropped)
+            XCTAssertTrue(proof.refreshed)
+            guard proof.count == 2, proof.same, proof.dropped, proof.refreshed else {
+                throw AccountServiceError.invalidResponse
+            }
+            try service.acknowledgeAccountDeletion(userID: user.userID)
+            print("GRIDRACE_P4_ORIGINAL_BEARER_RECEIPT_PASS")
+        } catch {
+            await proxy.releaseRefresh()
+            refresh.cancel()
+            _ = await service.signOut()
+            throw error
+        }
     }
 }

@@ -146,6 +146,17 @@ durably clear live recovery, former-account Daily/account data stays hidden and 
 shows the Live row's “Resolve” action, which opens Live for retry or confirmed
 discard.
 
+Uncertain account deletion exposes Retry account deletion and a local sign-out
+escape. A validated authentication rejection exposes Check pending account deletion
+and explains how to sign in to the same account before explicitly choosing Delete
+account again. Sign-in alone never deletes. Captured older receipt authorization
+survives that renewal; a later account's sign-in and own deletion stay independent.
+Confirmed deletion with local file failures exposes separate scoped cleanup retries,
+including after a cold signed-out launch. These retries preserve guest and later
+account data. Startup recovery also keeps its complete diagnosis and controls in a
+vertical scroll view at constrained accessibility sizes; the guest reset remains
+limited to the two guest Daily entries.
+
 ### Onboarding and tutorial
 
 Explain the promise before play: everyone solves the same answer, but opponent

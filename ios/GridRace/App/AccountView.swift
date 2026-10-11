@@ -31,22 +31,46 @@ struct AccountView: View {
     @State private var localPassword = ""
     #endif
 
+    private func recoveryHeading(_ action: AccountAuthRecovery.Action) -> String {
+        switch action {
+        case .restore: "Account restoration needs attention"
+        case .cleanup: "Saved account credentials need cleanup"
+        case .deletion: "Account deletion needs attention"
+        case .deletionReauthentication: "Sign in to finish account deletion"
+        }
+    }
+
+    private func recoveryButton(_ action: AccountAuthRecovery.Action) -> String {
+        switch action {
+        case .restore: "Retry account restore"
+        case .cleanup: "Retry account cleanup"
+        case .deletion: "Retry account deletion"
+        case .deletionReauthentication: "Check pending account deletion"
+        }
+    }
+
     var body: some View {
         List {
             if let recovery = model.authRecovery {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(recovery.action == .restore ? "Account restoration needs attention" : "Saved account credentials need cleanup")
+                        Text(recoveryHeading(recovery.action))
                             .font(StampType.heading)
                         Text("Daily Classic remains available on this device.")
                             .foregroundStyle(Color.secondaryInk)
-                        Button(recovery.action == .restore ? "Retry account restore" : "Retry account cleanup") {
+                        if recovery.action == .deletionReauthentication {
+                            Text(model.isSignedIn
+                                 ? "You can check the captured deletion now. To renew its authorization, sign out on this device and sign in to the account that requested deletion."
+                                 : "You can check the captured deletion now, or sign in to the same account below and choose Delete account to renew its authorization.")
+                                .foregroundStyle(Color.secondaryInk)
+                        }
+                        Button(recoveryButton(recovery.action)) {
                             run { await model.retryAuthRecovery() }
                         }
                         .buttonStyle(OutlinedInkButtonStyle())
                         .disabled(model.isWorking)
                         .frame(minHeight: 44)
-                        if recovery.action == .restore {
+                        if recovery.action == .restore || recovery.action == .deletion || recovery.action == .deletionReauthentication {
                             Button("Sign out on this device") { run { await model.signOut() } }
                                 .buttonStyle(OutlinedInkButtonStyle())
                                 .disabled(model.isWorking)
@@ -186,7 +210,7 @@ struct AccountView: View {
                 }
                 .signInWithAppleButtonStyle(.black)
                 .frame(height: 50)
-                .disabled(model.isWorking || model.authRecovery != nil)
+                .disabled(model.isWorking || !model.allowsAccountSignIn)
                 .accessibilityHint("Signs in to save and synchronize your personal GridRace progress")
 
                 Text("Your email is never shown to other players.")
@@ -218,7 +242,7 @@ struct AccountView: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(OutlinedInkButtonStyle())
-                    .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking || model.authRecovery != nil)
+                    .disabled(localEmail.isEmpty || localPassword.isEmpty || model.isWorking || !model.allowsAccountSignIn)
                 }
                 .textFieldStyle(.roundedBorder)
                 .padding(.top, 8)

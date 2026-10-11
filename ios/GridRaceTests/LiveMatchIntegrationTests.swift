@@ -6,36 +6,16 @@ import XCTest
 final class LiveMatchIntegrationTests: XCTestCase {
     func testTwoClientProcess() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["GRIDRACE_LOCAL_INTEGRATION"] == "1",
-              let role = environment["GRIDRACE_LIVE_ROLE"],
-              let scenario = environment["GRIDRACE_LIVE_SCENARIO"],
-              let email = environment["GRIDRACE_LIVE_EMAIL"],
-              let password = environment["GRIDRACE_LIVE_PASSWORD"],
-              let failedGuess = environment["GRIDRACE_LIVE_FAILED_GUESS"],
-              let url = environment["GRIDRACE_LOCAL_SUPABASE_URL"],
-              let key = environment["GRIDRACE_LOCAL_SUPABASE_KEY"]
-        else {
-            throw XCTSkip(
-                "P4-V requires GRIDRACE_LOCAL_INTEGRATION=1 and the host orchestration environment"
-            )
-        }
-        XCTAssertTrue(environment["SERVICE_ROLE_KEY"] == nil)
-        XCTAssertTrue(environment["SUPABASE_SERVICE_ROLE_KEY"] == nil)
-        XCTAssertTrue(environment["SUPABASE_SECRET_KEY"] == nil)
-        XCTAssertTrue(environment["DB_URL"] == nil)
-        XCTAssertTrue(environment["JWT_SECRET"] == nil)
-
-        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
-            urlString: url,
-            publishableKey: key
-        ))
-        XCTAssertTrue(["127.0.0.1", "localhost"].contains(configuration.projectURL.host()))
-        let account = SupabaseAccountService(configuration: configuration)
-        let signedIn = try await account.signInForLocalTesting(email: email, password: password)
-        let count = Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? "1") ?? 0
-        let target = Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? "1") ?? 0
-        XCTAssertTrue([1, 3, 5].contains(count))
-        XCTAssertTrue((1...count).contains(target))
+        let admission = try LocalIntegrationAdmission.admit(environment: environment, purpose: .live)
+        let role = try XCTUnwrap(environment["GRIDRACE_LIVE_ROLE"])
+        let scenario = try XCTUnwrap(environment["GRIDRACE_LIVE_SCENARIO"])
+        let failedGuess = try XCTUnwrap(environment["GRIDRACE_LIVE_FAILED_GUESS"])
+        let count = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? ""))
+        let target = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? ""))
+        let account = SupabaseAccountService(configuration: admission.configuration)
+        let signedIn = try await account.signInForLocalTesting(
+            email: admission.email, password: admission.password)
+        try admission.validateIdentity(signedIn.userID)
         let service = MeasuredLiveMatchService(
             try account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
             target: target, waitForAdvance: role == "advance-guest"

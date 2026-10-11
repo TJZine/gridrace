@@ -47,6 +47,30 @@ Realtime app-lifecycle handling are disabled: the Auth owner schedules refresh,
 and the Live session owns foreground recovery. Reversible storage failure drains
 old channels before the same client can publish fresh leases.
 
+Deletion captures the initiating account and bearer in per-account secure Auth
+records before dispatch. The version-2 envelope reads the prior single-record format
+without changing its authorization. Its dedicated transport sends that captured bearer
+without the SDK's current-session header adaptation. Uncertain retries and cold
+restoration retain the same receipt identity; a confirmed operation does not repeat
+the server mutation for local cleanup. Consumer leases remain fenced throughout.
+Only a validated typed authentication rejection from the deletion endpoint permits
+explicit fresh authentication of the same account for a new attempt. The earlier
+request may still commit, so its captured authorization remains available for an
+explicit receipt check through successor uncertainty. Fresh sign-in never automatically
+deletes; a later account can sign in and delete itself independently. Confirmation
+stops remote retries; the caller acknowledges only that account's secure record and
+ancestry after handing confirmed cleanup to the durable local owner. Storage failures
+expose explicit deletion or cleanup recovery.
+
+A separate nonsecret journal outside UUID account directories records captured Daily
+and Live cleanup obligations. The shared account/coordinator/Live owner discovers
+these even when signed out, completes each scope independently, and preserves failed
+obligations for retry. Only confirmed deletion authorizes Daily cache removal;
+sign-out also clears the captured Live recovery scope. Unknown legacy directories
+without a trustworthy operation record remain preserved rather than broadly erased.
+Throwing file operations distinguish genuine absence from access and path-type
+failures; uncertain inspection never establishes successful cleanup.
+
 `AccountModel` applies authentication identity changes without waiting for profile
 transport. It owns a cancellable profile task with identity and request-generation
 guards, so a replaced account or profile retry rejects older success and failure.
@@ -60,6 +84,14 @@ completion always dominates active progress; a longer exact-prefix active attemp
 advances; divergent active attempts and distinct terminal results are shown as choices
 rather than silently combined. Statistics are always recalculated from the merged
 immutable results.
+
+The durable selected progress slot supplies the puzzle identity for cloud progress
+reads. A different device's later day cannot evict that slot before its accepted rows
+upload; selection is checked again after suspension. Latest-progress discovery is
+reserved for an absent local slot. Immutable result synchronization still covers the
+account history, and normal forward-day selection remains unchanged. Terminal
+fallback is validated against its own published puzzle and settled into history
+before another selected day's progress can replace it, including backward clocks.
 
 A pending guest-history import belongs to its account and sync-engine lifecycle.
 Replacing that lifecycle clears the pending decision; successful synchronization

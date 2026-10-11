@@ -51,7 +51,7 @@ struct AuthStorageIssue: Error, Equatable, Sendable {
 }
 
 struct AccountAuthRecovery: Equatable, Sendable {
-    enum Action: Sendable { case restore, cleanup }
+    enum Action: Sendable { case restore, cleanup, deletion, deletionReauthentication }
     let action: Action
     let storageIssue: AuthStorageIssue?
 }
@@ -91,6 +91,12 @@ protocol AccountServicing: AnyObject {
     // followed by future changes in publication order. Consumers must process the
     // initial snapshot before applying the result of a newer Auth command.
     var authStateChanges: AsyncStream<AccountAuthState> { get }
+    var pendingDeletionUserID: UUID? { get }
+    var deletionNeedsReauthentication: Bool { get }
+    var retiredCleanupUserID: UUID? { get }
+    func prepareAccountDeletion() throws
+    func prepareAccountDeletion(userID: UUID) throws
+    func acknowledgeAccountDeletion(userID: UUID) throws
 
     func restoreSession() async throws -> AccountSession?
     func refreshSession() async throws -> AccountSession?
@@ -102,5 +108,19 @@ protocol AccountServicing: AnyObject {
     func updateProfile(userID: UUID, displayName: String, avatarSeed: String) async throws -> PlayerProfile
     func signOut() async -> AccountSignOutOutcome
     func deleteAccount() async throws -> ConfirmedAccountDeletion
+    func deleteAccount(userID: UUID) async throws -> ConfirmedAccountDeletion
+    func retryAccountDeletion(userID: UUID) async throws -> ConfirmedAccountDeletion
     func retrySignedOutCleanup() async -> AccountAuthState
+}
+
+// Non-Supabase test/services need no credential-bearing operation record.
+extension AccountServicing {
+    var pendingDeletionUserID: UUID? { nil }
+    var deletionNeedsReauthentication: Bool { false }
+    var retiredCleanupUserID: UUID? { nil }
+    func prepareAccountDeletion() throws {}
+    func prepareAccountDeletion(userID: UUID) throws { try prepareAccountDeletion() }
+    func deleteAccount(userID: UUID) async throws -> ConfirmedAccountDeletion { try await deleteAccount() }
+    func retryAccountDeletion(userID: UUID) async throws -> ConfirmedAccountDeletion { try await deleteAccount(userID: userID) }
+    func acknowledgeAccountDeletion(userID: UUID) throws {}
 }

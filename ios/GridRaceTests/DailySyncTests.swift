@@ -179,6 +179,146 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(afterBothImports.importedResults.map(\.domain), [oldResult, newResult])
     }
 
+    @MainActor
+    func testSelectedAcceptedPuzzleSurvivesOtherDeviceDayAndColdRestart() async throws {
+        for selectedOffset in [0, 1] {
+            let fixture = SyncFixture(userID: userID)
+            defer { fixture.remove() }
+            let selectedDay = day + selectedOffset
+            let otherDay = day + 1 - selectedOffset
+            let selected = progress(day: selectedDay, words: ["civic"], draft: "ST")
+            let other = progress(day: otherDay, words: ["adore"])
+            let remote = TestDailyRemote(userID: userID, progress: progressDTO(other, userID: userID))
+            try fixture.store.save(selected)
+            let engine = fixture.engine(remote: remote)
+            // Pending metadata may be absent: durable accepted rows still derive upload work.
+            let status = try await engine.synchronize()
+            XCTAssertEqual(status, .synced(fixture.syncDate))
+            XCTAssertEqual(try fixture.store.loadProgress(), selected)
+            let uploaded = try await remote.pull(puzzleID: selected.puzzleID)
+            XCTAssertEqual(uploaded.progress?.guesses.map(\.domain), selected.acceptedGuesses)
+            let untouched = try await remote.pull(puzzleID: other.puzzleID)
+            XCTAssertEqual(untouched.progress?.domain, other)
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: "GridRaceSelectedRestart.\(UUID())"))
+            let model = try DailyClassicModel(pack: dailyPack(answerCount: 2), store: fixture.store,
+                defaults: defaults, now: { self.date(day: selectedDay, seconds: 100) })
+            XCTAssertEqual(model.game.progress.acceptedGuesses, selected.acceptedGuesses)
+            XCTAssertEqual(model.game.draft, "ST")
+            XCTAssertFalse(model.hasUnsavedProgress)
+        }
+    }
+
+    @MainActor
+    func testLatestDiscoveryAndNormalForwardUnfinishedRollover() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let earlier = progress(words: ["civic"])
+        let remote = TestDailyRemote(userID: userID, progress: progressDTO(earlier, userID: userID))
+        let discovered = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(discovered, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), earlier)
+        var now = date(day: day, seconds: 100)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "GridRaceForwardRollover.\(UUID())"))
+        let model = try DailyClassicModel(pack: dailyPack(answerCount: 2), store: fixture.store,
+            defaults: defaults, now: { now })
+        now = date(day: day + 1, seconds: 100)
+        model.refreshForCurrentDay()
+        XCTAssertTrue(model.game.rows.isEmpty, "Normal forward rollover still disposes unfinished prior-day state")
+        let next = model.game.progress
+        let rolled = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(rolled, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), next)
+        let oldCloud = try await remote.pull(puzzleID: earlier.puzzleID)
+        XCTAssertEqual(oldCloud.progress?.domain, earlier)
+        let newCloud = try await remote.pull(puzzleID: next.puzzleID)
+        XCTAssertEqual(newCloud.progress?.guesses, [])
+    }
+
+    func testSelectedPuzzleMetadataFailureRetainsRowsAndRetryUploadsOwnIdentity() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let selected = progress(words: ["civic"])
+        let future = progress(day: day + 1, words: ["adore"])
+        let remote = TestDailyRemote(userID: userID, progress: progressDTO(future, userID: userID))
+        try fixture.store.save(selected)
+        try fixture.store.save(DailySyncMetadata(pendingProgress: true))
+        let metadata = fixture.store.directory.appending(path: "daily-sync-metadata-v1.json")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: metadata.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: metadata.path) }
+        let failed = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(failed, .failed(.unavailable))
+        XCTAssertEqual(try fixture.store.loadProgress(), selected)
+        XCTAssertTrue(try fixture.store.loadSyncMetadata().pendingProgress)
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: metadata.path)
+        let synced = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(synced, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), selected)
+        let restored = try await remote.pull(puzzleID: selected.puzzleID)
+        XCTAssertEqual(restored.progress?.guesses.map(\.domain), selected.acceptedGuesses)
+        XCTAssertFalse(try fixture.store.loadSyncMetadata().pendingProgress)
+    }
+
+    func testSelectionChangeDuringTargetedPullCannotReplaceNewSlot() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let old = progress(words: ["civic"])
+        let selected = progress(day: day + 1, words: ["civic"], draft: "ST")
+        let remote = GateRemote(userID: userID)
+        await remote.suspendNextPull()
+        try fixture.store.save(old)
+        let task = Task { try await fixture.engine(remote: remote).synchronize() }
+        guard await Self.waitForPullSuspension(remote) else { return }
+        try fixture.store.save(selected)
+        await remote.completePull(with: DailyCloudSnapshot(
+            progress: progressDTO(old, userID: userID), importedResults: []))
+        guard await Self.waitForPushSuspension(remote) else { return }
+        let upload = await remote.pushedProgress()
+        XCTAssertEqual(upload?.puzzleID, selected.puzzleID)
+        XCTAssertEqual(try fixture.store.loadProgress(), selected)
+        await remote.completePush(with: .stored(progressDTO(selected, userID: userID)))
+        let status = try await task.value
+        XCTAssertEqual(status, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), selected)
+    }
+
+    func testCancellationDuringTargetedPullRetainsSelectedBytes() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let selected = progress(words: ["civic"])
+        let remote = GateRemote(userID: userID)
+        await remote.suspendNextPull()
+        try fixture.store.save(selected)
+        let path = fixture.store.directory.appending(path: "daily-progress-v1.json")
+        let before = try Data(contentsOf: path)
+        let task = Task { try await fixture.engine(remote: remote).synchronize() }
+        guard await Self.waitForPullSuspension(remote) else { return }
+        task.cancel()
+        await remote.completePull(with: DailyCloudSnapshot(progress: nil, importedResults: []))
+        do { _ = try await task.value; XCTFail("Cancelled pull must not reconcile") }
+        catch is CancellationError {} catch { XCTFail("Unexpected cancellation error") }
+        XCTAssertEqual(try Data(contentsOf: path), before)
+    }
+
+    func testSelectedCloudCompletionWinsWhileOtherDayProgressIsRetained() async throws {
+        let fixture = SyncFixture(userID: userID)
+        defer { fixture.remove() }
+        let selected = progress(words: ["civic"])
+        let future = progress(day: day + 1, words: ["adore"])
+        let completed = result(words: ["civic", "stone"])
+        let remote = TestDailyRemote(userID: userID, progress: progressDTO(future, userID: userID),
+            results: [completed.puzzleID: resultDTO(completed, userID: userID)])
+        try fixture.store.save(selected)
+        let synced = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(synced, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadProgress(), DailyClassicProgress(result: completed))
+        XCTAssertEqual(try fixture.store.loadHistory().statistics.gamesPlayed, 1)
+        let futureCloud = try await remote.pull(puzzleID: future.puzzleID)
+        XCTAssertEqual(futureCloud.progress?.domain, future)
+        let resynced = try await fixture.engine(remote: remote).synchronize()
+        XCTAssertEqual(resynced, .synced(fixture.syncDate))
+        XCTAssertEqual(try fixture.store.loadHistory().statistics.gamesPlayed, 1)
+    }
+
     func testCloudOnlyHistoryRestoresAndDerivesStatisticsWithoutReupload() async throws {
         let fixture = SyncFixture(userID: userID)
         defer { fixture.remove() }
@@ -684,86 +824,204 @@ final class DailySyncTests: XCTestCase {
     @MainActor
     func testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard let email = environment["GRIDRACE_LOCAL_SYNC_EMAIL"],
-              let password = environment["GRIDRACE_LOCAL_SYNC_PASSWORD"],
-              let url = environment["GRIDRACE_LOCAL_SUPABASE_URL"],
-              let key = environment["GRIDRACE_LOCAL_SUPABASE_KEY"]
-        else {
-            throw XCTSkip("Local Supabase integration credentials are not configured")
-        }
-        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
-            urlString: url,
-            publishableKey: key
-        ))
-        let firstService = SupabaseAccountService(configuration: configuration)
-        let secondService = SupabaseAccountService(configuration: configuration)
-        let firstSession = try await firstService.signInForLocalTesting(
-            email: email,
-            password: password
-        )
-        let secondSession = try await secondService.signInForLocalTesting(
-            email: email,
-            password: password
-        )
-        XCTAssertEqual(firstSession.userID, secondSession.userID)
+        let admission = try LocalIntegrationAdmission.admit(environment: environment, purpose: .daily)
+        var stage = "construct-services"
+        print("DAILY stage=\(stage)")
+        do {
+            let configuration = admission.configuration
+            let email = admission.email
+            let password = admission.password
+            // Independent devices do not share credential storage. Using the default
+            // Keychain service here lets the second sign-in retire the first client's keys.
+            let credentialNamespace = "GridRaceDailyIntegration.\(UUID().uuidString)"
+            let firstService = SupabaseAccountService(configuration: configuration,
+                storage: SecureAuthStorage(service: credentialNamespace + ".first"))
+            let secondService = SupabaseAccountService(configuration: configuration,
+                storage: SecureAuthStorage(service: credentialNamespace + ".second"))
+            stage = "sign-in-first"
+            print("DAILY stage=\(stage)")
+            let firstSession = try await firstService.signInForLocalTesting(
+                email: email,
+                password: password
+            )
+            stage = "sign-in-second"
+            print("DAILY stage=\(stage)")
+            let secondSession = try await secondService.signInForLocalTesting(
+                email: email,
+                password: password
+            )
+            stage = "validate-fixture-identities"
+            print("DAILY stage=\(stage)")
+            try admission.validateIdentity(firstSession.userID)
+            try admission.validateIdentity(secondSession.userID)
 
-        let first = SyncFixture(userID: firstSession.userID)
-        let second = SyncFixture(userID: secondSession.userID)
-        defer { first.remove(); second.remove() }
-        let firstEngine = first.engine(remote: try firstService.makeDailySyncRemote())
-        let secondEngine = second.engine(remote: try secondService.makeDailySyncRemote())
-        let empty = progress(words: [])
-        try first.store.save(empty)
-        try firstEngine.markProgressPending()
-        let emptyStatus = try await firstEngine.synchronize()
-        guard case .synced = emptyStatus else {
-            return XCTFail("The empty progress status was \(safeName(emptyStatus))")
-        }
-        let accepted = progress(words: ["civic"])
-        try first.store.save(accepted)
-        try firstEngine.markProgressPending()
-        let firstProgressStatus = try await firstEngine.synchronize()
-        guard case .synced = firstProgressStatus else {
-            return XCTFail("The first client progress status was \(safeName(firstProgressStatus))")
-        }
+            let first = SyncFixture(userID: firstSession.userID)
+            let second = SyncFixture(userID: secondSession.userID)
+            defer {
+                print("DAILY stage=remove-owned-first-fixture")
+                first.remove()
+                print("DAILY stage=remove-owned-second-fixture")
+                second.remove()
+                print("DAILY stage=fixture-teardown-complete")
+            }
+            stage = "construct-first-engine"
+            print("DAILY stage=\(stage)")
+            let firstEngine = first.engine(remote: try firstService.makeDailySyncRemote(userID: firstSession.userID))
+            stage = "construct-second-engine"
+            print("DAILY stage=\(stage)")
+            let secondEngine = second.engine(remote: try secondService.makeDailySyncRemote(userID: secondSession.userID))
+            let empty = progress(words: [])
+            stage = "save-first-empty"
+            print("DAILY stage=\(stage)")
+            try first.store.save(empty)
+            stage = "mark-first-empty-pending"
+            print("DAILY stage=\(stage)")
+            try firstEngine.markProgressPending()
+            stage = "sync-first-empty"
+            print("DAILY stage=\(stage)")
+            let emptyStatus = try await firstEngine.synchronize()
+            guard case .synced = emptyStatus else {
+                return XCTFail("The empty progress status was \(safeName(emptyStatus))")
+            }
+            let accepted = progress(words: ["civic"])
+            stage = "save-first-accepted"
+            print("DAILY stage=\(stage)")
+            try first.store.save(accepted)
+            try firstEngine.markProgressPending()
+            stage = "sync-first-accepted"
+            print("DAILY stage=\(stage)")
+            let firstProgressStatus = try await firstEngine.synchronize()
+            guard case .synced = firstProgressStatus else {
+                return XCTFail("The first client progress status was \(safeName(firstProgressStatus))")
+            }
 
-        guard case .synced = try await secondEngine.synchronize() else {
-            return XCTFail("The second client did not restore progress")
-        }
-        XCTAssertEqual(
-            try second.store.loadProgress()?.acceptedGuesses,
-            accepted.acceptedGuesses
-        )
+            stage = "restore-second-selected"
+            print("DAILY stage=\(stage)")
+            guard case .synced = try await secondEngine.synchronize() else {
+                return XCTFail("The second client did not restore progress")
+            }
+            XCTAssertEqual(
+                try second.store.loadProgress()?.acceptedGuesses,
+                accepted.acceptedGuesses
+            )
 
-        let completed = result(words: ["civic", "stone"])
-        try first.store.save(history(completed))
-        try firstEngine.markResultPending(completed.puzzleID)
-        guard case .synced = try await firstEngine.synchronize() else {
-            return XCTFail("The first client did not synchronize completion")
-        }
-        guard case .synced = try await secondEngine.synchronize() else {
-            return XCTFail("The second client did not restore completion")
-        }
-        XCTAssertEqual(try second.store.loadHistory().completedResults, [completed])
-        XCTAssertEqual(try second.store.loadHistory().statistics.gamesPlayed, 1)
+            // Date disagreement: the first device still owns D while the second owns D+1.
+            // Targeted reads must upload/resume D and leave the later row intact.
+            let future = progress(day: day + 1, words: ["civic"])
+            stage = "save-second-future"
+            print("DAILY stage=\(stage)")
+            try second.store.save(future)
+            try secondEngine.markProgressPending()
+            guard case .synced = try await secondEngine.synchronize() else {
+                return XCTFail("The second client's future-day row was not stored")
+            }
+            stage = "advance-first-selected"
+            print("DAILY stage=\(stage)")
+            let advanced = progress(words: ["civic", "crane"])
+            try first.store.save(advanced)
+            try firstEngine.markProgressPending()
+            guard case .synced = try await firstEngine.synchronize() else {
+                return XCTFail("Selected older-day accepted rows were not uploaded")
+            }
+            XCTAssertEqual(try first.store.loadProgress(), advanced)
+            stage = "cold-store-selected-read"
+            print("DAILY stage=\(stage)")
+            let coldStore = AccountDailyClassicStore(rootDirectory: first.store.directory
+                .deletingLastPathComponent().deletingLastPathComponent(), userID: firstSession.userID)
+            XCTAssertEqual(try coldStore.loadProgress(), advanced)
+            let firstRemote = try firstService.makeDailySyncRemote()
+            stage = "pull-selected-identity"
+            print("DAILY stage=\(stage)")
+            let selectedCloud = try await firstRemote.pull(puzzleID: advanced.puzzleID)
+            XCTAssertEqual(selectedCloud.progress?.guesses.map(\.domain), advanced.acceptedGuesses)
+            stage = "pull-future-identity"
+            print("DAILY stage=\(stage)")
+            let laterCloud = try await firstRemote.pull(puzzleID: future.puzzleID)
+            XCTAssertEqual(laterCloud.progress?.guesses.map(\.domain), future.acceptedGuesses)
+            // Completion restoration below continues to observe D on the second device.
+            stage = "restore-second-selected-before-completion"
+            print("DAILY stage=\(stage)")
+            try second.store.save(accepted)
 
-        let nextDay = day + 1
-        let firstAttempt = progress(day: nextDay, words: ["civic"])
-        let secondAttempt = progress(day: nextDay, words: ["crane"])
-        try first.store.save(firstAttempt)
-        try firstEngine.markProgressPending()
-        guard case .synced = try await firstEngine.synchronize() else {
-            return XCTFail("The first divergent attempt was not stored")
-        }
-        try second.store.save(secondAttempt)
-        try secondEngine.markProgressPending()
-        guard case .conflict = try await secondEngine.synchronize() else {
-            return XCTFail("Divergent real-client progress did not produce a conflict")
-        }
+            stage = "save-selected-completion"
+            print("DAILY stage=\(stage)")
+            let completed = result(words: ["civic", "crane", "stone"])
+            try first.store.save(history(completed))
+            stage = "mark-completion-pending"
+            print("DAILY stage=\(stage)")
+            try firstEngine.markResultPending(completed.puzzleID)
+            stage = "sync-selected-completion"
+            print("DAILY stage=\(stage)")
+            guard case .synced = try await firstEngine.synchronize() else {
+                return XCTFail("The first client did not synchronize completion")
+            }
+            stage = "restore-selected-completion"
+            print("DAILY stage=\(stage)")
+            guard case .synced = try await secondEngine.synchronize() else {
+                return XCTFail("The second client did not restore completion")
+            }
+            XCTAssertEqual(try second.store.loadHistory().completedResults, [completed])
+            XCTAssertEqual(try second.store.loadHistory().statistics.gamesPlayed, 1)
 
-        _ = try await firstService.deleteAccount()
-        try first.store.deleteAccountCache()
-        try second.store.deleteAccountCache()
+            stage = "divergent-future-attempts"
+            print("DAILY stage=\(stage)")
+            let nextDay = day + 1
+            let firstAttempt = progress(day: nextDay, words: ["civic"])
+            let secondAttempt = progress(day: nextDay, words: ["crane"])
+            try first.store.save(firstAttempt)
+            try firstEngine.markProgressPending()
+            guard case .synced = try await firstEngine.synchronize() else {
+                return XCTFail("The first divergent attempt was not stored")
+            }
+            try second.store.save(secondAttempt)
+            try secondEngine.markProgressPending()
+            stage = "sync-divergent-future"
+            print("DAILY stage=\(stage)")
+            guard case .conflict = try await secondEngine.synchronize() else {
+                return XCTFail("Divergent real-client progress did not produce a conflict")
+            }
+
+            stage = "remote-delete"
+            print("DAILY stage=\(stage)")
+            _ = try await firstService.deleteAccount()
+            stage = "clear-first-cache"
+            print("DAILY stage=\(stage)")
+            try first.store.deleteAccountCache()
+            stage = "clear-second-cache"
+            print("DAILY stage=\(stage)")
+            try second.store.deleteAccountCache()
+            stage = "acknowledge-deletion"
+            print("DAILY stage=\(stage)")
+            try firstService.acknowledgeAccountDeletion(userID: firstSession.userID)
+            stage = "retire-second-client"
+            print("DAILY stage=\(stage)")
+            let secondRetirement = await secondService.signOut()
+            XCTAssertNil(secondRetirement.localRecovery, "The second client's owned credentials must retire locally")
+            stage = "complete"
+            print("DAILY stage=\(stage)")
+            print("PASS disposable Daily two-client sync and deletion")
+        } catch {
+            XCTFail("Daily integration failed at stage \(stage): \(Self.safeFilesystemDiagnostic(error))")
+        }
+    }
+
+    /// Never includes localized text, userInfo payloads, file paths or account identifiers.
+    private static func safeFilesystemDiagnostic(_ error: any Error) -> String {
+        func domainName(_ domain: String) -> String {
+            switch domain {
+            case NSCocoaErrorDomain: "cocoa"
+            case NSPOSIXErrorDomain: "posix"
+            case NSURLErrorDomain: "url"
+            default: "other"
+            }
+        }
+        if error is CancellationError { return "kind=cancellation" }
+        let error = error as NSError
+        var diagnostic = "domain=\(domainName(error.domain)) code=\(error.code)"
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            diagnostic += " underlying-domain=\(domainName(underlying.domain)) underlying-code=\(underlying.code)"
+        }
+        return diagnostic
     }
 
     // MARK: - U-01 remediation regressions (GR-01, GR-02, GR-04)
@@ -1163,7 +1421,7 @@ final class DailySyncTests: XCTestCase {
         let remote = SupabaseDailySyncRemote(
             client: client,
             pageSize: pageSize,
-            fetchProgress: { [] },
+            fetchProgress: { _ in [] },
             fetchResultsPage: { cursor, limit in
                 try await store.page(after: cursor, limit: limit)
             }
@@ -1181,6 +1439,25 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(calls[0].limit, pageSize)
         XCTAssertEqual(calls[1].cursor, DailyImportedResultsCursor(expected[pageSize - 1]))
         XCTAssertEqual(calls[1].limit, pageSize)
+    }
+
+    func testTargetedRemotePullPassesIdentityAndRejectsMismatchedResponses() async throws {
+        let selected = progressDTO(progress(words: ["civic"]), userID: userID)
+        let future = progressDTO(progress(day: day + 1, words: ["adore"]), userID: userID)
+        let client = SupabaseClient(supabaseURL: URL(string: "http://127.0.0.1:54321")!, supabaseKey: "test-key")
+        let matching = SupabaseDailySyncRemote(client: client,
+            fetchProgress: { requested in
+                XCTAssertEqual(requested, selected.puzzleID)
+                return [selected]
+            }, fetchResultsPage: { _, _ in [] })
+        let snapshot = try await matching.pull(puzzleID: selected.puzzleID)
+        XCTAssertEqual(snapshot.progress, selected)
+        let mismatched = SupabaseDailySyncRemote(client: client,
+            fetchProgress: { _ in [future] }, fetchResultsPage: { _, _ in [] })
+        do {
+            _ = try await mismatched.pull(puzzleID: selected.puzzleID)
+            XCTFail("A targeted query cannot silently return another puzzle")
+        } catch let error as DailySyncRemoteError { XCTAssertEqual(error, .invalidData) }
     }
 
     @MainActor
@@ -1407,6 +1684,17 @@ final class DailySyncTests: XCTestCase {
     }
 
     @discardableResult
+    private static func waitForPullSuspension(_ remote: GateRemote) async -> Bool {
+        for _ in 0..<1_000 {
+            if await remote.isPullSuspended { return true }
+            await Task.yield()
+        }
+        await remote.completePull(with: DailyCloudSnapshot(progress: nil, importedResults: []))
+        XCTFail("Timed out waiting for suspended targeted pull")
+        return false
+    }
+
+    @discardableResult
     private static func waitForPushSuspension(_ remote: GateRemote) async -> Bool {
         for _ in 0..<1_000 {
             if await remote.isPushSuspended { return true }
@@ -1517,7 +1805,7 @@ final class DailySyncTests: XCTestCase {
         return history
     }
 
-    private func dailyPack() throws -> DailyWordPack {
+    private func dailyPack(answerCount: Int = 1) throws -> DailyWordPack {
         try DailyWordPack.load(from: JSONSerialization.data(withJSONObject: [
             "formatVersion": 1,
             "id": "daily-classic-en-US-v1",
@@ -1526,7 +1814,7 @@ final class DailySyncTests: XCTestCase {
             "wordLength": 5,
             "epochDay": day,
             "acceptedGuesses": ["adore", "civic", "stone"],
-            "answers": ["adore"]
+            "answers": Array(["adore", "stone"].prefix(answerCount))
         ]))
     }
 
@@ -1603,13 +1891,16 @@ private actor TestDailyRemote: DailySyncRemote {
         self.results = results
     }
 
-    func pull() throws -> DailyCloudSnapshot {
+    func pull(puzzleID: String?) throws -> DailyCloudSnapshot {
         if pullFailures > 0 {
             pullFailures -= 1
             throw DailySyncRemoteError.unavailable
         }
+        let selectedProgress: DailyProgressDTO?
+        if let puzzleID { selectedProgress = progressByPuzzleID[puzzleID] }
+        else { selectedProgress = currentProgress() }
         return DailyCloudSnapshot(
-            progress: currentProgress(),
+            progress: selectedProgress,
             importedResults: results.values.sorted { $0.puzzleDay < $1.puzzleDay }
         )
     }
@@ -1711,6 +2002,8 @@ private actor TestDailyRemote: DailySyncRemote {
 private actor GateRemote: DailySyncRemote {
     private let userID: UUID
     private let serverDate = Date(timeIntervalSince1970: 1_788_220_700)
+    private var shouldSuspendPull = false
+    private var pullContinuation: CheckedContinuation<DailyCloudSnapshot, Error>?
     private var importContinuation: CheckedContinuation<DailyResultImportOutcome, Error>?
     private var pushContinuation: CheckedContinuation<DailyProgressPushOutcome, Error>?
     private var lastImport: DailyImportedResultUploadDTO?
@@ -1719,6 +2012,14 @@ private actor GateRemote: DailySyncRemote {
     private(set) var importedPuzzleIDs: [String] = []
     private(set) var pushCalls = 0
 
+    var isPullSuspended: Bool { pullContinuation != nil }
+    func suspendNextPull() { shouldSuspendPull = true }
+    func completePull(with snapshot: DailyCloudSnapshot) {
+        pullContinuation?.resume(returning: snapshot)
+        pullContinuation = nil
+    }
+    func pushedProgress() -> DailyProgressUploadDTO? { lastPush }
+
     var isImportSuspended: Bool { importContinuation != nil }
     var isPushSuspended: Bool { pushContinuation != nil }
 
@@ -1726,8 +2027,12 @@ private actor GateRemote: DailySyncRemote {
         self.userID = userID
     }
 
-    func pull() async throws -> DailyCloudSnapshot {
-        DailyCloudSnapshot(progress: nil, importedResults: [])
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot {
+        if shouldSuspendPull {
+            shouldSuspendPull = false
+            return try await withCheckedThrowingContinuation { pullContinuation = $0 }
+        }
+        return DailyCloudSnapshot(progress: nil, importedResults: [])
     }
 
     func importResult(_ upload: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {

@@ -3082,3 +3082,79 @@ extension LiveMatchSessionTests {
         XCTAssertEqual(calls.value, 0)
     }
 }
+
+@MainActor
+extension LiveMatchSessionTests {
+    func testCapturedOldAccountCleanupRetryPreservesActiveLaterAccountAndTransport() async throws {
+        for discard in [false, true] {
+            let root = FileManager.default.temporaryDirectory.appending(path: "CapturedCleanupB-\(UUID())")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let a = UUID(), b = UUID(), callsA = LockedCounter(), callsB = LockedCounter()
+            let oldStore = MemoryLiveRecoveryStore()
+            let laterStore = LiveMatchRecoveryStore(rootDirectory: root, userID: b)
+            try laterStore.save(LiveRecoveryState())
+            let laterFile = laterStore.directory.appending(path: "live-recovery-v1.json")
+            let originalLaterBytes = try Data(contentsOf: laterFile)
+            let journal = AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root))
+            let session = LiveMatchSession(service: nil, realtime: nil,
+                storeFactory: { userID in
+                    if userID == a { return oldStore }
+                    return laterStore
+                }, cleanupJournal: journal)
+            let transportA = LiveAccountTransport(userID: a, service: LiveServiceMock(create: { _ in
+                callsA.increment(); throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, refresh: { _ in false }, isValid: { true })
+            let transportB = LiveAccountTransport(userID: b, service: LiveServiceMock(create: { _ in
+                callsB.increment(); throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, refresh: { _ in false }, isValid: { true })
+            XCTAssertEqual(session.changeAccount(to: a, transport: transportA), .completed)
+            XCTAssertEqual(session.changeAccount(to: b, transport: transportB), .completed)
+            let laterPhase = session.phase
+            try oldStore.save(LiveRecoveryState(pendingIntent: .create(requestID: UUID())))
+            oldStore.rejectsClears = true
+            XCTAssertEqual(session.cleanupCapturedAccount(a), .recoveryCleanupPending)
+            XCTAssertTrue(session.hasPendingAccountCleanup(for: a))
+            XCTAssertEqual(session.phase, .storageUnavailable)
+            oldStore.rejectsClears = false
+            if discard { session.discardRecovery() } else { session.retry() }
+            XCTAssertEqual(session.phase, laterPhase)
+            XCTAssertFalse(session.hasPendingAccountCleanup(for: a))
+            XCTAssertEqual(try Data(contentsOf: laterFile), originalLaterBytes)
+            XCTAssertEqual(try oldStore.load(), LiveRecoveryState())
+            session.createMatch()
+            await eventually { callsB.value == 1 && !session.isCommandInFlight }
+            XCTAssertEqual(callsA.value, 0)
+            XCTAssertEqual(callsB.value, 1, "Retry must retain B's identity and existing usable transport")
+        }
+    }
+}
+
+@MainActor
+extension LiveMatchSessionTests {
+    func testRepeatedNilTransitionRetriesCapturedJournalCleanupWithoutDispatchingOldIntent() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "RepeatedNilJournal-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let user = UUID(), oldStore = MemoryLiveRecoveryStore(), calls = LockedCounter()
+        let journal = AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root))
+        let session = LiveMatchSession(service: nil, realtime: nil, storeFactory: { _ in oldStore }, cleanupJournal: journal)
+        let transport = LiveAccountTransport(userID: user, service: LiveServiceMock(create: { _ in
+            calls.increment(); throw LiveMatchServiceError.server(.requestConflict)
+        }), realtime: nil, refresh: { _ in false }, isValid: { true })
+        XCTAssertEqual(session.changeAccount(to: user, transport: transport), .completed)
+        try oldStore.save(LiveRecoveryState(pendingIntent: .create(requestID: UUID())))
+        oldStore.rejectsClears = true
+        XCTAssertEqual(session.changeAccount(to: nil, transport: nil), .recoveryCleanupPending)
+        XCTAssertEqual(session.phase, .storageUnavailable)
+        XCTAssertEqual(journal.liveUsers, [user])
+        XCTAssertTrue(session.canDiscardRecovery)
+        oldStore.rejectsClears = false
+        XCTAssertEqual(session.changeAccount(to: nil, transport: nil), .completed)
+        XCTAssertEqual(session.phase, .inactive)
+        XCTAssertFalse(session.canDiscardRecovery)
+        XCTAssertEqual(try oldStore.load(), LiveRecoveryState())
+        XCTAssertTrue(AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root)).records.isEmpty)
+        session.createMatch()
+        await Task.yield()
+        XCTAssertEqual(calls.value, 0)
+    }
+}

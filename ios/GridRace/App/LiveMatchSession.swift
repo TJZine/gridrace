@@ -36,6 +36,7 @@ final class LiveMatchSession {
     private var service: (any LiveMatchServicing)?
     private var realtime: (any LiveMatchRealtimeServicing)?
     private let storeFactory: StoreFactory
+    private let cleanupJournal: AccountCleanupJournal?
     private var refreshAuth: AuthRefresh
     private let timing: LiveMatchSessionTiming
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -48,6 +49,7 @@ final class LiveMatchSession {
     private var usesAccountTransport = false
     private var requestedAccountID: UUID?
     private var hasRequestedAccountChange = false
+    private var phaseBeforeCapturedCleanup: LiveMatchSessionPhase?
     private var store: (any LiveMatchRecoveryStoring)?
     private var recovery = LiveRecoveryState()
     private var generation = 0
@@ -89,7 +91,7 @@ final class LiveMatchSession {
         recovery.pendingIntent != nil
             && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
     }
-    var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
+    var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && (accountID != nil || cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false) }
     var canDiscardRecovery: Bool { canRetryRecoveryStorage }
 
     var displayedServerTime: Date? {
@@ -142,6 +144,7 @@ final class LiveMatchSession {
         storeFactory: @escaping StoreFactory = {
             try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         },
+        cleanupJournal: AccountCleanupJournal? = nil,
         refreshAuth: @escaping AuthRefresh = { _ in false },
         timing: LiveMatchSessionTiming = .production,
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -156,11 +159,15 @@ final class LiveMatchSession {
         self.service = service
         self.realtime = realtime
         self.storeFactory = storeFactory
+        self.cleanupJournal = cleanupJournal
         self.refreshAuth = refreshAuth
         self.timing = timing
         self.sleep = sleep
         self.uptime = uptime
         self.makeUUID = makeUUID
+        if cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            phase = .storageUnavailable
+        }
     }
 
     isolated deinit {
@@ -182,7 +189,57 @@ final class LiveMatchSession {
     }
 
     func hasPendingAccountCleanup(for userID: UUID) -> Bool {
-        accountID == userID && hasRequestedAccountChange
+        (accountID == userID && hasRequestedAccountChange) || cleanupJournal?.liveUsers.contains(userID) == true
+    }
+
+    @discardableResult
+    func cleanupCapturedAccount(_ userID: UUID) -> LiveAccountChangeOutcome {
+        if accountID == userID { resetRuntime() }
+        do {
+            try cleanupJournal?.capture(userID, deleting: false)
+            try storeFactory(userID).clear()
+            try cleanupJournal?.completeLive(userID)
+            return .completed
+        } catch {
+            if accountID != userID, !hasRequestedAccountChange, phaseBeforeCapturedCleanup == nil {
+                phaseBeforeCapturedCleanup = phase
+            }
+            phase = .storageUnavailable
+            return .recoveryCleanupPending
+        }
+    }
+
+    private func retryCapturedCleanup() {
+        guard let cleanupJournal else { return }
+        do { try cleanupJournal.reload() }
+        catch { phase = .storageUnavailable; return }
+        if let accountID, hasRequestedAccountChange {
+            do { try cleanupJournal.capture(accountID, deleting: false) }
+            catch { phase = .storageUnavailable; return }
+        }
+        var failed = false
+        for userID in cleanupJournal.liveUsers {
+            do {
+                try storeFactory(userID).clear()
+                try cleanupJournal.completeLive(userID)
+            } catch { failed = true }
+        }
+        guard !failed else { phase = .storageUnavailable; return }
+        // A captured old-account obligation can be retried while a later account
+        // remains active. Only an actual pending transition may replace its runtime.
+        guard hasRequestedAccountChange else {
+            if phase == .storageUnavailable, let previousPhase = phaseBeforeCapturedCleanup { phase = previousPhase }
+            else if accountID == nil { phase = .inactive }
+            phaseBeforeCapturedCleanup = nil
+            return
+        }
+        let userID = requestedAccountID
+        resetRuntime()
+        accountID = userID
+        hasRequestedAccountChange = false
+        requestedAccountID = nil
+        guard installRequestedTransport(for: userID) else { return }
+        loadRecovery()
     }
 
     private func installRequestedTransport(for userID: UUID?) -> Bool {
@@ -206,6 +263,22 @@ final class LiveMatchSession {
 
     @discardableResult
     func changeAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
+        if let cleanupJournal, cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty {
+            if hasRequestedAccountChange, requestedAccountID == userID {
+                // Repeated Auth notifications retain the captured transition and
+                // retry its local cleanup; they never reload the old intent.
+                retryCapturedCleanup()
+                return hasRequestedAccountChange || cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty
+                    ? .recoveryCleanupPending : .completed
+            }
+            // No saved command can dispatch before captured cleanup is resolved,
+            // even if Auth later returns to the same UUID.
+            resetRuntime()
+            requestedAccountID = userID
+            hasRequestedAccountChange = true
+            phase = .storageUnavailable
+            return .recoveryCleanupPending
+        }
         guard accountID != userID else {
             if usesAccountTransport, service == nil {
                 resetRuntime()
@@ -223,8 +296,10 @@ final class LiveMatchSession {
         resetRuntime()
         if let oldAccountID {
             do {
+                try cleanupJournal?.capture(oldAccountID, deleting: false)
                 let oldStore = try oldStore ?? storeFactory(oldAccountID)
                 try oldStore.clear()
+                try cleanupJournal?.completeLive(oldAccountID)
             } catch {
                 store = oldStore
                 requestedAccountID = userID
@@ -242,7 +317,12 @@ final class LiveMatchSession {
     }
 
     func discardRecovery() {
-        guard canDiscardRecovery, let accountID else { return }
+        guard canDiscardRecovery else { return }
+        if cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            retryCapturedCleanup()
+            return
+        }
+        guard let accountID else { return }
         do {
             let store = try store ?? storeFactory(accountID)
             try store.clear()
@@ -376,6 +456,10 @@ final class LiveMatchSession {
     }
 
     func retry() {
+        if phase == .storageUnavailable, cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            retryCapturedCleanup()
+            return
+        }
         guard accountID != nil else { return }
         if phase == .storageUnavailable {
             if hasRequestedAccountChange {
@@ -951,6 +1035,7 @@ final class LiveMatchSession {
     }
 
     private func resetRuntime() {
+        phaseBeforeCapturedCleanup = nil
         generation += 1
         presentationGeneration += 1
         pendingStart = nil

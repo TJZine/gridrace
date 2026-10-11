@@ -26,8 +26,7 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
     }
 
     func loadProgress() throws -> DailyClassicProgress? {
-        guard FileManager.default.fileExists(atPath: progressURL.path) else { return nil }
-        let data = try Data(contentsOf: progressURL)
+        guard let data = try PersistenceFile.readIfPresent(at: progressURL) else { return nil }
         do {
             return try DailyClassicPersistence.decodeProgress(from: data)
         } catch {
@@ -41,10 +40,10 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
     }
 
     func loadHistory() throws -> DailyClassicHistory {
-        guard FileManager.default.fileExists(atPath: historyURL.path) else {
+        guard let data = try PersistenceFile.readIfPresent(at: historyURL) else {
             return DailyClassicHistory()
         }
-        return try DailyClassicHistory.load(from: Data(contentsOf: historyURL))
+        return try DailyClassicHistory.load(from: data)
     }
 
     func save(_ history: DailyClassicHistory) throws {
@@ -53,17 +52,18 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
     }
 
     func discardProgress() throws {
-        guard FileManager.default.fileExists(atPath: progressURL.path) else { return }
-        try FileManager.default.removeItem(at: progressURL)
+        try PersistenceFile.removeIfPresent(at: progressURL)
     }
 
-    /// Removes only this store's guest Daily progress/history files.
+    /// Explicit reset removes only the two owned guest entries, including malformed directories.
     /// Never removes the containing directory, so sibling `Accounts/<uuid>`
     /// caches sharing the GridRace root are preserved.
     func resetGuestDailyData() throws {
         for url in [progressURL, historyURL] {
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            try FileManager.default.removeItem(at: url)
+            do { try FileManager.default.removeItem(at: url) }
+            catch {
+                guard PersistenceFile.isNotFound(error) else { throw error }
+            }
         }
     }
 
@@ -148,10 +148,16 @@ final class DailyClassicModel {
         var puzzle = try DailyPuzzleSchedule.puzzle(at: initialDate, in: pack)
         var history = try store.loadHistory()
         var settings = DailyClassicSettings.load(from: defaults)
-        // The single progress slot can contain yesterday's terminal fallback.
+        let saved: DailyClassicProgress?
+        do { saved = try store.loadProgress() }
+        catch DailyClassicError.invalidSavedGame {
+            needsProgressRepair = true
+            saved = nil
+        }
+        // Settle the single slot's terminal fallback before selecting another day.
         // Validate against its canonical scheduled puzzle before recording history.
-        if let saved = try? store.loadProgress(), saved.completion != nil,
-           saved.puzzleDay < puzzle.day, history.result(for: saved.puzzleID) == nil {
+        if let saved, saved.completion != nil,
+           history.result(for: saved.puzzleID) == nil {
             do {
                 let prior = try DailyPuzzleSchedule.puzzle(
                     at: Date(timeIntervalSince1970: TimeInterval(saved.puzzleDay) * 86_400), in: pack)
@@ -176,13 +182,6 @@ final class DailyClassicModel {
                 restoring: DailyClassicProgress(result: result)
             )
         } else {
-            let saved: DailyClassicProgress?
-            do {
-                saved = try store.loadProgress()
-            } catch DailyClassicError.invalidSavedGame {
-                needsProgressRepair = true
-                saved = nil
-            }
             if let saved, saved.puzzleID == puzzle.id {
                 do {
                     restoredGame = try DailyClassicGame(
@@ -284,7 +283,7 @@ final class DailyClassicModel {
             let current = try DailyPuzzleSchedule.puzzle(at: date, in: pack)
             guard current.id != puzzle.id else { return }
             guard pendingTerminalResult == nil else {
-                storageMessage = "Yesterday's result is still being saved. GridRace will retry."
+                storageMessage = "Your previous result is still being saved. GridRace will retry."
                 return
             }
             puzzle = current
@@ -471,3 +470,44 @@ final class DailyClassicModel {
     }
 
 }
+
+/// Absence is established by a throwing filesystem operation, never Boolean inspection.
+/// Access, protection and path-type failures retain the caller's recovery obligation.
+enum PersistenceFile {
+    static func readIfPresent(at url: URL) throws -> Data? {
+        do { return try Data(contentsOf: url) }
+        catch {
+            guard isNotFound(error) else { throw error }
+            return nil
+        }
+    }
+
+    static func removeIfPresent(at url: URL, expectedType: FileAttributeType = .typeRegular) throws {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard attributes[.type] as? FileAttributeType == expectedType else {
+                throw PersistenceFileError.unexpectedType
+            }
+            try FileManager.default.removeItem(at: url)
+        }
+        catch {
+            guard isNotFound(error) else { throw error }
+        }
+    }
+
+    static func isNotFound(_ error: any Error) -> Bool {
+        let error = error as NSError
+        if error.domain == NSCocoaErrorDomain {
+            guard error.code == CocoaError.fileReadNoSuchFile.rawValue
+                || error.code == CocoaError.fileNoSuchFile.rawValue else { return false }
+            // A wrapped POSIX access/type failure must never become absence.
+            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+                return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(ENOENT)
+            }
+            return true
+        }
+        return error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT)
+    }
+}
+
+enum PersistenceFileError: Error { case unexpectedType }
