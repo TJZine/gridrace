@@ -92,6 +92,13 @@ receipt lookup may confirm/resume an already-authenticated deletion before ordin
 Auth validation. It exposes only deletion status, never account data. Database
 preparation and Auth deletion cannot form one cross-service transaction.
 
+Authentication uses remote `getUser(token)` validation. Definitive token/user/session
+rejection returns 401 `not_authenticated`. Auth network, server, quota, unexpected
+error, and malformed success responses return the existing safe 500 `internal_error`;
+they do not authorize gameplay RPCs or expose dependency details. Clients retain
+uncertain pending command identities for recovery rather than treating an Auth outage
+as a sign-in requirement. The deletion receipt exception above remains unchanged.
+
 ### `create-match`
 
 Current request:
