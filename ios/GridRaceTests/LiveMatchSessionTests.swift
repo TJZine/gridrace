@@ -133,7 +133,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let joins = LockedValues<String>()
             let timers = LockedValues<Duration>()
             let timer = AsyncGate()
-            let session = makeSession(
+            let (session, sessionTransport) = makeSession(
                 service: LiveServiceMock(
                     join: { code in
                         joins.append(code)
@@ -159,7 +159,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 }
             )
             session.backgrounded()
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             session.leaveToHome()
             session.foregrounded()
 
@@ -218,7 +218,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let completion = AsyncGate()
             let joins = LockedCounter()
             let snapshots = LockedCounter()
-            let session = makeSession(
+            let (session, sessionTransport) = makeSession(
                 service: LiveServiceMock(
                     join: { _ in
                         joins.increment()
@@ -234,7 +234,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 store: store
             )
             session.backgrounded()
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             session.leaveToHome()
             session.foregrounded()
             session.joinMatch(code: "ABC234")
@@ -264,7 +264,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let store = MemoryLiveRecoveryStore(oldState)
         let realtime = RealtimeHub()
         let snapshots = LockedCounter()
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: LiveServiceMock(
                 join: { _ in return UUID() },
                 snapshot: { id in
@@ -276,7 +276,7 @@ final class LiveMatchSessionTests: XCTestCase {
             store: store
         )
         session.backgrounded()
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.leaveToHome()
         session.foregrounded()
         store.rejectsWrites = true
@@ -314,7 +314,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let completion = AsyncGate()
         let joins = LockedCounter()
         let returns = LockedCounter()
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(join: { _ in
                 joins.increment()
                 await completion.wait()
@@ -325,13 +325,13 @@ final class LiveMatchSessionTests: XCTestCase {
             storeFactory: factory.make
         )
         session.backgrounded()
-        session.changeAccount(to: oldAccount)
+        session.changeAccount(to: oldAccount, transport: sessionTransport(oldAccount))
         session.leaveToHome()
         session.foregrounded()
         session.joinMatch(code: "ABC234")
         await eventually { joins.value == 1 }
 
-        XCTAssertEqual(session.changeAccount(to: newAccount), .completed)
+        XCTAssertEqual(session.changeAccount(to: newAccount, transport: sessionTransport(newAccount)), .completed)
         await completion.open()
         await eventually { returns.value == 1 }
         await Task.yield()
@@ -349,7 +349,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let completion = AsyncGate()
         let joins = LockedCounter()
         let snapshots = LockedValues<UUID>()
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: LiveServiceMock(
                 join: { _ in
                     joins.increment()
@@ -365,7 +365,7 @@ final class LiveMatchSessionTests: XCTestCase {
             store: store
         )
         session.backgrounded()
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.leaveToHome()
         session.foregrounded()
         session.joinMatch(code: "ABC234")
@@ -392,7 +392,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: oldMatchID))
         let realtime = RealtimeHub()
         let snapshots = LockedCounter()
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: LiveServiceMock(
                 join: { code in
                     XCTAssertEqual(code, "ABC234")
@@ -408,7 +408,7 @@ final class LiveMatchSessionTests: XCTestCase {
             store: store
         )
         session.backgrounded()
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.leaveToHome()
         session.foregrounded()
 
@@ -442,7 +442,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let joins = LockedValues<String>()
             let snapshots = LockedCounter()
             let watchdogStarts = LockedCounter()
-            let session = LiveMatchSession(
+            let (session, sessionTransport) = makeLiveSessionFixture(
                 service: LiveServiceMock(
                     create: { receivedID in
                         XCTAssertEqual(
@@ -483,7 +483,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 makeUUID: { requestID }
             )
             session.backgrounded()
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             session.leaveToHome()
             session.foregrounded()
             if isCreate {
@@ -535,13 +535,13 @@ final class LiveMatchSessionTests: XCTestCase {
             persistedAtDispatch.append(try store.load())
             return newMatchID
         })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { _ in store },
             makeUUID: { requestID }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.leaveToHome()
 
         session.createMatch()
@@ -557,7 +557,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let oldState = LiveRecoveryState(matchID: UUID())
         let store = MemoryLiveRecoveryStore(oldState)
         let creates = LockedCounter()
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: LiveServiceMock(create: { _ in
                 creates.increment()
                 return UUID()
@@ -565,7 +565,7 @@ final class LiveMatchSessionTests: XCTestCase {
             realtime: nil,
             store: store
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.leaveToHome()
         store.rejectsWrites = true
 
@@ -587,7 +587,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let snapshots = LockedCounter()
         let retrySleeps = LockedCounter()
         let retryGate = AsyncGate()
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: LiveServiceMock(
                 create: { requestID in
                     XCTAssertEqual(
@@ -619,7 +619,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 }
             }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         session.createMatch()
         await eventually { !session.isCommandInFlight }
         let requestID = try XCTUnwrap(attempts.values.first)
@@ -679,8 +679,8 @@ final class LiveMatchSessionTests: XCTestCase {
             store.rejectsWrites = true
             return UUID()
         })
-        let session = makeSession(service: service, realtime: nil, store: store)
-        session.changeAccount(to: accountID)
+        let (session, sessionTransport) = makeSession(service: service, realtime: nil, store: store)
+        session.changeAccount(to: accountID, transport: sessionTransport(accountID))
         session.createMatch()
         await eventually { !session.isCommandInFlight }
         let requestID = try XCTUnwrap(attempts.values.first)
@@ -696,13 +696,13 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .inactive)
         XCTAssertFalse(session.hasSavedMatch)
         XCTAssertEqual(store.storedState, LiveRecoveryState())
-        session.changeAccount(to: nil)
-        session.changeAccount(to: accountID)
+        session.changeAccount(to: nil, transport: nil)
+        session.changeAccount(to: accountID, transport: sessionTransport(accountID))
         session.resumeSavedMatch()
         session.backgrounded()
         session.foregrounded()
-        let relaunched = makeSession(service: service, realtime: nil, store: store)
-        relaunched.changeAccount(to: accountID)
+        let (relaunched, relaunchedTransport) = makeSession(service: service, realtime: nil, store: store)
+        relaunched.changeAccount(to: accountID, transport: relaunchedTransport(accountID))
         await Task.yield()
         XCTAssertEqual(relaunched.phase, .inactive)
         XCTAssertFalse(relaunched.hasSavedMatch)
@@ -719,7 +719,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let realtime = RealtimeHub()
             let attempts = LockedValues<UUID>()
             let snapshots = LockedCounter()
-            let session = makeSession(
+            let (session, sessionTransport) = makeSession(
                 service: LiveServiceMock(
                     submit: { _, receivedID, _ in
                         attempts.append(receivedID)
@@ -735,7 +735,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 realtime: realtime,
                 store: store
             )
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             await eventually { realtime.subscriptionCount == 1 }
             realtime.send(.ready)
             await eventually { !session.isCommandInFlight && attempts.values.count == 1 }
@@ -780,7 +780,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let snapshots = LockedCounter()
             let responseGate = AsyncGate()
             let responseReturned = LockedCounter()
-            let session = makeSession(
+            let (session, sessionTransport) = makeSession(
                 service: LiveServiceMock(
                     submit: { _, _, _ in throw LiveMatchServiceError.server(.requestConflict) },
                     snapshot: { id in
@@ -801,7 +801,7 @@ final class LiveMatchSessionTests: XCTestCase {
                     retryBackoff: [.seconds(50)]
                 )
             )
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             await eventually { realtime.subscriptionCount == 1 }
             realtime.send(.ready)
             await eventually { session.snapshot != nil && !session.isCommandInFlight }
@@ -828,51 +828,54 @@ final class LiveMatchSessionTests: XCTestCase {
     }
 
     func testHomeResumeRetriesPendingCreateWithOriginalRequestID() async throws {
-        let requestID = UUID()
-        let matchID = UUID()
-        let store = MemoryLiveRecoveryStore()
-        let creates = LockedValues<UUID>()
-        let service = LiveServiceMock(
-            create: { receivedRequestID in
-                creates.append(receivedRequestID)
-                if creates.values.count <= 2 { throw LiveMatchServiceError.unavailable }
-                return matchID
-            },
-            snapshot: { requestedID in
-                Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
-            }
-        )
-        let session = LiveMatchSession(
-            service: service,
-            realtime: nil,
-            storeFactory: { _ in store },
-            timing: .init(
-                requestTimeout: .seconds(10),
-                staleAfter: .seconds(5),
-                retryBackoff: [.seconds(100)]
-            ),
-            makeUUID: { requestID }
-        )
-        session.changeAccount(to: UUID())
+        for error in [LiveMatchServiceError.unavailable, .server(.internalError)] {
+            let requestID = UUID()
+            let matchID = UUID()
+            let store = MemoryLiveRecoveryStore()
+            let creates = LockedValues<UUID>()
+            let service = LiveServiceMock(
+                create: { receivedRequestID in
+                    creates.append(receivedRequestID)
+                    if creates.values.count <= 2 { throw error }
+                    return matchID
+                },
+                snapshot: { requestedID in
+                    Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
+                }
+            )
+            let (session, sessionTransport) = makeLiveSessionFixture(
+                service: service,
+                realtime: nil,
+                storeFactory: { _ in store },
+                timing: .init(
+                    requestTimeout: .seconds(10),
+                    staleAfter: .seconds(5),
+                    retryBackoff: [.seconds(100)]
+                ),
+                makeUUID: { requestID }
+            )
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
 
-        session.createMatch()
-        await eventually { session.phase == .unavailable && !session.isCommandInFlight }
-        XCTAssertTrue(session.canRetry)
-        session.retry()
-        XCTAssertFalse(session.canRetry)
-        await eventually { session.phase == .unavailable && !session.isCommandInFlight }
-        XCTAssertEqual(creates.values, [requestID, requestID])
-        session.leaveToHome()
-        XCTAssertFalse(session.canRetry)
+            session.createMatch()
+            await eventually { session.phase == .unavailable && !session.isCommandInFlight }
+            XCTAssertTrue(session.canRetry)
+            XCTAssertEqual(session.lastError, error)
+            session.retry()
+            XCTAssertFalse(session.canRetry)
+            await eventually { session.phase == .unavailable && !session.isCommandInFlight }
+            XCTAssertEqual(creates.values, [requestID, requestID])
+            session.leaveToHome()
+            XCTAssertFalse(session.canRetry)
 
-        XCTAssertTrue(session.hasSavedMatch)
-        XCTAssertEqual(session.pendingIntent, .create(requestID: requestID))
-        session.resumeSavedMatch()
+            XCTAssertTrue(session.hasSavedMatch)
+            XCTAssertEqual(session.pendingIntent, .create(requestID: requestID))
+            session.resumeSavedMatch()
 
-        await eventually { session.phase == .ready }
-        XCTAssertEqual(creates.values, [requestID, requestID, requestID])
-        XCTAssertEqual(session.savedMatchID, matchID)
-        XCTAssertNil(session.pendingIntent)
+            await eventually { session.phase == .ready }
+            XCTAssertEqual(creates.values, [requestID, requestID, requestID])
+            XCTAssertEqual(session.savedMatchID, matchID)
+            XCTAssertNil(session.pendingIntent)
+        }
     }
 
     func testHomeResumeRecoversSavedMatchAndPendingGuess() async throws {
@@ -897,9 +900,9 @@ final class LiveMatchSessionTests: XCTestCase {
                     Self.snapshot(matchID: requestedID, status: .inProgress, round: .playing)
                 }
             )
-            let resumed = makeSession(service: service, realtime: realtime, store: store)
+            let (resumed, resumedTransport) = makeSession(service: service, realtime: realtime, store: store)
             resumed.backgrounded()
-            resumed.changeAccount(to: UUID())
+            bindLiveAccount(resumed, transport: resumedTransport(UUID()))
             resumed.leaveToHome()
             resumed.foregrounded()
 
@@ -937,8 +940,8 @@ final class LiveMatchSessionTests: XCTestCase {
                 return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
             }
         )
-        let session = makeSession(service: service, realtime: realtime, store: store)
-        session.changeAccount(to: userID)
+        let (session, sessionTransport) = makeSession(service: service, realtime: realtime, store: store)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         session.createMatch()
 
@@ -979,9 +982,9 @@ final class LiveMatchSessionTests: XCTestCase {
                 return Self.snapshot(matchID: requestedID, status: .inProgress, round: .playing)
             }
         )
-        let session = makeSession(service: service, realtime: realtime, store: store)
+        let (session, sessionTransport) = makeSession(service: service, realtime: realtime, store: store)
 
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
         XCTAssertTrue(order.values.isEmpty)
         order.append("subscribe")
@@ -1012,8 +1015,8 @@ final class LiveMatchSessionTests: XCTestCase {
                 )
             }
         )
-        let session = makeSession(service: service, realtime: realtime, store: store)
-        session.changeAccount(to: UUID())
+        let (session, sessionTransport) = makeSession(service: service, realtime: realtime, store: store)
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
         await eventually { session.phase == .ready }
@@ -1047,8 +1050,8 @@ final class LiveMatchSessionTests: XCTestCase {
             starts.append(target)
             return id
         })
-        let session = makeSession(service: service, realtime: realtime, store: store)
-        session.changeAccount(to: UUID())
+        let (session, sessionTransport) = makeSession(service: service, realtime: realtime, store: store)
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         realtime.send(.ready)
         await eventually { session.snapshot == lobby }
         realtime.send(.signal)
@@ -1079,17 +1082,17 @@ final class LiveMatchSessionTests: XCTestCase {
             later: Self.snapshot(matchID: matchID, status: .lobby, round: .pending)
         )
         let service = LiveServiceMock(snapshot: { _ in try await script.next() })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: realtime,
             storeFactory: { $0 == firstUser ? firstStore : secondStore }
         )
-        XCTAssertEqual(session.changeAccount(to: firstUser), .completed)
+        XCTAssertEqual(session.changeAccount(to: firstUser, transport: sessionTransport(firstUser)), .completed)
         await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
         await eventually { await script.callCount == 1 }
 
-        XCTAssertEqual(session.changeAccount(to: secondUser), .completed)
+        XCTAssertEqual(session.changeAccount(to: secondUser, transport: sessionTransport(secondUser)), .completed)
         await script.releaseFirst()
         await Task.yield()
 
@@ -1105,31 +1108,31 @@ final class LiveMatchSessionTests: XCTestCase {
             LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
         )
         let secondStore = MemoryLiveRecoveryStore()
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(),
             realtime: nil,
             storeFactory: { $0 == firstUser ? firstStore : secondStore }
         )
-        XCTAssertEqual(session.changeAccount(to: firstUser), .completed)
+        XCTAssertEqual(session.changeAccount(to: firstUser, transport: sessionTransport(firstUser)), .completed)
         firstStore.rejectsClears = true
 
-        XCTAssertEqual(session.changeAccount(to: secondUser), .recoveryCleanupPending)
+        XCTAssertEqual(session.changeAccount(to: secondUser, transport: sessionTransport(secondUser)), .recoveryCleanupPending)
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertNotNil(firstStore.storedState.pendingIntent)
 
         firstStore.rejectsClears = false
-        XCTAssertEqual(session.changeAccount(to: secondUser), .completed)
+        XCTAssertEqual(session.changeAccount(to: secondUser, transport: sessionTransport(secondUser)), .completed)
         XCTAssertEqual(try firstStore.load(), LiveRecoveryState())
         XCTAssertEqual(session.phase, .inactive)
     }
 
     func testSelectedRecoveryRetryRequiresAvailableAuthenticationAndForeground() async throws {
-        for error in [LiveMatchServiceError.unavailable, .server(.notAuthenticated)] {
+        for error in [LiveMatchServiceError.unavailable, .server(.internalError), .server(.notAuthenticated)] {
             let matchID = UUID()
             let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
             let realtime = RealtimeHub()
             let calls = LockedCounter()
-            let session = makeSession(
+            let (session, sessionTransport) = makeSession(
                 service: LiveServiceMock(snapshot: { id in
                     if calls.increment() == 1 { throw error }
                     return Self.snapshot(matchID: id, status: .lobby, round: .pending)
@@ -1140,7 +1143,7 @@ final class LiveMatchSessionTests: XCTestCase {
                               retryBackoff: [.seconds(100)])
             )
             XCTAssertFalse(session.canRetry)
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             realtime.send(.ready)
             await eventually { session.lastError == error }
 
@@ -1190,13 +1193,13 @@ final class LiveMatchSessionTests: XCTestCase {
             }
             return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
         })
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: service,
             realtime: realtime,
             store: store,
             refreshAuth: { _ in refreshes.increment(); return true }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
 
@@ -1211,7 +1214,7 @@ final class LiveMatchSessionTests: XCTestCase {
             try await Task.sleep(for: .seconds(10))
             throw TestFailure.failed
         })
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: service,
             realtime: nil,
             store: store,
@@ -1221,7 +1224,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 retryBackoff: [.seconds(100)]
             )
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         session.createMatch()
 
@@ -1240,8 +1243,8 @@ final class LiveMatchSessionTests: XCTestCase {
             calls.increment()
             return UUID()
         })
-        let session = makeSession(service: service, realtime: nil, store: store)
-        session.changeAccount(to: UUID())
+        let (session, sessionTransport) = makeSession(service: service, realtime: nil, store: store)
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         session.createMatch()
         await Task.yield()
@@ -1262,7 +1265,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let factory = MemoryLiveRecoveryStoreFactory([userID: store])
         factory.rejectsConstruction = true
         let creates = LockedValues<UUID>()
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(create: { receivedRequestID in
                 creates.append(receivedRequestID)
                 return matchID
@@ -1271,7 +1274,7 @@ final class LiveMatchSessionTests: XCTestCase {
             storeFactory: { try factory.make($0) }
         )
 
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
         session.createMatch()
         await Task.yield()
 
@@ -1307,24 +1310,24 @@ final class LiveMatchSessionTests: XCTestCase {
             creates.increment()
             return UUID()
         })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) }
         )
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         factory.rejectsConstruction = false
         session.discardRecovery()
-        session.changeAccount(to: nil)
-        session.changeAccount(to: userID)
+        session.changeAccount(to: nil, transport: nil)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
         await Task.yield()
-        let relaunched = LiveMatchSession(
+        let (relaunched, relaunchedTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) }
         )
-        relaunched.changeAccount(to: userID)
+        relaunched.changeAccount(to: userID, transport: relaunchedTransport(userID))
         await Task.yield()
 
         XCTAssertEqual(try store.load(), LiveRecoveryState())
@@ -1349,23 +1352,23 @@ final class LiveMatchSessionTests: XCTestCase {
             submits.increment()
             return Self.receipt()
         })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: RealtimeHub(),
             storeFactory: { try factory.make($0) }
         )
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         factory.rejectsConstruction = false
         session.discardRecovery()
-        session.changeAccount(to: nil)
-        session.changeAccount(to: userID)
-        let relaunched = LiveMatchSession(
+        session.changeAccount(to: nil, transport: nil)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
+        let (relaunched, relaunchedTransport) = makeLiveSessionFixture(
             service: service,
             realtime: RealtimeHub(),
             storeFactory: { try factory.make($0) }
         )
-        relaunched.changeAccount(to: userID)
+        relaunched.changeAccount(to: userID, transport: relaunchedTransport(userID))
         await Task.yield()
 
         XCTAssertEqual(try store.load(), LiveRecoveryState())
@@ -1386,14 +1389,14 @@ final class LiveMatchSessionTests: XCTestCase {
             secondUser: secondStore,
         ])
         switchFactory.rejectsConstruction = true
-        let switching = LiveMatchSession(
+        let (switching, switchingTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(),
             realtime: nil,
             storeFactory: { try switchFactory.make($0) }
         )
-        switching.changeAccount(to: firstUser)
+        switching.changeAccount(to: firstUser, transport: switchingTransport(firstUser))
 
-        switching.changeAccount(to: secondUser)
+        switching.changeAccount(to: secondUser, transport: switchingTransport(secondUser))
 
         XCTAssertEqual(switching.phase, .storageUnavailable)
         XCTAssertEqual(switchFactory.requestedAccountIDs, [firstUser, firstUser])
@@ -1413,14 +1416,14 @@ final class LiveMatchSessionTests: XCTestCase {
         )
         let signOutFactory = MemoryLiveRecoveryStoreFactory([firstUser: signOutStore])
         signOutFactory.rejectsConstruction = true
-        let signingOut = LiveMatchSession(
+        let (signingOut, signingOutTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(),
             realtime: nil,
             storeFactory: { try signOutFactory.make($0) }
         )
-        signingOut.changeAccount(to: firstUser)
+        signingOut.changeAccount(to: firstUser, transport: signingOutTransport(firstUser))
 
-        signingOut.changeAccount(to: nil)
+        signingOut.changeAccount(to: nil, transport: nil)
 
         XCTAssertEqual(signingOut.phase, .storageUnavailable)
         XCTAssertEqual(signOutFactory.requestedAccountIDs, [firstUser, firstUser])
@@ -1452,22 +1455,26 @@ final class LiveMatchSessionTests: XCTestCase {
             creates.append(requestID)
             return firstMatchID
         })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) },
             makeUUID: { firstRequestID }
         )
-        session.changeAccount(to: firstUser)
+        session.changeAccount(to: firstUser, transport: sessionTransport(firstUser))
         firstStore.rejectsClears = true
 
-        session.changeAccount(to: secondUser)
-        session.changeAccount(to: firstUser)
+        session.changeAccount(to: secondUser, transport: sessionTransport(secondUser))
+        session.changeAccount(to: firstUser, transport: sessionTransport(firstUser))
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canRetryRecoveryStorage)
         XCTAssertFalse(session.canRetry)
         XCTAssertEqual(factory.requestedAccountIDs, [firstUser])
+        session.createMatch()
+        await Task.yield()
+        XCTAssertTrue(creates.values.isEmpty, "Auth reversion cannot bypass explicit storage recovery")
+        XCTAssertEqual(secondStore.storedState.pendingIntent, .create(requestID: secondRequestID))
 
         factory.rejectsConstruction = true
         session.retry()
@@ -1490,12 +1497,12 @@ final class LiveMatchSessionTests: XCTestCase {
             LiveRecoveryState(pendingIntent: .create(requestID: secondRequestID))
         )
 
-        let relaunched = LiveMatchSession(
+        let (relaunched, relaunchedTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) }
         )
-        relaunched.changeAccount(to: firstUser)
+        relaunched.changeAccount(to: firstUser, transport: relaunchedTransport(firstUser))
         await Task.yield()
 
         XCTAssertEqual(relaunched.savedMatchID, firstMatchID)
@@ -1503,6 +1510,42 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(creates.values, [firstRequestID])
         XCTAssertTrue(factory.requestedAccountIDs.allSatisfy { $0 == firstUser })
         XCTAssertEqual(try firstStore.load().matchID, firstMatchID)
+    }
+
+    func testAuthReversionInvalidBindingCannotBypassStorageRetry() async throws {
+        for mismatched in [false, true] {
+            let a = UUID(), b = UUID(), calls = LockedCounter()
+            let oldStore = MemoryLiveRecoveryStore(), newStore = MemoryLiveRecoveryStore()
+            let factory = MemoryLiveRecoveryStoreFactory([a: oldStore, b: newStore])
+            let (session, transportFor) = makeLiveSessionFixture(
+                service: LiveServiceMock(create: { _ in calls.increment(); return UUID() }),
+                realtime: nil, storeFactory: factory.make)
+            session.changeAccount(to: a, transport: transportFor(a))
+            oldStore.rejectsClears = true
+            session.changeAccount(to: b, transport: transportFor(b))
+            let invalid = LiveAccountTransport(userID: mismatched ? b : a,
+                service: LiveServiceMock(create: { _ in calls.increment(); return UUID() }),
+                realtime: nil, refresh: { _ in false }, isValid: { mismatched })
+            session.changeAccount(to: a, transport: invalid)
+            XCTAssertEqual(session.phase, .storageUnavailable)
+            XCTAssertEqual(factory.requestedAccountIDs, [a])
+            session.createMatch()
+            session.retry()
+            await Task.yield()
+            XCTAssertEqual(calls.value, 0)
+            XCTAssertEqual(session.phase, .storageUnavailable)
+            XCTAssertEqual(factory.requestedAccountIDs, [a])
+
+            session.changeAccount(to: a, transport: transportFor(a))
+            XCTAssertEqual(session.phase, .storageUnavailable, "A fresh binding is not consent to retry storage")
+            XCTAssertEqual(factory.requestedAccountIDs, [a])
+            session.retry()
+            XCTAssertEqual(session.phase, .inactive)
+            XCTAssertEqual(factory.requestedAccountIDs, [a, a])
+            XCTAssertFalse(factory.requestedAccountIDs.contains(b))
+            XCTAssertEqual(calls.value, 0)
+            XCTAssertNil(session.pendingIntent)
+        }
     }
 
     func testAuthReversionCancelsFailedSignOutBeforeDiscardingCurrentAccount() async throws {
@@ -1519,17 +1562,17 @@ final class LiveMatchSessionTests: XCTestCase {
             creates.append(receivedRequestID)
             return matchID
         })
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) },
             makeUUID: { requestID }
         )
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
         store.rejectsClears = true
 
-        session.changeAccount(to: nil)
-        session.changeAccount(to: userID)
+        session.changeAccount(to: nil, transport: nil)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canDiscardRecovery)
@@ -1548,12 +1591,12 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(creates.values, [requestID])
         XCTAssertEqual(try store.load().matchID, matchID)
 
-        let relaunched = LiveMatchSession(
+        let (relaunched, relaunchedTransport) = makeLiveSessionFixture(
             service: service,
             realtime: nil,
             storeFactory: { try factory.make($0) }
         )
-        relaunched.changeAccount(to: userID)
+        relaunched.changeAccount(to: userID, transport: relaunchedTransport(userID))
         await Task.yield()
 
         XCTAssertEqual(relaunched.savedMatchID, matchID)
@@ -1569,12 +1612,12 @@ final class LiveMatchSessionTests: XCTestCase {
         store.rejectsClears = true
         let factory = MemoryLiveRecoveryStoreFactory([userID: store])
         factory.rejectsConstruction = true
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(),
             realtime: nil,
             storeFactory: { try factory.make($0) }
         )
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         factory.rejectsConstruction = false
         session.discardRecovery()
@@ -1592,9 +1635,9 @@ final class LiveMatchSessionTests: XCTestCase {
             LiveRecoveryState(pendingIntent: .create(requestID: requestID))
         )
         store.rejectsLoads = true
-        let session = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
 
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canDiscardRecovery)
@@ -1615,8 +1658,8 @@ final class LiveMatchSessionTests: XCTestCase {
         )
         store.rejectsLoads = true
         store.rejectsClears = true
-        let session = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
-        session.changeAccount(to: UUID())
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(), realtime: nil, store: store)
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         session.discardRecovery()
 
@@ -1635,16 +1678,16 @@ final class LiveMatchSessionTests: XCTestCase {
             creates.increment()
             return UUID()
         })
-        let session = makeSession(service: service, realtime: nil, store: store)
+        let (session, sessionTransport) = makeSession(service: service, realtime: nil, store: store)
         let userID = UUID()
-        session.changeAccount(to: userID)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
 
         session.discardRecovery()
-        session.changeAccount(to: nil)
-        session.changeAccount(to: userID)
+        session.changeAccount(to: nil, transport: nil)
+        session.changeAccount(to: userID, transport: sessionTransport(userID))
         await Task.yield()
-        let relaunched = makeSession(service: service, realtime: nil, store: store)
-        relaunched.changeAccount(to: userID)
+        let (relaunched, relaunchedTransport) = makeSession(service: service, realtime: nil, store: store)
+        relaunched.changeAccount(to: userID, transport: relaunchedTransport(userID))
         await Task.yield()
 
         XCTAssertEqual(session.phase, .inactive)
@@ -1661,21 +1704,21 @@ final class LiveMatchSessionTests: XCTestCase {
             LiveRecoveryState(pendingIntent: .create(requestID: UUID()))
         )
         let secondStore = MemoryLiveRecoveryStore()
-        let session = LiveMatchSession(
+        let (session, sessionTransport) = makeLiveSessionFixture(
             service: LiveServiceMock(),
             realtime: RealtimeHub(),
             storeFactory: { $0 == firstUser ? firstStore : secondStore }
         )
-        session.changeAccount(to: firstUser)
+        session.changeAccount(to: firstUser, transport: sessionTransport(firstUser))
         firstStore.rejectsClears = true
 
-        session.changeAccount(to: secondUser)
+        session.changeAccount(to: secondUser, transport: sessionTransport(secondUser))
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertTrue(session.canDiscardRecovery)
         XCTAssertNotNil(firstStore.storedState.pendingIntent)
 
-        session.changeAccount(to: nil)
+        session.changeAccount(to: nil, transport: nil)
 
         XCTAssertEqual(session.phase, .storageUnavailable)
         XCTAssertNotNil(firstStore.storedState.pendingIntent)
@@ -1688,9 +1731,9 @@ final class LiveMatchSessionTests: XCTestCase {
         let service = LiveServiceMock(snapshot: { _ in
             throw LiveMatchServiceError.server(.notAMatchMember)
         })
-        let session = makeSession(service: service, realtime: nil, store: store)
+        let (session, sessionTransport) = makeSession(service: service, realtime: nil, store: store)
 
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         await eventually { session.phase == .storageUnavailable }
         XCTAssertTrue(session.canDiscardRecovery)
@@ -1707,8 +1750,8 @@ final class LiveMatchSessionTests: XCTestCase {
             snapshots.increment()
             return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
         })
-        let session = makeSession(service: service, realtime: realtime, store: store)
-        session.changeAccount(to: UUID())
+        let (session, sessionTransport) = makeSession(service: service, realtime: realtime, store: store)
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
 
         session.backgrounded()
@@ -1732,7 +1775,7 @@ final class LiveMatchSessionTests: XCTestCase {
             snapshots.increment()
             return Self.snapshot(matchID: requestedID, status: .lobby, round: .pending)
         })
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: service,
             realtime: realtime,
             store: store,
@@ -1749,7 +1792,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 }
             }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
 
         realtime.finish(throwing: TestFailure.failed)
@@ -1768,12 +1811,12 @@ final class LiveMatchSessionTests: XCTestCase {
                 Self.snapshot(matchID: requestedID, status: .inProgress, round: .playing)
             }
         )
-        let rejected = makeSession(
+        let (rejected, rejectedTransport) = makeSession(
             service: rejectedService,
             realtime: rejectedRealtime,
             store: rejectedStore
         )
-        rejected.changeAccount(to: UUID())
+        bindLiveAccount(rejected, transport: rejectedTransport(UUID()))
         await eventually { rejectedRealtime.subscriptionCount == 1 }
         rejectedRealtime.send(.ready)
         await eventually { rejected.phase == .ready }
@@ -1805,12 +1848,12 @@ final class LiveMatchSessionTests: XCTestCase {
                 Self.snapshot(matchID: id, status: .completed, round: .revealed)
             }
         )
-        let conflict = makeSession(
+        let (conflict, conflictTransport) = makeSession(
             service: conflictService,
             realtime: conflictRealtime,
             store: conflictStore
         )
-        conflict.changeAccount(to: UUID())
+        bindLiveAccount(conflict, transport: conflictTransport(UUID()))
         await eventually { conflictRealtime.subscriptionCount == 1 }
         conflictRealtime.send(.ready)
         await eventually {
@@ -1851,7 +1894,7 @@ final class LiveMatchSessionTests: XCTestCase {
             staleAfter: .seconds(77),
             retryBackoff: [.seconds(5), .seconds(10), .seconds(20), .seconds(30)]
         )
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: service,
             realtime: RealtimeHub(),
             store: store,
@@ -1865,7 +1908,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 }
             }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
 
         session.createMatch()
 
@@ -1901,7 +1944,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let timerStarted = LockedCounter()
         let releaseTimer = AsyncGate()
         let service = LiveServiceMock(snapshot: { _ in try await script.next() })
-        let session = makeSession(
+        let (session, sessionTransport) = makeSession(
             service: service,
             realtime: realtime,
             store: store,
@@ -1920,7 +1963,7 @@ final class LiveMatchSessionTests: XCTestCase {
             },
             uptime: { clock.value }
         )
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { realtime.subscriptionCount == 1 }
         realtime.send(.ready)
         await eventually { session.phase == .ready && timerStarted.value == 1 }
@@ -1946,7 +1989,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let store = MemoryLiveRecoveryStore(original)
             store.rejectsWrites = true
             let dispatches = LockedCounter()
-            let session = makeSession(service: LiveServiceMock(
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(
                 snapshot: { id in
                     XCTAssertEqual(store.storedState.formatVersion, 2)
                     dispatches.increment()
@@ -1964,7 +2007,7 @@ final class LiveMatchSessionTests: XCTestCase {
                     dispatches.increment(); return Self.receipt()
                 }
             ), realtime: nil, store: store)
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             await Task.yield()
             XCTAssertEqual(session.phase, .storageUnavailable)
             XCTAssertEqual(dispatches.value, 0)
@@ -1986,13 +2029,13 @@ final class LiveMatchSessionTests: XCTestCase {
             let request = UUID(), match = UUID()
             let store = MemoryLiveRecoveryStore()
             let calls = LockedValues<LivePendingIntent>()
-            let session = LiveMatchSession(service: LiveServiceMock(createConfigured: { id, roundCount, build in
+            let (session, sessionTransport) = makeLiveSessionFixture(service: LiveServiceMock(createConfigured: { id, roundCount, build in
                 let intent = LivePendingIntent.create(requestID: id, roundCount: roundCount, clientBuild: build)
                 XCTAssertEqual(store.storedState.pendingIntent, intent)
                 calls.append(intent)
                 throw LiveMatchServiceError.server(.requestConflict)
             }), realtime: nil, storeFactory: { _ in store }, makeUUID: { request })
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             session.createMatch(roundCount: count)
             await eventually { !session.isCommandInFlight }
             session.retry()
@@ -2011,7 +2054,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let realtime = RealtimeHub()
         let starts = LockedValues<Int>()
         let snapshots = LockedCounter()
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
             snapshots.increment()
             return initial
         }, startTargeted: { _, round in
@@ -2019,7 +2062,7 @@ final class LiveMatchSessionTests: XCTestCase {
             throw LiveMatchServiceError.unavailable
         }), realtime: realtime, store: store,
         timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { session.phase == .ready }
         session.selectReveal(number: 1)
         session.startMatch()
@@ -2043,7 +2086,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let starts = LockedValues<Int>()
             let snapshots = LockedCounter()
             let changes = LockedCounter()
-            let session = makeSession(service: LiveServiceMock(snapshot: { id in
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { id in
                 XCTAssertEqual(id, initial.match.id)
                 snapshots.increment()
                 return initial
@@ -2056,7 +2099,7 @@ final class LiveMatchSessionTests: XCTestCase {
             }), realtime: realtime, store: store,
             timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
             XCTAssertFalse(session.hasPendingStart)
-            session.changeAccount(to: UUID()); realtime.send(.ready)
+            bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
             await eventually { session.phase == .ready }
             XCTAssertFalse(session.hasPendingStart)
             XCTAssertTrue(session.canRetry, "ordinary recovery is not an unresolved Start")
@@ -2111,7 +2154,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 let realtime = RealtimeHub()
                 let starts = LockedValues<Int>()
                 let snapshots = LockedCounter()
-                let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+                let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
                     snapshots.increment()
                     return canonical.values.last!
                 }, startTargeted: { id, round in
@@ -2121,7 +2164,7 @@ final class LiveMatchSessionTests: XCTestCase {
                     throw LiveMatchServiceError.unavailable
                 }), realtime: realtime, store: store,
                 timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]))
-                session.changeAccount(to: UUID()); realtime.send(.ready)
+                bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
                 await eventually { session.phase == .ready }
                 session.startMatch()
                 await eventually { !session.isCommandInFlight && snapshots.value >= 2 && session.phase == .ready }
@@ -2142,7 +2185,7 @@ final class LiveMatchSessionTests: XCTestCase {
                     await eventually { !session.isCommandInFlight && starts.values.count == 2 }
                     XCTAssertEqual(starts.values, [target, target])
                 default:
-                    session.changeAccount(to: nil)
+                    session.changeAccount(to: nil, transport: nil)
                     XCTAssertEqual(session.phase, .inactive)
                     XCTAssertFalse(session.hasSavedMatch)
                     XCTAssertEqual(store.storedState, LiveRecoveryState())
@@ -2165,7 +2208,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let attempts = LockedCounter()
             let gate = AsyncGate()
             let clock = UptimeBox(100)
-            let session = makeSession(service: LiveServiceMock(snapshot: { _ in current }, submitTargeted: {
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in current }, submitTargeted: {
                 match, round, id, word, build in
                 XCTAssertEqual(match, current.match.id); XCTAssertEqual(round, 1)
                 XCTAssertEqual(id, request); XCTAssertEqual(word, "STONE"); XCTAssertEqual(build, 1)
@@ -2174,7 +2217,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 if succeeds { return Self.receipt() }
                 throw LiveMatchServiceError.server(.wordNotAccepted)
             }), realtime: realtime, store: store, uptime: { clock.value })
-            session.changeAccount(to: UUID()); realtime.send(.ready)
+            bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
             await eventually { session.snapshot?.round.number == 2 && !session.isCommandInFlight }
             XCTAssertEqual(session.pendingIntent, intent, "snapshot is never acknowledgement")
             XCTAssertTrue(session.isInputLocked)
@@ -2205,7 +2248,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let script = SnapshotScript(first: first, later: next, suspendFirst: false)
         let timers = LockedCounter(), fetches = LockedCounter()
         let gate = AsyncGate()
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
             let call = fetches.increment()
             if call > 2 { return final }
             return try await script.next()
@@ -2215,7 +2258,7 @@ final class LiveMatchSessionTests: XCTestCase {
             if duration == .seconds(99) { try await Task.sleep(for: duration) }
             else { timers.increment(); await gate.wait() }
         })
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { session.phase == .ready && timers.value == 1 }
         session.selectReveal(number: 1)
         await gate.open()
@@ -2245,10 +2288,10 @@ final class LiveMatchSessionTests: XCTestCase {
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: countdown.match.id))
         countdown.revision = playing.revision
         let initial = countdown, equal = playing, older = stale
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
             switch calls.increment() { case 1: initial; case 2: older; default: equal }
         }), realtime: realtime, store: store)
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { session.snapshot?.round.state == .countdown }
         realtime.send(.signal)
         await eventually { calls.value == 2 }
@@ -2268,11 +2311,11 @@ final class LiveMatchSessionTests: XCTestCase {
                 old.revision = current.revision + 1
                 let script = SnapshotScript(first: old, later: current)
                 let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
-                let session = makeSession(
+                let (session, sessionTransport) = makeSession(
                     service: LiveServiceMock(snapshot: { _ in try await script.next() }),
                     realtime: nil, store: store
                 )
-                session.changeAccount(to: UUID())
+                bindLiveAccount(session, transport: sessionTransport(UUID()))
                 await eventually { await script.callCount == 1 }
 
                 for index in 1...resumeCount {
@@ -2304,7 +2347,7 @@ final class LiveMatchSessionTests: XCTestCase {
         let calls = LockedCounter()
         let oldReturned = LockedCounter()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
             if calls.increment() == 1 {
                 let received = try await script.next()
                 oldReturned.increment()
@@ -2313,7 +2356,7 @@ final class LiveMatchSessionTests: XCTestCase {
             await currentGate.wait()
             return current
         }), realtime: nil, store: store)
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { await script.callCount == 1 }
         session.resumeSavedMatch()
         await eventually { calls.value == 2 }
@@ -2340,9 +2383,9 @@ final class LiveMatchSessionTests: XCTestCase {
         let script = SnapshotScript(first: initial, later: next)
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id))
         let realtime = RealtimeHub()
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in try await script.next() }),
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in try await script.next() }),
                                   realtime: realtime, store: store)
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { await script.callCount == 1 }
         session.leaveToHome()
         session.resumeSavedMatch(); realtime.send(.ready)
@@ -2362,13 +2405,13 @@ final class LiveMatchSessionTests: XCTestCase {
                                                  roundNumber: 1, clientBuild: 2)
             let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: initial.match.id, pendingIntent: intent))
             let realtime = RealtimeHub(), guesses = LockedCounter(), snapshots = LockedCounter()
-            let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
                 snapshots.increment() == 1 ? initial : next
             }, submitTargeted: { _, _, _, _, _ in
                 guesses.increment()
                 throw LiveMatchServiceError.server(denial)
             }), realtime: realtime, store: store)
-            session.changeAccount(to: UUID()); realtime.send(.ready)
+            bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
             await eventually { session.snapshot?.round.number == 1 && !session.isCommandInFlight }
             realtime.send(.signal)
             await eventually { session.snapshot?.round.number == 2 }
@@ -2399,7 +2442,7 @@ final class LiveMatchSessionTests: XCTestCase {
             let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: final.match.id, pendingIntent: intent))
             let realtime = RealtimeHub(), attempts = LockedCounter(), fetches = LockedCounter()
             let gate = AsyncGate()
-            let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
                 fetches.increment(); return final
             }, submitTargeted: { matchID, round, id, word, build in
                 XCTAssertEqual(matchID, final.match.id); XCTAssertEqual(round, 1)
@@ -2412,7 +2455,7 @@ final class LiveMatchSessionTests: XCTestCase {
                 if duration == .seconds(99) { try await Task.sleep(for: duration) }
                 else { await gate.wait() }
             })
-            session.changeAccount(to: UUID()); realtime.send(.ready)
+            bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
             await eventually { session.snapshot == final && !session.isCommandInFlight }
             XCTAssertEqual(session.pendingIntent, intent)
             await gate.open()
@@ -2430,11 +2473,11 @@ final class LiveMatchSessionTests: XCTestCase {
         for denial in [LiveMatchServerError.requestConflict, .rateLimited] {
             let calls = LockedValues<LivePendingIntent>()
             let store = MemoryLiveRecoveryStore()
-            let session = makeSession(service: LiveServiceMock(createConfigured: { id, count, build in
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(createConfigured: { id, count, build in
                 calls.append(.create(requestID: id, roundCount: count, clientBuild: build))
                 throw LiveMatchServiceError.server(denial)
             }), realtime: nil, store: store)
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             session.createMatch(roundCount: 5)
             await eventually { !session.isCommandInFlight }
             let original = try XCTUnwrap(session.pendingIntent)
@@ -2464,10 +2507,10 @@ final class LiveMatchSessionTests: XCTestCase {
         let calls = LockedCounter()
         let realtime = RealtimeHub()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: current.match.id))
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in
             calls.increment() == 2 ? stale : current
         }), realtime: realtime, store: store)
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { session.snapshot == current }
         session.leaveToHome()
         session.resumeSavedMatch(); realtime.send(.ready)
@@ -2486,11 +2529,11 @@ final class LiveMatchSessionTests: XCTestCase {
         let calls = LockedCounter()
         let realtime = RealtimeHub()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: first.match.id))
-        let session = makeSession(service: LiveServiceMock(
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(
             submit: { _, _, _ in throw LiveMatchServiceError.server(.wordNotAccepted) },
             snapshot: { _ in calls.increment() <= 2 ? first : next }
         ), realtime: realtime, store: store)
-        session.changeAccount(to: UUID()); realtime.send(.ready)
+        bindLiveAccount(session, transport: sessionTransport(UUID())); realtime.send(.ready)
         await eventually { session.phase == .ready }
         session.submitGuess("XXXXX")
         await eventually { calls.value == 2 && !session.isCommandInFlight && session.phase == .ready }
@@ -2553,12 +2596,12 @@ final class LiveMatchSessionTests: XCTestCase {
         for (snapshot, allowed) in cases {
             let starts = LockedValues<Int>()
             let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id))
-            let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+            let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
                 starts.append(round)
                 return id
             }), realtime: nil, store: store, uptime: { 0 })
             XCTAssertFalse(session.canStart)
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             await eventually { session.phase == .ready }
             XCTAssertEqual(session.canStart, allowed)
             if allowed {
@@ -2586,9 +2629,9 @@ final class LiveMatchSessionTests: XCTestCase {
         let late = LiveMatchSnapshot(serverTime: reveal.match.expiresAt.addingTimeInterval(100),
             match: reveal.match, members: reveal.members, round: reveal.round,
             revealedRounds: reveal.revealedRounds, standings: reveal.standings)
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in late }), realtime: nil,
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in late }), realtime: nil,
             store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: late.match.id)), uptime: { 0 })
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { session.phase == .ready }
         XCTAssertTrue(session.canStart)
         session.leaveToHome()
@@ -2600,13 +2643,13 @@ final class LiveMatchSessionTests: XCTestCase {
             word: "CRANE", roundNumber: 1, clientBuild: 2)
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id, pendingIntent: pending))
         let starts = LockedValues<Int>()
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
             starts.append(round)
             return id
         }), realtime: nil, store: store,
             timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]),
             uptime: { 0 })
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { session.phase == .ready && !session.isCommandInFlight }
         XCTAssertFalse(session.canStart)
         XCTAssertFalse(session.canInput)
@@ -2620,14 +2663,14 @@ final class LiveMatchSessionTests: XCTestCase {
         let snapshot = try Self.startSnapshot("3-lobby")
         let starts = LockedValues<Int>()
         var clock: TimeInterval = 0
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }, startTargeted: { id, round in
             starts.append(round)
             if starts.values.count == 1 { throw LiveMatchServiceError.unavailable }
             return id
         }), realtime: nil, store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id)),
             timing: .init(requestTimeout: .seconds(99), staleAfter: .seconds(77), retryBackoff: [.seconds(66)]),
             uptime: { clock })
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { session.phase == .ready }
         session.startMatch()
         await eventually { !session.isCommandInFlight && session.phase == .ready }
@@ -2651,11 +2694,11 @@ final class LiveMatchSessionTests: XCTestCase {
                     serverTime: Date(timeIntervalSince1970: expired ? 1_180 : 1_000), selfPlayerState: state)
                 let calls = LockedCounter()
                 let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: matchID))
-                let session = makeSession(service: LiveServiceMock(submit: { _, _, _ in
+                let (session, sessionTransport) = makeSession(service: LiveServiceMock(submit: { _, _, _ in
                     calls.increment()
                     throw LiveMatchServiceError.server(.requestConflict)
                 }, snapshot: { _ in snapshot }), realtime: nil, store: store, uptime: { 0 })
-                session.changeAccount(to: UUID())
+                bindLiveAccount(session, transport: sessionTransport(UUID()))
                 await eventually { session.phase == .ready }
                 let allowed = state == .playing && !expired
                 XCTAssertEqual(session.canInput, allowed)
@@ -2696,13 +2739,13 @@ final class LiveMatchSessionTests: XCTestCase {
         let snapshot = LiveMatchSnapshot(serverTime: try XCTUnwrap(round.startsAt), match: initial.match,
             members: initial.members, round: round, revision: initial.revision,
             revealedRounds: initial.revealedRounds, standings: initial.standings)
-        let session = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }), realtime: nil,
+        let (session, sessionTransport) = makeSession(service: LiveServiceMock(snapshot: { _ in snapshot }), realtime: nil,
             store: MemoryLiveRecoveryStore(LiveRecoveryState(matchID: snapshot.match.id)), uptime: { 0 })
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         await eventually { session.phase == .ready }
         XCTAssertTrue(session.canInput, "deletion blocks future Starts, while the survivor finishes this round")
         XCTAssertFalse(session.canStart)
-        session.changeAccount(to: nil)
+        session.changeAccount(to: nil, transport: nil)
         XCTAssertFalse(session.canInput)
         XCTAssertFalse(session.canStart)
     }
@@ -2719,8 +2762,8 @@ final class LiveMatchSessionTests: XCTestCase {
         uptime: @escaping @MainActor () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
         }
-    ) -> LiveMatchSession {
-        LiveMatchSession(
+    ) -> (LiveMatchSession, (UUID) -> LiveAccountTransport) {
+        makeLiveSessionFixture(
             service: service,
             realtime: realtime,
             storeFactory: { _ in store },
@@ -3040,7 +3083,7 @@ extension LiveMatchSessionTests {
         for discard in [false, true] {
             let a = UUID(), b = UUID(), callsA = LockedCounter(), callsB = LockedCounter()
             let oldStore = MemoryLiveRecoveryStore(), newStore = MemoryLiveRecoveryStore()
-            let session = LiveMatchSession(service: nil, realtime: nil,
+            let session = LiveMatchSession(
                 storeFactory: { $0 == a ? oldStore : newStore })
             let transportA = LiveAccountTransport(userID: a, service: LiveServiceMock(create: { _ in
                 callsA.increment(); throw LiveMatchServiceError.server(.requestConflict)
@@ -3068,7 +3111,7 @@ extension LiveMatchSessionTests {
 
     func testUnavailableTargetBindingCannotReuseOldTransportAfterCleanup() async {
         let a = UUID(), b = UUID(), calls = LockedCounter(), oldStore = MemoryLiveRecoveryStore()
-        let session = LiveMatchSession(service: nil, realtime: nil, storeFactory: { _ in oldStore })
+        let session = LiveMatchSession(storeFactory: { _ in oldStore })
         let old = LiveAccountTransport(userID: a, service: LiveServiceMock(create: { _ in
             calls.increment(); throw LiveMatchServiceError.unavailable
         }), realtime: nil, refresh: { _ in false }, isValid: { true })
@@ -3096,7 +3139,7 @@ extension LiveMatchSessionTests {
             let laterFile = laterStore.directory.appending(path: "live-recovery-v1.json")
             let originalLaterBytes = try Data(contentsOf: laterFile)
             let journal = AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root))
-            let session = LiveMatchSession(service: nil, realtime: nil,
+            let session = LiveMatchSession(
                 storeFactory: { userID in
                     if userID == a { return oldStore }
                     return laterStore
@@ -3136,7 +3179,7 @@ extension LiveMatchSessionTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let user = UUID(), oldStore = MemoryLiveRecoveryStore(), calls = LockedCounter()
         let journal = AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root))
-        let session = LiveMatchSession(service: nil, realtime: nil, storeFactory: { _ in oldStore }, cleanupJournal: journal)
+        let session = LiveMatchSession(storeFactory: { _ in oldStore }, cleanupJournal: journal)
         let transport = LiveAccountTransport(userID: user, service: LiveServiceMock(create: { _ in
             calls.increment(); throw LiveMatchServiceError.server(.requestConflict)
         }), realtime: nil, refresh: { _ in false }, isValid: { true })
@@ -3157,4 +3200,111 @@ extension LiveMatchSessionTests {
         await Task.yield()
         XCTAssertEqual(calls.value, 0)
     }
+}
+
+@MainActor
+extension LiveMatchSessionTests {
+    func testMismatchedOrRevokedTargetTransportCannotDispatch() async {
+        for mismatched in [false, true] {
+            let user = UUID(), calls = LockedCounter(), store = MemoryLiveRecoveryStore()
+            let session = LiveMatchSession(storeFactory: { _ in store })
+            let transport = LiveAccountTransport(userID: mismatched ? UUID() : user,
+                service: LiveServiceMock(create: { _ in calls.increment(); return UUID() }),
+                realtime: nil, refresh: { _ in false }, isValid: { mismatched })
+            session.changeAccount(to: user, transport: transport)
+            XCTAssertEqual(session.phase, .needsSignIn)
+            session.createMatch()
+            await Task.yield()
+            XCTAssertEqual(calls.value, 0)
+            XCTAssertNil(session.pendingIntent)
+        }
+    }
+
+    func testHeldAccountRefreshCannotRetryAfterAccountSwitch() async {
+        let a = UUID(), b = UUID(), callsA = LockedCounter(), callsB = LockedCounter()
+        let refreshes = LockedCounter(), refreshReturns = LockedCounter(), refreshGate = AsyncGate()
+        let oldStore = MemoryLiveRecoveryStore(), newStore = MemoryLiveRecoveryStore()
+        let session = LiveMatchSession(storeFactory: { $0 == a ? oldStore : newStore })
+        let old = LiveAccountTransport(userID: a,
+            service: LiveServiceMock(create: { _ in
+                callsA.increment(); throw LiveMatchServiceError.server(.notAuthenticated)
+            }), realtime: nil, refresh: { userID in
+                XCTAssertEqual(userID, a)
+                refreshes.increment()
+                await refreshGate.wait()
+                refreshReturns.increment()
+                return true
+            }, isValid: { true })
+        let next = LiveAccountTransport(userID: b,
+            service: LiveServiceMock(create: { _ in
+                callsB.increment(); throw LiveMatchServiceError.server(.requestConflict)
+            }), realtime: nil, refresh: { _ in XCTFail("B must not borrow A's refresh"); return false },
+            isValid: { true })
+        session.changeAccount(to: a, transport: old)
+        session.createMatch()
+        await eventually { refreshes.value == 1 }
+        session.changeAccount(to: b, transport: next)
+        session.createMatch()
+        await eventually { callsB.value == 1 && !session.isCommandInFlight }
+        let pendingB = session.pendingIntent
+        await refreshGate.open()
+        await eventually { refreshReturns.value == 1 }
+        await Task.yield()
+        XCTAssertEqual(callsA.value, 1, "A's held refresh cannot retry its retired command")
+        XCTAssertEqual(callsB.value, 1)
+        XCTAssertEqual(session.pendingIntent, pendingB)
+        XCTAssertEqual(session.lastError, .server(.requestConflict))
+        XCTAssertEqual(try? oldStore.load(), LiveRecoveryState())
+        session.leaveToHome()
+    }
+
+    func testRequestedTransportRevokedDuringCleanupCannotInstall() async {
+        let a = UUID(), b = UUID(), calls = LockedCounter(), revoked = LockedCounter()
+        let oldStore = MemoryLiveRecoveryStore(), newStore = MemoryLiveRecoveryStore()
+        let session = LiveMatchSession(storeFactory: { $0 == a ? oldStore : newStore })
+        let old = LiveAccountTransport(userID: a, service: LiveServiceMock(), realtime: nil,
+            refresh: { _ in false }, isValid: { true })
+        let next = LiveAccountTransport(userID: b,
+            service: LiveServiceMock(create: { _ in calls.increment(); return UUID() }),
+            realtime: nil, refresh: { _ in false }, isValid: { revoked.value == 0 })
+        session.changeAccount(to: a, transport: old)
+        oldStore.rejectsClears = true
+        XCTAssertEqual(session.changeAccount(to: b, transport: next), .recoveryCleanupPending)
+        revoked.increment()
+        oldStore.rejectsClears = false
+        session.retry()
+        XCTAssertEqual(session.phase, .needsSignIn)
+        XCTAssertFalse(session.hasPendingAccountCleanup(for: a))
+        session.createMatch()
+        await Task.yield()
+        XCTAssertEqual(calls.value, 0)
+        XCTAssertNil(session.pendingIntent)
+    }
+}
+
+/// Keeps account binding explicit in each test; no test-only session binding mode.
+@MainActor
+func makeLiveSessionFixture(
+    service: any LiveMatchServicing,
+    realtime: (any LiveMatchRealtimeServicing)?,
+    storeFactory: @escaping LiveMatchSession.StoreFactory,
+    cleanupJournal: AccountCleanupJournal? = nil,
+    refreshAuth: @escaping LiveMatchSession.AuthRefresh = { _ in false },
+    timing: LiveMatchSessionTiming = .production,
+    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+    uptime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    makeUUID: @escaping @MainActor () -> UUID = UUID.init
+) -> (LiveMatchSession, (UUID) -> LiveAccountTransport) {
+    let session = LiveMatchSession(storeFactory: storeFactory, cleanupJournal: cleanupJournal,
+        timing: timing, sleep: sleep, uptime: uptime, makeUUID: makeUUID)
+    return (session, { userID in
+        LiveAccountTransport(userID: userID, service: service, realtime: realtime,
+            refresh: refreshAuth, isValid: { true })
+    })
+}
+
+@MainActor
+@discardableResult
+func bindLiveAccount(_ session: LiveMatchSession, transport: LiveAccountTransport) -> LiveAccountChangeOutcome {
+    session.changeAccount(to: transport.userID, transport: transport)
 }

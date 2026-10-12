@@ -74,9 +74,9 @@ final class LiveMatchViewTests: XCTestCase {
         for selected in [1, 3, 5] {
             let snapshot = try Phase4LiveFixtures.snapshot("3-lobby")
             let store = PresentationRecoveryStore(LiveRecoveryState())
-            let session = LiveMatchSession(service: PresentationService(snapshot), realtime: nil,
+            let (session, sessionTransport) = makeLiveSessionFixture(service: PresentationService(snapshot), realtime: nil,
                                            storeFactory: { _ in store })
-            session.changeAccount(to: UUID())
+            bindLiveAccount(session, transport: sessionTransport(UUID()))
             var routes: [AppRoute] = []
             let controls = LiveCreateControls(live: session, isSignedIn: true,
                                               openRoute: { routes.append($0) }, roundCount: selected)
@@ -98,7 +98,7 @@ final class LiveMatchViewTests: XCTestCase {
             session.leaveToHome()
             for _ in 0..<100 where session.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
         }
-        let session = LiveMatchSession(service: nil, realtime: nil)
+        let session = LiveMatchSession()
         var routes: [AppRoute] = []
         let signedOut = LiveCreateControls(live: session, isSignedIn: false, openRoute: { routes.append($0) })
         XCTAssertEqual(signedOut.roundCount, 3)
@@ -149,9 +149,7 @@ final class LiveMatchViewTests: XCTestCase {
     }
 
     @MainActor
-    func testEveryLiveStateMapsFromSessionFixturesAndRendersOnSE() async throws {
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+    func testEveryLiveStateMapsFromSessionFixtures() async throws {
         for scenario in RenderScenario.allCases {
             let fixture = try await makeScenario(scenario)
             let session = fixture.session
@@ -221,6 +219,20 @@ final class LiveMatchViewTests: XCTestCase {
             if scenario == .guessDecision || scenario == .rateDecision {
                 XCTAssertEqual(mapped.notice?.controls.map(\.action), [.retryRequest, .discardGuess])
             }
+            await fixture.service.releaseDelays()
+            session.leaveToHome()
+            for _ in 0..<100 where session.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
+        }
+    }
+
+    @MainActor
+    func testEveryLiveStateRendersOnSE() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        try await GameplayContainmentHost.establishOrientation(.portrait, in: scene)
+        for scenario in RenderScenario.allCases {
+            let fixture = try await makeScenario(scenario)
+            let session = fixture.session
+            defer { session.leaveToHome() }
             for accessibility in [false, true] {
                 let view = NavigationStack {
                     LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility,
@@ -518,13 +530,13 @@ final class LiveMatchViewTests: XCTestCase {
             ? .guess(matchID: snapshot.match.id, requestID: UUID(), word: "CRANE", roundNumber: 1, clientBuild: 2) : nil
         let store = PresentationRecoveryStore(LiveRecoveryState(matchID: empty ? nil : snapshot.match.id, pendingIntent: pending))
         let realtime = RenderRealtime()
-        let session = LiveMatchSession(service: service, realtime: realtime, storeFactory: { _ in
+        let (session, sessionTransport) = makeLiveSessionFixture(service: service, realtime: realtime, storeFactory: { _ in
             if scenario == .storageUnavailable { throw LiveMatchServiceError.unavailable }
             return store
         }, timing: LiveMatchSessionTiming(requestTimeout: .seconds(60), staleAfter: .seconds(3600),
             retryBackoff: [.seconds(3600)]), uptime: { 0 })
         if scenario == .signedOut { return (session, service) }
-        session.changeAccount(to: UUID())
+        bindLiveAccount(session, transport: sessionTransport(UUID()))
         if scenario == .storageUnavailable || scenario == .entry { return (session, service) }
         if scenario == .entryPendingCreate {
             await service.configure(commandDelay: true)

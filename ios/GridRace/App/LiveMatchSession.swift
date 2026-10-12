@@ -37,7 +37,7 @@ final class LiveMatchSession {
     private var realtime: (any LiveMatchRealtimeServicing)?
     private let storeFactory: StoreFactory
     private let cleanupJournal: AccountCleanupJournal?
-    private var refreshAuth: AuthRefresh
+    private var refreshAuth: AuthRefresh = { _ in false }
     private let timing: LiveMatchSessionTiming
     private let sleep: @Sendable (Duration) async throws -> Void
     private let uptime: @MainActor () -> TimeInterval
@@ -46,7 +46,6 @@ final class LiveMatchSession {
     private var accountID: UUID?
     private var transport: LiveAccountTransport?
     private var requestedTransport: LiveAccountTransport?
-    private var usesAccountTransport = false
     private var requestedAccountID: UUID?
     private var hasRequestedAccountChange = false
     private var phaseBeforeCapturedCleanup: LiveMatchSessionPhase?
@@ -139,13 +138,10 @@ final class LiveMatchSession {
     }
 
     init(
-        service: (any LiveMatchServicing)?,
-        realtime: (any LiveMatchRealtimeServicing)?,
         storeFactory: @escaping StoreFactory = {
             try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         },
         cleanupJournal: AccountCleanupJournal? = nil,
-        refreshAuth: @escaping AuthRefresh = { _ in false },
         timing: LiveMatchSessionTiming = .production,
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
@@ -156,11 +152,8 @@ final class LiveMatchSession {
         makeUUID: @escaping @MainActor () -> UUID = UUID.init
     ) {
         precondition(!timing.retryBackoff.isEmpty)
-        self.service = service
-        self.realtime = realtime
         self.storeFactory = storeFactory
         self.cleanupJournal = cleanupJournal
-        self.refreshAuth = refreshAuth
         self.timing = timing
         self.sleep = sleep
         self.uptime = uptime
@@ -176,7 +169,6 @@ final class LiveMatchSession {
 
     @discardableResult
     func changeAccount(to userID: UUID?, transport next: LiveAccountTransport?) -> LiveAccountChangeOutcome {
-        usesAccountTransport = true
         if accountID == userID, transport?.userID == userID, transport?.isValid() == true {
             return .completed
         }
@@ -185,7 +177,7 @@ final class LiveMatchSession {
         refreshAuth = { _ in false }
         transport = nil
         requestedTransport = next
-        return changeAccount(to: userID)
+        return transitionAccount(to: userID)
     }
 
     func hasPendingAccountCleanup(for userID: UUID) -> Bool {
@@ -243,7 +235,6 @@ final class LiveMatchSession {
     }
 
     private func installRequestedTransport(for userID: UUID?) -> Bool {
-        guard usesAccountTransport else { return true }
         guard let userID else {
             requestedTransport = nil
             return true
@@ -262,7 +253,7 @@ final class LiveMatchSession {
     }
 
     @discardableResult
-    func changeAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
+    private func transitionAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
         if let cleanupJournal, cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty {
             if hasRequestedAccountChange, requestedAccountID == userID {
                 // Repeated Auth notifications retain the captured transition and
@@ -280,14 +271,22 @@ final class LiveMatchSession {
             return .recoveryCleanupPending
         }
         guard accountID != userID else {
-            if usesAccountTransport, service == nil {
-                resetRuntime()
-                guard installRequestedTransport(for: userID) else { return .completed }
-                loadRecovery()
-            }
             if hasRequestedAccountChange {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
+            }
+            if service == nil {
+                if phase == .storageUnavailable {
+                    // Auth can revert a failed switch without authorizing a storage
+                    // retry. Bind only this account; retain its failure until explicit
+                    // retry/discard, including when the replacement lease is invalid.
+                    _ = installRequestedTransport(for: userID)
+                    phase = .storageUnavailable
+                } else {
+                    resetRuntime()
+                    guard installRequestedTransport(for: userID) else { return .completed }
+                    loadRecovery()
+                }
             }
             return .completed
         }
@@ -463,7 +462,7 @@ final class LiveMatchSession {
         guard accountID != nil else { return }
         if phase == .storageUnavailable {
             if hasRequestedAccountChange {
-                changeAccount(to: requestedAccountID)
+                transitionAccount(to: requestedAccountID)
             } else {
                 loadRecovery()
             }

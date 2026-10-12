@@ -21,16 +21,19 @@ final class LiveMatchIntegrationTests: XCTestCase {
         let signedIn = try await account.signInForLocalTesting(
             email: admission.email, password: admission.password)
         try admission.validateIdentity(signedIn.userID)
+        let bound = try account.makeLiveTransport(userID: signedIn.userID)
         let service = MeasuredLiveMatchService(
-            try account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
+            bound.service, injectLoss: scenario == "product" && role != "resume",
             target: target, waitForAdvance: role == "advance-guest"
         )
         let realtime: (any LiveMatchRealtimeServicing)? =
             environment["GRIDRACE_LIVE_DISABLE_REALTIME"] == "1"
             ? nil
-            : FaultedRealtimeService(base: try account.makeLiveRealtimeService())
-        let session = LiveMatchSession(service: service, realtime: realtime)
-        session.changeAccount(to: signedIn.userID)
+            : FaultedRealtimeService(base: try XCTUnwrap(bound.realtime))
+        let session = LiveMatchSession()
+        let transport = LiveAccountTransport(userID: bound.userID, service: service, realtime: realtime,
+            refresh: bound.refresh, isValid: bound.isValid)
+        session.changeAccount(to: signedIn.userID, transport: transport)
         if session.pendingIntent != nil { XCTAssertTrue(session.isInputLocked) }
 
         if role == "host" {

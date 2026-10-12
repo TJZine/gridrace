@@ -54,9 +54,9 @@ final class DailyClassicModelTests: XCTestCase {
                 for _ in 0..<(state == "failed" ? 6 : 1) { fixture.type("civic", into: shown); shown.submitGuess() }
             } else { shown = model }
             let store = DailyScreenLiveStore(fails: state == "resolve")
-            let live = LiveMatchSession(service: DailyScreenLiveService(), realtime: nil, storeFactory: { _ in store })
+            let (live, liveTransport) = makeLiveSessionFixture(service: DailyScreenLiveService(), realtime: nil, storeFactory: { _ in store })
             if state == "resume" || state == "resolve" {
-                live.changeAccount(to: UUID())
+                bindLiveAccount(live, transport: liveTransport(UUID()))
                 if state == "resume" {
                     live.leaveToHome()
                     XCTAssertTrue(live.hasSavedMatch)

@@ -88,7 +88,7 @@ final class DailyAccountCoordinator {
         }
         self.accountModelService = accountModelService ?? accountService
         self.accountStoreFactory = accountStoreFactory
-        live = LiveMatchSession(service: nil, realtime: nil, storeFactory: liveStoreFactory, cleanupJournal: journal)
+        live = LiveMatchSession(storeFactory: liveStoreFactory, cleanupJournal: journal)
         let guestDaily = try DailyClassicModel(
             pack: dailyPack, store: guestStore,
             persistenceStartup: self.accountModelService == nil ? .active : .prepared,
@@ -169,7 +169,7 @@ final class DailyAccountCoordinator {
 
     @discardableResult
     private func changeLiveAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
-        guard let liveTransportFactory else { return live.changeAccount(to: userID) }
+        guard let liveTransportFactory else { return live.changeAccount(to: userID, transport: nil) }
         let binding = userID.flatMap { try? liveTransportFactory($0) }
         return live.changeAccount(to: userID, transport: binding)
     }
