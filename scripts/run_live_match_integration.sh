@@ -12,17 +12,15 @@ set -euo pipefail
 # Product 1/3/5 rounds relaunch both clients at every reveal. Cron 1/3 waits the
 # original 180-second deadlines with both clients stopped. Deletion restores the
 # surviving container at nonfinal and final boundaries. Budget roughly 20 minutes.
-if [[ ${1:-} == "--help" ]]; then
-  sed -n '4,14p' "$0"
-  exit 0
-fi
+repo_root=$(cd "$(dirname "$0")/.." && pwd)
+source "$repo_root/scripts/live_integration_selection.sh"
+parse_integration_selection "$@"
+[[ $selection_action == run ]] || exit 0
 [[ ${GRIDRACE_LOCAL_INTEGRATION:-} == 1 ]] || {
   echo "UNAVAILABLE: set GRIDRACE_LOCAL_INTEGRATION=1 after controller inventory" >&2; exit 2;
 }
-repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 source "$repo_root/scripts/scan_client_credentials.sh"
-[[ $(git branch --show-current) == dev/classic-mode ]] || exit 2
 stack_dir=${GRIDRACE_INTEGRATION_STACK_DIR:-$repo_root}
 [[ -f "$stack_dir/supabase/config.toml" ]] || exit 2
 # Names are not ownership evidence; the controller inventories this exact directory.
@@ -35,6 +33,13 @@ chmod 700 "$work_dir"
 : > "$work_dir/owned-fixtures.tsv"
 chmod 600 "$work_dir/owned-fixtures.tsv"
 echo "PROOF_DIRECTORY $work_dir"
+{
+  printf 'head=%s\nbranch=%s\n' "$(git rev-parse HEAD)" "$(git branch --show-current)"
+  printf 'tracked_diff_sha256=%s\n' "$(git diff HEAD --binary | shasum -a 256 | awk '{print $1}')"
+  printf 'scope=%s\nscenarios=%s\n' "$selection_scope" "$selected_scenarios"
+  shasum -a 256 scripts/run_live_match_integration.sh scripts/live_integration_selection.sh \
+    supabase/tests/integration/live_slice_test.ts supabase/tests/integration/scenario_selection.ts
+} > "$work_dir/source-and-scope.txt"
 derived_data="$work_dir/DerivedData"
 package_cache=${GRIDRACE_SOURCE_PACKAGES_CACHE:?Set GRIDRACE_SOURCE_PACKAGES_CACHE to an inventoried frozen SourcePackages cache}
 lock=ios/GridRace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
@@ -97,6 +102,7 @@ status=$(curl --silent --output /dev/null --write-out '%{http_code}' --request P
   --header 'Content-Type: application/json' --data '{}' "$API_URL/functions/v1/create-match")
 [[ $status == 400 ]] || { echo "UNAVAILABLE: controller-owned Edge gateway" >&2; exit 2; }
 # Do not replace or delete a preexisting non-answer fixture.
+if integration_has_live_scenarios; then
 for _ in {1..20}; do
   candidate=$(python3 -c 'import secrets,string; print("z"+"".join(secrets.choice(string.ascii_lowercase) for _ in range(4)))')
   failed_guess=$(sql_scalar "insert into private.words(word,is_accepted,is_answer,is_active,pack_version) values('$candidate',true,false,true,1) on conflict do nothing returning word")
@@ -105,6 +111,7 @@ done
 [[ -n "$failed_guess" ]] || { echo "UNAVAILABLE: unique non-answer fixture" >&2; exit 2; }
 # Record a digest for controller cleanup inventory without storing the guess word.
 printf 'non_answer_word_sha256\t%s\n' "$(printf '%s' "$failed_guess" | shasum -a 256 | awk '{print $1}')" >> "$work_dir/owned-fixtures.tsv"
+fi
 run_tag=$(uuidgen)
 for role in host guest; do
   simulator=$(xcrun simctl create "GridRace-proof-$run_tag-$role" \
@@ -304,14 +311,19 @@ ENV
   done
   echo "PASS disposable $slug Auth deletion verified by host"
 }
+if integration_selected deletion-receipt; then
 run_disposable_daily_test \
   GridRaceTests/AccountAuthLifecycleTests/testLocalCommittedDeletionReceiptAfterLostResponseAndIssuedRefreshWhenConfigured \
   deletion-receipt
 rg -q 'GRIDRACE_P4_ORIGINAL_BEARER_RECEIPT_PASS' "$work_dir/deletion-receipt.log"
+fi
+if integration_selected daily; then
 run_disposable_daily_test \
   GridRaceTests/DailySyncTests/testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured daily
 rg -q 'PASS disposable Daily two-client sync and deletion' "$work_dir/daily.log"
+fi
 for count in 1 3 5; do
+  integration_selected "product-$count" || continue
   start_pair product "$count"
   for ((target=1;target<=count;target++)); do
     [[ $target == 1 ]] || launch_round advance-host advance-guest product "$count" "$target"
@@ -323,6 +335,7 @@ for count in 1 3 5; do
 done
 # Controlled privileged fixture knowledge becomes a test input only. Neither
 # authenticated client reads secrets or gets a privileged credential.
+if integration_selected mixed-3; then
 start_pair mixed 3
 for target in 1 2 3; do
   [[ $target == 1 ]] || launch_round advance-host advance-guest mixed 3 "$target"
@@ -339,9 +352,11 @@ for target in 1 2 3; do
   echo "PASS two-process mixed solved/nonzero count 3 round $target"
 done
 launch_round resume resume mixed 3 3
+fi
 # Each test process exits at playing; only SQL observations occur until Cron reveals.
 # No timestamp mutation, snapshot request or manual finalize is used during the wait.
 for count in 1 3; do
+  integration_selected "cron-$count" || continue
   start_pair cron "$count"
   for ((target=1;target<=count;target++)); do
     [[ $target == 1 ]] || launch_round advance-host advance-guest cron "$count" "$target"
@@ -356,6 +371,7 @@ done
 # Delete a stopped guest through the existing privileged deletion preparation, then
 # remove only that owned Auth identity. Real API deletion/concurrency uses B below.
 for count in 1 3; do
+  integration_selected "deletion-$count" || continue
   start_pair deletion "$count"
   sql_scalar "select public.delete_account('$guest_id',2)" >/dev/null
   curl --fail --silent --show-error --request DELETE --header "apikey: $SERVICE_ROLE_KEY" \
@@ -368,17 +384,25 @@ for count in 1 3; do
   [[ $(sql_scalar "select status from public.matches where id='$match_id'") == "$expected" ]]
   echo "PASS survivor relaunch $expected after guest deletion"
 done
+if integration_selected product-1 || integration_selected product-3 || integration_selected product-5; then
 rg -q 'INJECTION dropped real Realtime signal' "$work_dir"/product-*-host.log
 rg -q 'INJECTION duplicated and reordered real Realtime signals' "$work_dir"/product-*-host.log
+fi
+if integration_selected backend; then
 GRIDRACE_LOCAL_INTEGRATION=1 API_URL="$API_URL" ANON_KEY="$ANON_KEY" \
   SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" DB_URL="$DB_URL" deno run \
   --config supabase/functions/deno.json \
   --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL \
   --allow-net=127.0.0.1,localhost --allow-run=/opt/homebrew/opt/libpq/bin/psql \
   supabase/tests/integration/live_slice_test.ts >"$work_dir/backend.log" 2>&1
+fi
 for simulator in "$host_simulator" "$guest_simulator"; do
   container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data)
   scan_client_credentials "$container" "$SERVICE_ROLE_KEY" "$DB_URL"
 done
 rg 'PASS live client|INJECTION|Executed [0-9]+ test' "$work_dir"/*.log || true
-echo "PASS real independent-client matrix and reused exact backend standings/races"
+if [[ $selection_scope == full ]]; then
+  echo "PASS real independent-client matrix and reused exact backend standings/races"
+else
+  echo "PASS focused integration scenarios: $selected_scenarios (full matrix not run)"
+fi
