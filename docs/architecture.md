@@ -97,7 +97,10 @@ A pending guest-history import belongs to its account and sync-engine lifecycle.
 Replacing that lifecycle clears the pending decision; successful synchronization
 for another account cannot mark it imported. Staged conflicts require an explicit
 attempt choice, and durable decision-write failures remain retryable. The displayed
-choice carries its account, puzzle slot and durable basis; an obsolete choice is
+choice carries its account, puzzle slot and durable basis. Conflicts retain account-local
+and incoming storage roles with an explicit cloud-sync or guest-import origin; a single
+projection supplies the device and synced-account display choices. Stale consent
+refreshes only the account-local value, preserving incoming data and origin. An obsolete choice is
 refreshed or rejected before it can replace newer play. Accepted in-memory play
 remains the durability owner when a device write fails, and Settings exposes saving
 status and Retry. A prior-day terminal progress fallback is reconciled into immutable

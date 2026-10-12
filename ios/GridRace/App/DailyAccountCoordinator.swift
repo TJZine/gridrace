@@ -269,7 +269,7 @@ final class DailyAccountCoordinator {
                 self.pendingGuestImport = PendingGuestImport(userID: userID, engine: engine)
                 self.syncStatus = staged
                 if case .conflict(let found) = staged {
-                    try self.present(found, using: engine, isGuestImport: true)
+                    try self.present(found, using: engine)
                     return
                 }
                 await self.synchronize(using: engine, userID: userID)
@@ -326,9 +326,8 @@ final class DailyAccountCoordinator {
         }
     }
 
-    private func present(_ conflicts: [DailySyncConflict], using engine: DailySyncEngine,
-                         isGuestImport: Bool = false) throws {
-        choices = try conflicts.map { try engine.choice(for: $0, isGuestImport: isGuestImport) }
+    private func present(_ conflicts: [DailySyncConflict], using engine: DailySyncEngine) throws {
+        choices = try conflicts.map { try engine.choice(for: $0) }
         self.conflicts = conflicts
     }
 

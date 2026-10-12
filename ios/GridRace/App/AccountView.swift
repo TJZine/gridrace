@@ -488,19 +488,19 @@ private struct ConflictResolutionSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var boards: ConflictBoards {
-        switch conflict {
-        case .progress(_, let local, let cloud):
+        switch conflict.displayOptions {
+        case .progress(_, let device, let syncedAccount):
             ConflictBoards(
-                localRows: local.acceptedGuesses.map(\.row),
-                localDraft: local.draft,
-                cloudRows: cloud.acceptedGuesses.map(\.row),
-                cloudDraft: cloud.draft
+                localRows: device.acceptedGuesses.map(\.row),
+                localDraft: device.draft,
+                cloudRows: syncedAccount.acceptedGuesses.map(\.row),
+                cloudDraft: syncedAccount.draft
             )
-        case .completedResult(_, let local, let cloud):
+        case .completedResult(_, let device, let syncedAccount):
             ConflictBoards(
-                localRows: local.guesses.map(\.row),
+                localRows: device.guesses.map(\.row),
                 localDraft: "",
-                cloudRows: cloud.guesses.map(\.row),
+                cloudRows: syncedAccount.guesses.map(\.row),
                 cloudDraft: ""
             )
         }

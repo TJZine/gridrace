@@ -219,13 +219,43 @@ struct DailyCloudSnapshot: Equatable, Sendable {
     let importedResults: [DailyImportedResultDTO]
 }
 
+enum DailySyncConflictOrigin: Equatable, Sendable {
+    case cloudSync
+    case guestImport
+}
+
+/// Values always retain storage roles; presentation never changes the consent basis.
 enum DailySyncConflict: Error, Equatable, Sendable {
-    case progress(puzzleID: String, local: DailyClassicProgress, cloud: DailyClassicProgress)
+    case progress(
+        puzzleID: String,
+        accountLocal: DailyClassicProgress,
+        incoming: DailyClassicProgress,
+        origin: DailySyncConflictOrigin
+    )
     case completedResult(
         puzzleID: String,
-        local: DailyCompletedResult,
-        cloud: DailyCompletedResult
+        accountLocal: DailyCompletedResult,
+        incoming: DailyCompletedResult,
+        origin: DailySyncConflictOrigin
     )
+
+    var displayOptions: DailySyncConflictDisplayOptions {
+        switch self {
+        case .progress(let id, let accountLocal, let incoming, let origin):
+            return .progress(puzzleID: id,
+                device: origin == .guestImport ? incoming : accountLocal,
+                syncedAccount: origin == .guestImport ? accountLocal : incoming)
+        case .completedResult(let id, let accountLocal, let incoming, let origin):
+            return .completedResult(puzzleID: id,
+                device: origin == .guestImport ? incoming : accountLocal,
+                syncedAccount: origin == .guestImport ? accountLocal : incoming)
+        }
+    }
+}
+
+enum DailySyncConflictDisplayOptions: Equatable, Sendable {
+    case progress(puzzleID: String, device: DailyClassicProgress, syncedAccount: DailyClassicProgress)
+    case completedResult(puzzleID: String, device: DailyCompletedResult, syncedAccount: DailyCompletedResult)
 }
 
 /// A preview binds consent to the account side, regardless of presentation order.
@@ -234,7 +264,6 @@ struct DailySyncChoice: Equatable, Sendable, Identifiable {
     let conflict: DailySyncConflict
     let accountProgress: DailyClassicProgress?
     let accountResult: DailyCompletedResult?
-    let isGuestImport: Bool
 }
 
 enum DailySyncResolutionOutcome: Equatable, Sendable {
@@ -289,7 +318,8 @@ enum DailySyncReconciler {
             localProgress: localProgress,
             localHistory: localHistory,
             incomingProgress: cloud.progress?.domain,
-            incomingResults: cloud.importedResults.map(\.domain)
+            incomingResults: cloud.importedResults.map(\.domain),
+            origin: .cloudSync
         )
     }
 
@@ -298,7 +328,7 @@ enum DailySyncReconciler {
         localHistory: DailyClassicHistory,
         incomingProgress: DailyClassicProgress?,
         incomingResults: [DailyCompletedResult],
-        allowIncomingDraft: Bool = false
+        origin: DailySyncConflictOrigin
     ) throws -> DailyReconciliation {
         var history = localHistory
         var conflicts: [DailySyncConflict] = []
@@ -309,8 +339,9 @@ enum DailySyncReconciler {
                 if !sameImportedPayload(localResult, incomingResult) {
                     conflicts.append(.completedResult(
                         puzzleID: incomingResult.puzzleID,
-                        local: localResult,
-                        cloud: incomingResult
+                        accountLocal: localResult,
+                        incoming: incomingResult,
+                        origin: origin
                     ))
                 }
             } else if !history.record(incomingResult) {
@@ -319,15 +350,16 @@ enum DailySyncReconciler {
         }
 
         if let incomingProgress,
-           !(allowIncomingDraft
+           !(origin == .guestImport
                 ? isValidLocalProgress(incomingProgress)
                 : isValidActiveProgress(incomingProgress)) {
             throw DailySyncError.invalidCloudData
         }
 
         var progress = mergeProgress(
-            local: localProgress,
-            cloud: incomingProgress,
+            accountLocal: localProgress,
+            incoming: incomingProgress,
+            origin: origin,
             conflicts: &conflicts
         )
 
@@ -338,8 +370,9 @@ enum DailySyncReconciler {
             } else if !activeRepresents(active, result: completed) {
                 conflicts.append(.progress(
                     puzzleID: active.puzzleID,
-                    local: active,
-                    cloud: DailyClassicProgress(result: completed)
+                    accountLocal: active,
+                    incoming: DailyClassicProgress(result: completed),
+                    origin: origin
                 ))
             }
         }
@@ -348,41 +381,52 @@ enum DailySyncReconciler {
     }
 
     private static func mergeProgress(
-        local: DailyClassicProgress?,
-        cloud: DailyClassicProgress?,
+        accountLocal: DailyClassicProgress?,
+        incoming: DailyClassicProgress?,
+        origin: DailySyncConflictOrigin,
         conflicts: inout [DailySyncConflict]
     ) -> DailyClassicProgress? {
-        guard let local else { return cloud }
-        guard let cloud else { return local }
-        guard sameIdentity(local, cloud) else {
+        guard let accountLocal else { return incoming }
+        guard let incoming else { return accountLocal }
+        guard sameIdentity(accountLocal, incoming) else {
             // There is one active-progress slot. UTC puzzle day deterministically wins.
-            return local.puzzleDay >= cloud.puzzleDay ? local : cloud
+            return accountLocal.puzzleDay >= incoming.puzzleDay ? accountLocal : incoming
         }
-        if local.completion != nil, cloud.completion == nil { return local }
-        if cloud.completion != nil, local.completion == nil { return cloud }
-        if local.hardModeEnabled != cloud.hardModeEnabled {
-            if local.acceptedGuesses.isEmpty != cloud.acceptedGuesses.isEmpty {
-                var selected = local.acceptedGuesses.isEmpty ? cloud : local
-                selected.draft = local.draft
+        if accountLocal.completion != nil, incoming.completion == nil { return accountLocal }
+        if incoming.completion != nil, accountLocal.completion == nil { return incoming }
+        if accountLocal.hardModeEnabled != incoming.hardModeEnabled {
+            if accountLocal.acceptedGuesses.isEmpty != incoming.acceptedGuesses.isEmpty {
+                var selected = accountLocal.acceptedGuesses.isEmpty ? incoming : accountLocal
+                selected.draft = accountLocal.draft
                 return selected
             }
-            if !local.acceptedGuesses.isEmpty {
-                conflicts.append(.progress(puzzleID: local.puzzleID, local: local, cloud: cloud))
+            if !accountLocal.acceptedGuesses.isEmpty {
+                conflicts.append(.progress(
+                    puzzleID: accountLocal.puzzleID,
+                    accountLocal: accountLocal,
+                    incoming: incoming,
+                    origin: origin
+                ))
             }
-            return local
+            return accountLocal
         }
 
-        if isPrefix(local.acceptedGuesses, of: cloud.acceptedGuesses) {
-            var selected = cloud
-            selected.draft = local.draft
+        if isPrefix(accountLocal.acceptedGuesses, of: incoming.acceptedGuesses) {
+            var selected = incoming
+            selected.draft = accountLocal.draft
             return selected
         }
-        if isPrefix(cloud.acceptedGuesses, of: local.acceptedGuesses) {
-            return local
+        if isPrefix(incoming.acceptedGuesses, of: accountLocal.acceptedGuesses) {
+            return accountLocal
         }
 
-        conflicts.append(.progress(puzzleID: local.puzzleID, local: local, cloud: cloud))
-        return local
+        conflicts.append(.progress(
+            puzzleID: accountLocal.puzzleID,
+            accountLocal: accountLocal,
+            incoming: incoming,
+            origin: origin
+        ))
+        return accountLocal
     }
 
     private static func resultOrder(_ lhs: DailyCompletedResult, _ rhs: DailyCompletedResult) -> Bool {
@@ -640,7 +684,7 @@ final class DailySyncEngine {
             localHistory: store.loadHistory(),
             incomingProgress: guestProgress,
             incomingResults: guestHistory.completedResults,
-            allowIncomingDraft: true
+            origin: .guestImport
         )
         try save(reconciliation)
 
@@ -655,27 +699,19 @@ final class DailySyncEngine {
         )
         try lifecycle.performThrowingIfValid { try store.save(metadata) }
 
-        let importConflicts: [DailySyncConflict] = reconciliation.conflicts.map { conflict in
-            switch conflict {
-            case .progress(let puzzleID, let account, let guest):
-                .progress(puzzleID: puzzleID, local: guest, cloud: account)
-            case .completedResult(let puzzleID, let account, let guest):
-                .completedResult(puzzleID: puzzleID, local: guest, cloud: account)
-            }
-        }
-        return importConflicts.isEmpty
+        return reconciliation.conflicts.isEmpty
             ? .pending
-            : .conflict(importConflicts)
+            : .conflict(reconciliation.conflicts)
     }
 
-    func choice(for conflict: DailySyncConflict, isGuestImport: Bool = false) throws -> DailySyncChoice {
+    func choice(for conflict: DailySyncConflict) throws -> DailySyncChoice {
         let puzzleID: String
         switch conflict {
-        case .progress(let id, _, _), .completedResult(let id, _, _): puzzleID = id
+        case .progress(let id, _, _, _), .completedResult(let id, _, _, _): puzzleID = id
         }
         return DailySyncChoice(id: UUID(), conflict: conflict,
             accountProgress: try store.loadProgress(),
-            accountResult: try store.loadHistory().result(for: puzzleID), isGuestImport: isGuestImport)
+            accountResult: try store.loadHistory().result(for: puzzleID))
     }
 
     private var interruptedChoices: [UUID: DailySyncChoice] = [:]
@@ -687,7 +723,7 @@ final class DailySyncEngine {
         let current = try store.loadProgress()
         let puzzleID: String
         switch preview.conflict {
-        case .progress(let id, _, _), .completedResult(let id, _, _): puzzleID = id
+        case .progress(let id, _, _, _), .completedResult(let id, _, _, _): puzzleID = id
         }
         let currentResult = try store.loadHistory().result(for: puzzleID)
         let basisChanged: Bool
@@ -698,19 +734,17 @@ final class DailySyncEngine {
         if basisChanged {
             let refreshed: DailySyncConflict
             switch preview.conflict {
-            case .progress(_, let local, let cloud):
+            case .progress(_, _, let incoming, let origin):
                 guard let current, current.puzzleID == puzzleID else { return .noLongerApplicable }
                 refreshed = .progress(puzzleID: puzzleID,
-                    local: preview.isGuestImport ? local : current,
-                    cloud: preview.isGuestImport ? current : cloud)
-            case .completedResult(_, let local, let cloud):
+                    accountLocal: current, incoming: incoming, origin: origin)
+            case .completedResult(_, _, let incoming, let origin):
                 guard let currentResult else { return .noLongerApplicable }
                 refreshed = .completedResult(puzzleID: puzzleID,
-                    local: preview.isGuestImport ? local : currentResult,
-                    cloud: preview.isGuestImport ? currentResult : cloud)
+                    accountLocal: currentResult, incoming: incoming, origin: origin)
             }
             interruptedChoices.removeValue(forKey: preview.id)
-            return .refreshed(try choice(for: refreshed, isGuestImport: preview.isGuestImport))
+            return .refreshed(try choice(for: refreshed))
         }
         do {
             try apply(preview.conflict, with: resolution)
@@ -721,7 +755,7 @@ final class DailySyncEngine {
             // accepted edit still invalidates it and requires fresh consent.
             interruptedChoices[preview.id] = try? DailySyncChoice(id: preview.id,
                 conflict: preview.conflict, accountProgress: store.loadProgress(),
-                accountResult: store.loadHistory().result(for: puzzleID), isGuestImport: preview.isGuestImport)
+                accountResult: store.loadHistory().result(for: puzzleID))
             throw error
         }
     }
@@ -742,21 +776,21 @@ final class DailySyncEngine {
     ) throws {
         try Task.checkCancellation()
         var metadata = try store.loadSyncMetadata()
-        switch conflict {
-        case .progress(let puzzleID, let local, let cloud):
-            if let completed = DailySyncReconciler.completedResult(from: local),
-               cloud.completion == nil {
+        switch conflict.displayOptions {
+        case .progress(let puzzleID, let device, let syncedAccount):
+            if let completed = DailySyncReconciler.completedResult(from: device),
+               syncedAccount.completion == nil {
                 guard let current = try store.loadHistory().result(for: puzzleID),
                       DailySyncReconciler.sameImportedPayload(current, completed) else {
                     throw DailySyncError.invalidLocalData
                 }
-                try saveResolvedProgress(local)
+                try saveResolvedProgress(device)
                 metadata.pendingProgress = false
                 metadata.ignoredProgress.insert(puzzleID)
                 metadata.ignoredResults.remove(puzzleID)
                 metadata.pendingResultPuzzleIDs.insert(puzzleID)
-            } else if let completed = DailySyncReconciler.completedResult(from: cloud),
-                      local.completion == nil {
+            } else if let completed = DailySyncReconciler.completedResult(from: syncedAccount),
+                      device.completion == nil {
                 var history = try store.loadHistory()
                 if let current = history.result(for: puzzleID) {
                     guard DailySyncReconciler.sameImportedPayload(current, completed) else {
@@ -766,7 +800,7 @@ final class DailySyncEngine {
                     throw DailySyncError.invalidCloudData
                 }
                 try lifecycle.performThrowingIfValid { try store.save(history) }
-                try saveResolvedProgress(cloud)
+                try saveResolvedProgress(syncedAccount)
                 metadata.pendingProgress = false
                 metadata.pendingResultPuzzleIDs.remove(puzzleID)
                 metadata.ignoredProgress.remove(puzzleID)
@@ -774,31 +808,31 @@ final class DailySyncEngine {
             } else {
                 switch resolution {
                 case .useCloud:
-                    try saveResolvedProgress(cloud)
+                    try saveResolvedProgress(syncedAccount)
                     metadata.pendingProgress = false
                     metadata.ignoredProgress.remove(puzzleID)
                     metadata.ignoredResults.remove(puzzleID)
                 case .keepDevice:
-                    try saveResolvedProgress(local)
+                    try saveResolvedProgress(device)
                     metadata.pendingProgress = false
                     metadata.ignoredProgress.insert(puzzleID)
                 }
             }
-        case .completedResult(let puzzleID, let local, let cloud):
+        case .completedResult(let puzzleID, let device, let syncedAccount):
             let selected: DailyCompletedResult
             switch resolution {
             case .useCloud:
                 var history = try store.loadHistory()
-                guard history.replace(cloud) else { throw DailySyncError.invalidLocalData }
+                guard history.replace(syncedAccount) else { throw DailySyncError.invalidLocalData }
                 try lifecycle.performThrowingIfValid { try store.save(history) }
                 metadata.ignoredResults.remove(puzzleID)
-                selected = cloud
+                selected = syncedAccount
             case .keepDevice:
                 var history = try store.loadHistory()
-                guard history.replace(local) else { throw DailySyncError.invalidLocalData }
+                guard history.replace(device) else { throw DailySyncError.invalidLocalData }
                 try lifecycle.performThrowingIfValid { try store.save(history) }
                 metadata.ignoredResults.insert(puzzleID)
-                selected = local
+                selected = device
             }
             if try store.loadProgress()?.puzzleID == puzzleID {
                 try lifecycle.performThrowingIfValid { try store.save(DailyClassicProgress(result: selected)) }
@@ -1006,8 +1040,9 @@ final class DailySyncEngine {
             } else {
                 conflicts.append(.completedResult(
                     puzzleID: uploaded.puzzleID,
-                    local: current,
-                    cloud: remoteResult.domain
+                    accountLocal: current,
+                    incoming: remoteResult.domain,
+                    origin: .cloudSync
                 ))
             }
         case .conflict(.progress(let remoteProgress)):
@@ -1017,8 +1052,9 @@ final class DailySyncEngine {
                   DailySyncReconciler.sameImportedPayload(current, uploaded) else { return }
             conflicts.append(.progress(
                 puzzleID: uploaded.puzzleID,
-                local: DailyClassicProgress(result: current),
-                cloud: remoteProgress.domain
+                accountLocal: DailyClassicProgress(result: current),
+                incoming: remoteProgress.domain,
+                origin: .cloudSync
             ))
         }
     }
@@ -1044,8 +1080,9 @@ final class DailySyncEngine {
                       !cloudProgress.acceptedGuesses.isEmpty else {
                     conflicts.append(.progress(
                         puzzleID: uploaded.puzzleID,
-                        local: uploaded,
-                        cloud: cloudProgress
+                        accountLocal: uploaded,
+                        incoming: cloudProgress,
+                        origin: .cloudSync
                     ))
                     return
                 }
@@ -1065,8 +1102,9 @@ final class DailySyncEngine {
                   ) else {
                 conflicts.append(.progress(
                     puzzleID: uploaded.puzzleID,
-                    local: uploaded,
-                    cloud: cloudProgress
+                    accountLocal: uploaded,
+                    incoming: cloudProgress,
+                    origin: .cloudSync
                 ))
                 return
             }
@@ -1093,8 +1131,9 @@ final class DailySyncEngine {
                !DailySyncReconciler.sameImportedPayload(existing, result) {
                 conflicts.append(.completedResult(
                     puzzleID: result.puzzleID,
-                    local: existing,
-                    cloud: result
+                    accountLocal: existing,
+                    incoming: result,
+                    origin: .cloudSync
                 ))
                 return
             }
@@ -1112,8 +1151,9 @@ final class DailySyncEngine {
                   progressPayloadMatches(current, uploaded) else { return }
             conflicts.append(.progress(
                 puzzleID: uploaded.puzzleID,
-                local: uploaded,
-                cloud: saved.domain
+                accountLocal: uploaded,
+                incoming: saved.domain,
+                origin: .cloudSync
             ))
         case .conflict(.completed(let saved)):
             guard saved.userID == userID,
@@ -1124,8 +1164,9 @@ final class DailySyncEngine {
                   progressPayloadMatches(current, uploaded) else { return }
             conflicts.append(.progress(
                 puzzleID: uploaded.puzzleID,
-                local: uploaded,
-                cloud: DailyClassicProgress(result: saved.domain)
+                accountLocal: uploaded,
+                incoming: DailyClassicProgress(result: saved.domain),
+                origin: .cloudSync
             ))
         }
     }
