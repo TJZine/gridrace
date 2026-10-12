@@ -877,7 +877,7 @@ def pinned_defaults() -> dict[str, str]:
 
     Returns the external (non-committed) input paths so the gate resolves
     them from this module instead of mirroring string fragments. All paths
-    are overridable via the matching --flags below.
+    are overridable via matching --flags in both the builder and checker.
     """
     return {
         "wiktionary_json": str(ADDENDUM / "validation/run-fresh-db-fresh-env-2"),

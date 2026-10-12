@@ -13,7 +13,7 @@ including CI, which uses only this flag.
 No flags (source gate, fail-closed) revalidates that same portable chain,
 then regenerates the pack, provenance, and builder-owned provenance manifest
 from the pinned Wiktionary intermediates into a temporary directory (via
-``scripts/build_accepted_guesses.py`` with its pinned defaults) and compares
+``scripts/build_accepted_guesses.py`` with the selected input paths) and compares
 pack, provenance, and provenance-manifest hashes/bytes to the checked-in
 files. Builder import, syntax, execution, and comparison failures are errors.
 Where the required intermediates are absent the gate reports UNAVAILABLE and
@@ -715,8 +715,8 @@ def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> N
             )
 
 
-def builder_intermediate_paths() -> dict[str, Path]:
-    """Resolve the maintenance transform's pinned intermediate defaults.
+def builder_intermediate_paths(args: argparse.Namespace | None = None) -> dict[str, Path]:
+    """Resolve selected inputs over the maintenance transform's defaults.
 
     Paths come from ``build_accepted_guesses.pinned_defaults()`` so the gate
     stays in sync by construction. Import, syntax, and resolution failures
@@ -735,28 +735,39 @@ def builder_intermediate_paths() -> dict[str, Path]:
         raise ValueError(
             f"source gate cannot load scripts/build_accepted_guesses.py: {error}"
         ) from error
-    return {key: Path(value) for key, value in defaults.items()}
+    paths = {key: Path(value) for key, value in defaults.items()}
+    for key in paths:
+        selected = getattr(args, key, None)
+        if selected is not None:
+            paths[key] = Path(selected)
+    return paths
 
 
-def probe_intermediates() -> int:
+def probe_intermediates(args: argparse.Namespace) -> int:
     """Report which pinned intermediates exist; informational only, exit 0."""
     try:
-        paths = builder_intermediate_paths()
+        paths = builder_intermediate_paths(args)
     except ValueError as error:
         print(f"word-pack intermediates probe: unloadable ({error})")
         return 0
     for key in sorted(paths):
-        print(f"word-pack intermediates probe: {key} {'present' if paths[key].exists() else 'ABSENT'}")
+        path = paths[key]
+        print(f"word-pack intermediates probe: {key} {'present' if path.exists() else 'ABSENT'} {path}")
     return 0
 
 
-def run_source_gate(pack_raw: bytes, prov_raw: bytes, prov_manifest_raw: bytes) -> None:
+def run_source_gate(
+    pack_raw: bytes,
+    prov_raw: bytes,
+    prov_manifest_raw: bytes,
+    args: argparse.Namespace | None = None,
+) -> None:
     """Regenerate pack+provenance+manifest from pinned intermediates and compare bytes.
 
     Fail-closed: every failure mode raises. Missing intermediates report
     UNAVAILABLE instead of passing.
     """
-    paths = builder_intermediate_paths()
+    paths = builder_intermediate_paths(args)
     absent = [key for key, path in paths.items() if not path.exists()]
     if absent:
         raise ValueError(
@@ -771,17 +782,16 @@ def run_source_gate(pack_raw: bytes, prov_raw: bytes, prov_manifest_raw: bytes) 
         out_provenance = tmpdir / PROVENANCE_FILE
         out_manifest = tmpdir / PROVENANCE_MANIFEST_FILE
         seed.write_bytes(pack_raw)
+        command = [sys.executable, str(SCRIPTS / "build_accepted_guesses.py")]
+        for key, path in paths.items():
+            command.extend(("--" + key.replace("_", "-"), str(path)))
+        command.extend((
+            "--pack", str(seed),
+            "--provenance", str(out_provenance),
+            "--provenance-manifest", str(out_manifest),
+        ))
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPTS / "build_accepted_guesses.py"),
-                "--pack",
-                str(seed),
-                "--provenance",
-                str(out_provenance),
-                "--provenance-manifest",
-                str(out_manifest),
-            ],
+            command,
             cwd=str(ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -835,10 +845,14 @@ def main() -> int:
         action="store_true",
         help="report which pinned intermediates exist; informational only",
     )
+    # Resolve builder-owned defaults only for source operations. The portable
+    # gate neither imports the builder nor inspects external input paths.
+    for flag in ("--wiktionary-json", "--database", "--revision-index", "--target-json"):
+        parser.add_argument(flag, help="source input path (default: builder's pinned path)")
     args = parser.parse_args()
 
     if args.probe_intermediates:
-        return probe_intermediates()
+        return probe_intermediates(args)
 
     try:
         dev_pack, dev_raw, dev_expected, development = validate_one(
@@ -854,6 +868,7 @@ def main() -> int:
                 daily_raw,
                 prov_raw,
                 (PACKS / PROVENANCE_MANIFEST_FILE).read_bytes(),
+                args,
             )
         dev_manifest_path = PACKS / "development-en-US-v1.manifest.json"
         daily_manifest_path = PACKS / f"{DAILY_ID}.manifest.json"

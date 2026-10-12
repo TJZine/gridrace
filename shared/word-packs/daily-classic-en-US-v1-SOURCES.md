@@ -99,8 +99,8 @@ Verify the checked-in evidence chain on any machine (no Wiktionary reads):
 python3 scripts/check_word_pack.py --checked-in-only
 ```
 
-Verify source regeneration where the pinned intermediates are present (this
-machine). The source gate is fail-closed: builder, execution, and comparison
+Verify source regeneration where the pinned intermediates are present. The
+source gate is fail-closed: builder, execution, and comparison
 failures are errors, and absent intermediates report UNAVAILABLE with a
 nonzero exit (never a pass). `--probe-intermediates` only reports which
 intermediates exist:
@@ -109,6 +109,24 @@ intermediates exist:
 python3 scripts/check_word_pack.py
 python3 scripts/check_word_pack.py --probe-intermediates  # informational only
 ```
+
+The checker accepts the builder's four external-input flags with the same
+semantics. Omitted paths use defaults owned by the builder; selected paths are
+forwarded to regeneration and displayed by the informational probe. Relocating
+identical retained inputs does not change their required identities:
+
+```sh
+python3 scripts/check_word_pack.py \
+  --wiktionary-json <inputs>/run-fresh-db-fresh-env-2 \
+  --database <inputs>/enwiktionary-20260901-fresh.sqlite \
+  --revision-index <inputs>/wiktionary-five-letter-revision-provenance.jsonl \
+  --target-json <inputs>/run-target-coverage
+```
+
+Add `--probe-intermediates` to those flags to inspect selected paths without
+validation. `--checked-in-only` remains independent of external inputs even
+when input flags are supplied. Neither the checker nor builder downloads inputs
+or attests new input bytes.
 
 Refresh sequence (the provenance manifest is builder-owned attestation and
 cannot be fabricated by the checker): after any intentional transform or
@@ -136,7 +154,7 @@ python3 scripts/parent_revision_pass.py \
 ```
 
 (`<cache>` is the durable large-input cache holding the pinned dump bytes;
-all other `--build` inputs are likewise overridable flags defaulting to the
+all other builder inputs are likewise overridable flags defaulting to the
 original research paths.)
 
 The historical web2 generator was retired after its answer denylist was moved

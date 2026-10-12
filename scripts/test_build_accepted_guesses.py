@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -241,6 +242,14 @@ class RetainedInputBoundaryTests(unittest.TestCase):
             # validator-only pass. All three deterministic outputs match.
             BUILD.run(args)
             self.assertEqual({path: path.read_bytes() for path in outputs}, outputs)
+            # Exercise the actual checker CLI and builder subprocess against
+            # relocated verified inputs, including the consumed SQLite projection.
+            command = [sys.executable, "-B", str(ROOT / "scripts/check_word_pack.py")]
+            for key in BUILD.pinned_defaults():
+                command.extend(("--" + key.replace("_", "-"), getattr(args, key)))
+            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertIn("word-pack source OK", completed.stdout)
 
     def test_absent_intermediates_fail_full_gate_but_portable_stays_offline(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -253,16 +262,64 @@ class RetainedInputBoundaryTests(unittest.TestCase):
             manifests = {path: path.read_bytes() for path in packs.glob("*.manifest.json")}
             with (
                 mock.patch.object(CHECK, "PACKS", packs),
-                mock.patch.object(CHECK, "builder_intermediate_paths", return_value=absent),
                 mock.patch("sys.stderr", new_callable=io.StringIO) as errors,
                 mock.patch("sys.stdout", new_callable=io.StringIO),
             ):
-                with mock.patch.object(sys, "argv", ["check_word_pack", "--write-manifest"]):
+                flags = [argument for key, path in absent.items()
+                         for argument in ("--" + key.replace("_", "-"), str(path))]
+                with mock.patch.object(sys, "argv", ["check_word_pack", "--write-manifest", *flags]):
                     self.assertEqual(CHECK.main(), 1)
                 self.assertIn("source UNAVAILABLE", errors.getvalue())
                 self.assertEqual({path: path.read_bytes() for path in manifests}, manifests)
-                with mock.patch.object(sys, "argv", ["check_word_pack", "--checked-in-only"]):
+                with (
+                    mock.patch.object(sys, "argv", ["check_word_pack", "--checked-in-only", *flags]),
+                    mock.patch.object(CHECK, "builder_intermediate_paths", side_effect=AssertionError("portable gate resolved external inputs")),
+                ):
                     self.assertEqual(CHECK.main(), 0)
+
+    def test_checker_forwards_selected_inputs_and_probes_selected_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {key: root / key for key in BUILD.pinned_defaults()}
+            for path in paths.values():
+                path.touch()
+            flags = [argument for key, path in paths.items()
+                     for argument in ("--" + key.replace("_", "-"), str(path))]
+            pack_raw = (CHECK.PACKS / f"{CHECK.DAILY_ID}.json").read_bytes()
+            prov_raw = (CHECK.PACKS / CHECK.PROVENANCE_FILE).read_bytes()
+            manifest_raw = (CHECK.PACKS / CHECK.PROVENANCE_MANIFEST_FILE).read_bytes()
+
+            def regenerate(command, **kwargs):
+                for key, path in paths.items():
+                    self.assertEqual(command[command.index("--" + key.replace("_", "-")) + 1], str(path))
+                for flag, raw in (("--pack", pack_raw), ("--provenance", prov_raw),
+                                  ("--provenance-manifest", manifest_raw)):
+                    Path(command[command.index(flag) + 1]).write_bytes(raw)
+                return subprocess.CompletedProcess(command, 0, stdout="fixture regenerated")
+
+            with (
+                mock.patch.object(sys, "argv", ["check_word_pack", *flags]),
+                mock.patch.object(CHECK.subprocess, "run", side_effect=regenerate) as run,
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+            ):
+                self.assertEqual(CHECK.main(), 0)
+                run.assert_called_once()
+                self.assertIn("word-pack source OK", output.getvalue())
+            paths["database"].unlink()
+            with (
+                mock.patch.object(sys, "argv", ["check_word_pack", "--probe-intermediates", *flags]),
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+            ):
+                self.assertEqual(CHECK.main(), 0)
+                for key, path in paths.items():
+                    status = "ABSENT" if key == "database" else "present"
+                    self.assertIn(f"{key} {status} {path}", output.getvalue())
+
+    def test_checker_uses_builder_defaults_for_omitted_paths(self) -> None:
+        defaults = {key: Path(value) for key, value in BUILD.pinned_defaults().items()}
+        self.assertEqual(CHECK.builder_intermediate_paths(), defaults)
+        selected = CHECK.builder_intermediate_paths(argparse.Namespace(database="relocated.sqlite"))
+        self.assertEqual(selected, {**defaults, "database": Path("relocated.sqlite")})
 
     def test_source_failure_precedes_checker_manifest_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
