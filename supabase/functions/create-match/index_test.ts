@@ -122,8 +122,8 @@ const failures: FailureCase[] = [
   {
     name: "rejects a body missing client_build",
     request: () => postRaw(JSON.stringify({ request_id: REQUEST_ID })),
-    status: 400,
-    code: "internal_error",
+    status: 426,
+    code: "client_update_required",
     rpcCalls: 0,
     authenticateCalls: 0,
   },
@@ -239,29 +239,21 @@ function assertEquals(actual: unknown, expected: unknown): void {
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
 
-Deno.test("forwards every supported count and preserves legacy exact keys", async () => {
+Deno.test("forwards every current configured count", async () => {
   for (const count of [1, 3, 5]) {
     const invoked = await invoke({
-      request: post({ client_build: 2, round_count: count }),
+      request: post({ client_build: 3, round_count: count }),
       rpcResults: [ok({ match_id: MATCH_ID })],
     });
     assertEquals(invoked.response.status, 200);
     assertEquals(invoked.rpcCalls[0].parameters.p_round_count, count);
   }
-  const legacy = await invoke({
-    request: postRaw(
-      JSON.stringify({ client_build: 1, request_id: REQUEST_ID }),
-    ),
-    rpcResults: [ok({ match_id: MATCH_ID })],
-  });
-  assertEquals(legacy.response.status, 200);
-  assertEquals(legacy.rpcCalls[0].parameters.p_round_count, undefined);
 });
 
 Deno.test("requires a supported integer count for new builds", async () => {
   for (const count of [0, 2, 4, 6, 1.5, "3", true, null]) {
     const invoked = await invoke({
-      request: post({ client_build: 2, round_count: count }),
+      request: post({ client_build: 3, round_count: count }),
     });
     assertEquals(invoked.response.status, 400);
     assertEquals(codeOf(invoked.body), "invalid_match_configuration");
@@ -269,8 +261,8 @@ Deno.test("requires a supported integer count for new builds", async () => {
   }
   for (
     const body of [
-      { client_build: 2, request_id: REQUEST_ID },
-      { client_build: 1, request_id: REQUEST_ID, round_count: 1 },
+      { client_build: 3, request_id: REQUEST_ID },
+      { client_build: 3, request_id: REQUEST_ID, round_count: 1, extra: true },
     ]
   ) {
     const invoked = await invoke({ request: postRaw(JSON.stringify(body)) });
@@ -278,3 +270,21 @@ Deno.test("requires a supported integer count for new builds", async () => {
     assertEquals(codeOf(invoked.body), "internal_error");
   }
 });
+
+for (const client_build of [1, 2]) {
+  Deno.test(`new legacy build ${client_build} creation is rejected before authorization`, async () => {
+    const legacyBody = client_build === 1
+      ? { client_build, request_id: "60000000-0000-0000-0000-000000000001" }
+      : {
+        client_build,
+        request_id: "60000000-0000-0000-0000-000000000001",
+        round_count: 1,
+      };
+    const invoked = await invoke({
+      request: postRaw(JSON.stringify(legacyBody)),
+    });
+    assertEquals(invoked.response.status, 426);
+    assertEquals(invoked.rpcCalls.length, 0);
+    assertEquals(invoked.authenticateCalls, 0);
+  });
+}

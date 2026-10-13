@@ -29,14 +29,14 @@ select ok(
 select is(
   (select pronargdefaults
    from pg_catalog.pg_proc
-   where oid = 'public.create_match(uuid,integer,text,uuid)'::regprocedure),
+   where oid = 'public.create_match(uuid, integer, text, uuid, smallint)'::regprocedure),
   0::smallint,
   'new create RPC requires every request parameter explicitly'
 );
 select ok(
   has_function_privilege(
     'service_role',
-    'public.create_match(uuid,integer,text,uuid)',
+    'public.create_match(uuid, integer, text, uuid, smallint)',
     'execute'
   ),
   'service role can execute the new create RPC'
@@ -44,7 +44,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'authenticated',
-    'public.create_match(uuid,integer,text,uuid)',
+    'public.create_match(uuid, integer, text, uuid, smallint)',
     'execute'
   ),
   'authenticated clients cannot execute the create RPC'
@@ -81,12 +81,7 @@ values (
 );
 
 update test_context
-set first_response = public.create_match(
-      '60000000-0000-0000-0000-000000000001',
-      1,
-      null,
-      first_request_id
-    );
+set first_response = public.create_match('60000000-0000-0000-0000-000000000001', 3, null, first_request_id, 1::smallint);
 
 update test_context
 set first_match_id = (first_response #>> '{data,match_id}')::uuid;
@@ -117,7 +112,7 @@ select is(
 );
 select is(
   (select client_build from private.create_requests),
-  1,
+  3,
   'receipt stores the accepted build'
 );
 select is(
@@ -133,12 +128,7 @@ where actor_user_id = '60000000-0000-0000-0000-000000000001'
   and action = 'create';
 
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    (select first_request_id from test_context)
-  ) #>> '{data,match_id}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 3, null, (select first_request_id from test_context), 1::smallint) #>> '{data,match_id}',
   (select first_match_id::text from test_context),
   'identical retry returns the original match id'
 );
@@ -161,12 +151,7 @@ select is(
 );
 
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    2,
-    null,
-    (select first_request_id from test_context)
-  ) #>> '{error,code}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 4, null, (select first_request_id from test_context), 1::smallint) #>> '{error,code}',
   'request_conflict',
   'same request id with a changed build conflicts'
 );
@@ -179,12 +164,7 @@ select is(
 );
 
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    0,
-    null,
-    '61000000-0000-0000-0000-000000000003'
-  ) #>> '{error,code}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 0, null, '61000000-0000-0000-0000-000000000003', 1::smallint) #>> '{error,code}',
   'client_update_required',
   'unsupported build is rejected before allocation'
 );
@@ -194,12 +174,7 @@ select is(
   'rejected build leaves no receipt'
 );
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    null
-  ) #>> '{error,code}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 3, null, null, 1::smallint) #>> '{error,code}',
   'internal_error',
   'null request id is rejected before allocation'
 );
@@ -209,12 +184,7 @@ select is(
   'null request id leaves no receipt'
 );
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000099',
-    1,
-    null,
-    '61000000-0000-0000-0000-000000000004'
-  ) #>> '{error,code}',
+  public.create_match('60000000-0000-0000-0000-000000000099', 3, null, '61000000-0000-0000-0000-000000000004', 1::smallint) #>> '{error,code}',
   'not_authenticated',
   'missing active profile is rejected'
 );
@@ -223,12 +193,7 @@ do $$
 declare
   v_response jsonb;
 begin
-  v_response := public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    '61000000-0000-0000-0000-000000000005'
-  );
+  v_response := public.create_match('60000000-0000-0000-0000-000000000001', 3, null, '61000000-0000-0000-0000-000000000005', 1::smallint);
   if not v_response ? 'data' then
     raise exception using message = 'rollback fixture did not create';
   end if;
@@ -251,12 +216,7 @@ select is(
 );
 
 update test_context
-set second_response = public.create_match(
-      '60000000-0000-0000-0000-000000000001',
-      1,
-      null,
-      second_request_id
-    );
+set second_response = public.create_match('60000000-0000-0000-0000-000000000001', 3, null, second_request_id, 1::smallint);
 update test_context
 set second_match_id = (second_response #>> '{data,match_id}')::uuid;
 
@@ -278,12 +238,7 @@ set created_at = transaction_timestamp() - interval '2 hours',
     expires_at = transaction_timestamp() - interval '1 second'
 where id = (select first_match_id from test_context);
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    (select first_request_id from test_context)
-  ) #>> '{data,match_id}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 3, null, (select first_request_id from test_context), 1::smallint) #>> '{data,match_id}',
   (select first_match_id::text from test_context),
   'retry after lobby expiry returns the original match id'
 );
@@ -294,30 +249,16 @@ select is(
 );
 
 select is(
-  public.join_match(
-    '60000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select second_match_id from test_context)),
-    null
-  ) #>> '{data,match_id}',
+  public.join_match('60000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select second_match_id from test_context)), null, extensions.gen_random_uuid(), null) #>> '{data,match_id}',
   (select second_match_id::text from test_context),
   'survivor joins the second room'
 );
 select ok(
-  public.start_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    (select second_match_id from test_context)
-  ) ? 'data',
+  public.start_match('60000000-0000-0000-0000-000000000001', 3, (select second_match_id from test_context), 1::smallint) ? 'data',
   'creator starts the second room'
 );
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    (select second_request_id from test_context)
-  ) #>> '{data,match_id}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 3, null, (select second_request_id from test_context), 1::smallint) #>> '{data,match_id}',
   (select second_match_id::text from test_context),
   'retry after start returns the original match id'
 );
@@ -338,12 +279,7 @@ select ok(
   'completed room finalizes through the existing server operation'
 );
 select is(
-  public.create_match(
-    '60000000-0000-0000-0000-000000000001',
-    1,
-    null,
-    (select second_request_id from test_context)
-  ) #>> '{data,match_id}',
+  public.create_match('60000000-0000-0000-0000-000000000001', 3, null, (select second_request_id from test_context), 1::smallint) #>> '{data,match_id}',
   (select second_match_id::text from test_context),
   'retry after completion returns the original match id'
 );
@@ -351,7 +287,7 @@ select is(
 select ok(
   public.match_snapshot(
     '60000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select second_match_id from test_context)
   ) ? 'data',
   'rostered survivor can read the completed snapshot'
@@ -380,7 +316,7 @@ select is(
 create temporary table survivor_snapshot as
 select public.match_snapshot(
   '60000000-0000-0000-0000-000000000002',
-  1,
+  3,
   (select second_match_id from test_context)
 ) as response;
 
@@ -421,12 +357,7 @@ select is(
 
 update test_context
 set cascade_match_id = (
-  public.create_match(
-    '60000000-0000-0000-0000-000000000002',
-    1,
-    null,
-    '61000000-0000-0000-0000-000000000007'
-  ) #>> '{data,match_id}'
+  public.create_match('60000000-0000-0000-0000-000000000002', 3, null, '61000000-0000-0000-0000-000000000007', 1::smallint) #>> '{data,match_id}'
 )::uuid;
 delete from public.matches
 where id = (select cascade_match_id from test_context);
@@ -450,10 +381,7 @@ select throws_ok(
   'authenticated clients cannot inspect create receipts directly'
 );
 select throws_ok(
-  $$select public.create_match(
-    '60000000-0000-0000-0000-000000000002', 1, null,
-    '61000000-0000-0000-0000-000000000006'
-  )$$,
+  $$select public.create_match('60000000-0000-0000-0000-000000000002', 3, null, '61000000-0000-0000-0000-000000000006', 1::smallint)$$,
   '42501',
   'permission denied for function create_match',
   'authenticated clients cannot invoke the service-only create RPC'

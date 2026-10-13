@@ -131,12 +131,7 @@ create temporary table test_context (
 );
 
 with created as (
-  select public.create_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    repeat('b', 64),
-    '51000000-0000-0000-0000-000000000001'
-  ) as response
+  select public.create_match('50000000-0000-0000-0000-000000000001', 3, repeat('b', 64), '51000000-0000-0000-0000-000000000001', 1::smallint) as response
 )
 insert into test_context (match_id, request_id, first_response)
 select
@@ -161,12 +156,7 @@ select is(
 );
 
 select ok(
-  public.join_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) ? 'data',
+  public.join_match('50000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) ? 'data',
   'second player joins the room'
 );
 select is(
@@ -181,12 +171,7 @@ from public.match_members as member
 where member.match_id = context.match_id and member.seat = 2;
 
 select is(
-  public.join_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) #>> '{data,match_id}',
+  public.join_match('50000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) #>> '{data,match_id}',
   (select match_id::text from test_context),
   'duplicate join returns the existing match'
 );
@@ -197,11 +182,7 @@ select is(
 );
 
 select is(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select match_id from test_context)
-  ) #>> '{error,code}',
+  public.start_match('50000000-0000-0000-0000-000000000002', 3, (select match_id from test_context), 1::smallint) #>> '{error,code}',
   'not_host',
   'non-host cannot start'
 );
@@ -212,11 +193,7 @@ select is(
 );
 
 select ok(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    (select match_id from test_context)
-  ) ? 'data',
+  public.start_match('50000000-0000-0000-0000-000000000001', 3, (select match_id from test_context), 1::smallint) ? 'data',
   'host starts with two players'
 );
 select is(
@@ -226,11 +203,7 @@ select is(
 );
 
 select ok(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    (select match_id from test_context)
-  ) ? 'data',
+  public.start_match('50000000-0000-0000-0000-000000000001', 3, (select match_id from test_context), 1::smallint) ? 'data',
   'redundant start still succeeds'
 );
 select is(
@@ -253,7 +226,7 @@ where round_id = (select round_id from test_context);
 update test_context
 set first_response = public.submit_guess(
   '50000000-0000-0000-0000-000000000001',
-  1,
+  3,
   match_id,
   1::smallint,
   request_id,
@@ -271,7 +244,7 @@ select is(
 select is(
   public.submit_guess(
     '50000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -291,7 +264,7 @@ select is(
 select is(
   public.submit_guess(
     '50000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -377,7 +350,7 @@ select is(
 select ok(
   public.match_snapshot(
     '50000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) ? 'data',
   'canonical snapshot still resolves after reveal'
@@ -402,7 +375,7 @@ select is(
 select ok(
   public.match_snapshot(
     '50000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) ? 'data',
   'survivor snapshot still resolves after deletion preparation'

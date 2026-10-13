@@ -17,19 +17,15 @@ export function makeHandler(dependencies?: Dependencies) {
       if (!parsed.ok) return parsed.response;
       const { body, token } = parsed.value;
       const build = clientBuild(body.client_build);
-      const keys = build !== null && build >= 2
-        ? ["client_build", "match_id", "round_number"]
-        : ["client_build", "match_id"];
-      if (
-        !exactKeys(body, keys) &&
-        !(build === null && exactKeys(body, [...keys, "round_number"]))
-      ) {
-        return errorResponse("internal_error", 400);
+      if (build === null || build < 3) {
+        return errorResponse("client_update_required");
       }
-      if (build === null) return errorResponse("client_update_required");
+      if (
+        !exactKeys(body, ["client_build", "match_id", "round_number"])
+      ) return errorResponse("internal_error", 400);
       if (!isUuid(body.match_id)) return errorResponse("internal_error", 400);
       if (
-        build >= 2 && (typeof body.round_number !== "number" ||
+        (typeof body.round_number !== "number" ||
           !Number.isInteger(body.round_number) || body.round_number < 1 ||
           body.round_number > 5)
       ) {
@@ -42,7 +38,7 @@ export function makeHandler(dependencies?: Dependencies) {
           p_user_id: authorized.value.userId,
           p_client_build: build,
           p_match_id: body.match_id,
-          ...(build >= 2 ? { p_round_number: body.round_number } : {}),
+          p_round_number: body.round_number,
         }),
       );
     });

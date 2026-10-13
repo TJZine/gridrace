@@ -5,6 +5,11 @@ import {
 } from "@supabase/supabase-js";
 
 export const ERROR_MESSAGES = {
+  rematch_unavailable: "This rematch is unavailable.",
+  rematch_expired: "This rematch opportunity has expired.",
+  answer_pool_unavailable:
+    "There are not enough available answers for this rematch.",
+  participation_changed: "Your selected race changed. Refresh and try again.",
   invalid_match_configuration: "Choose 1, 3, or 5 rounds.",
   match_incomplete:
     "This match cannot continue because a player account was deleted.",
@@ -29,6 +34,10 @@ export type ErrorCode = keyof typeof ERROR_MESSAGES;
 export type JsonObject = Record<string, unknown>;
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
+  rematch_unavailable: 409,
+  rematch_expired: 410,
+  answer_pool_unavailable: 409,
+  participation_changed: 409,
   invalid_match_configuration: 400,
   match_incomplete: 409,
   not_authenticated: 401,

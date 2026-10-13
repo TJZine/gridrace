@@ -17,22 +17,16 @@ export function makeHandler(dependencies?: Dependencies) {
       if (!parsed.ok) return parsed.response;
       const { body, token } = parsed.value;
       const build = clientBuild(body.client_build);
-      const keys = build !== null && build >= 2
-        ? ["client_build", "request_id", "round_count"]
-        : ["client_build", "request_id"];
-      if (
-        !exactKeys(body, keys) &&
-        !(build === null && exactKeys(body, [...keys, "round_count"]))
-      ) {
-        return errorResponse("internal_error", 400);
-      }
-      if (build === null) {
+      if (build === null || build < 3) {
         return errorResponse("client_update_required");
       }
+      if (
+        !exactKeys(body, ["client_build", "request_id", "round_count"])
+      ) return errorResponse("internal_error", 400);
       if (!isUuid(body.request_id)) {
         return errorResponse("internal_error", 400);
       }
-      if (build >= 2 && ![1, 3, 5].includes(body.round_count as number)) {
+      if (![1, 3, 5].includes(body.round_count as number)) {
         return errorResponse("invalid_match_configuration");
       }
       const authorized = await authorize(token, dependencies);
@@ -43,7 +37,7 @@ export function makeHandler(dependencies?: Dependencies) {
           p_client_build: build,
           p_ip_hash: null,
           p_request_id: body.request_id,
-          ...(build >= 2 ? { p_round_count: body.round_count } : {}),
+          p_round_count: body.round_count,
         }),
       );
     });

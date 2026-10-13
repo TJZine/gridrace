@@ -47,10 +47,13 @@ jobs:
           deno check --config supabase/functions/deno.json \
             supabase/functions/_shared/command.ts \
             supabase/functions/_shared/command_test.ts \
+            supabase/functions/_shared/live_protocol_test.ts \
             supabase/functions/create-match/index.ts \
             supabase/functions/create-match/index_test.ts \
             supabase/functions/join-match/index.ts \
             supabase/functions/join-match/index_test.ts \
+            supabase/functions/rematch-command/index.ts \
+            supabase/functions/rematch-command/index_test.ts \
             supabase/functions/start-match/index.ts \
             supabase/functions/start-match/index_test.ts \
             supabase/functions/submit-guess/index.ts \

@@ -1,0 +1,1468 @@
+{
+  "fixture_version": 1,
+  "snapshot_version": 3,
+  "requests": {
+    "join_invitation": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000001",
+      "join_code": "ABC234",
+      "expected_match_id": null
+    },
+    "join_member_resume": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000001",
+      "join_code": "ABC234",
+      "expected_match_id": "10000000-0000-0000-0000-000000000001"
+    },
+    "rematch_offer": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000001",
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "generation": 1,
+      "action": "offer",
+      "expected_participation_epoch": 4
+    },
+    "snapshot": {
+      "client_build": 3,
+      "match_id": "10000000-0000-0000-0000-000000000001"
+    },
+    "rematch_accept": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000005",
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "generation": 1,
+      "action": "accept",
+      "expected_participation_epoch": 4
+    },
+    "rematch_cancel": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000006",
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "generation": 1,
+      "action": "cancel",
+      "expected_participation_epoch": 4
+    },
+    "rematch_decline": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000007",
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "generation": 1,
+      "action": "decline",
+      "expected_participation_epoch": 4
+    },
+    "rematch_fresh_reoffer": {
+      "client_build": 3,
+      "request_id": "30000000-0000-0000-0000-000000000008",
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "generation": 2,
+      "action": "offer",
+      "expected_participation_epoch": 4
+    }
+  },
+  "receipts": {
+    "join": {
+      "data": {
+        "match_id": "10000000-0000-0000-0000-000000000001"
+      }
+    },
+    "rematch_offer": {
+      "data": {
+        "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+        "generation": 1,
+        "state": "offered",
+        "successor_match_id": null
+      }
+    },
+    "rematch_accept": {
+      "data": {
+        "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+        "generation": 1,
+        "state": "accepted",
+        "successor_match_id": "10000000-0000-0000-0000-000000000002"
+      }
+    }
+  },
+  "snapshots": [
+    {
+      "name": "eligible",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 4,
+            "is_selected": true
+          },
+          "rematch": {
+            "revision": 1,
+            "is_eligible": true,
+            "state": "eligible",
+            "reason": null,
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": null,
+            "consenting_member_ids": [],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "offered",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 4,
+            "is_selected": true
+          },
+          "rematch": {
+            "revision": 2,
+            "is_eligible": true,
+            "state": "offered",
+            "reason": null,
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": "20000000-0000-0000-0000-000000000001",
+            "consenting_member_ids": [
+              "20000000-0000-0000-0000-000000000001"
+            ],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "closed",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 4,
+            "is_selected": true
+          },
+          "rematch": {
+            "revision": 3,
+            "is_eligible": true,
+            "state": "closed",
+            "reason": "cancelled",
+            "generation": 1,
+            "next_generation": 2,
+            "initiator_member_id": null,
+            "consenting_member_ids": [],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "expired",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:05:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 4,
+            "is_selected": true
+          },
+          "rematch": {
+            "revision": 4,
+            "is_eligible": false,
+            "state": "expired",
+            "reason": "expired",
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": null,
+            "consenting_member_ids": [],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:05:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "unavailable",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 4,
+            "is_selected": true
+          },
+          "rematch": {
+            "revision": 4,
+            "is_eligible": false,
+            "state": "unavailable",
+            "reason": "account_deleted",
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": null,
+            "consenting_member_ids": [],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "accepted",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 5,
+            "is_selected": false
+          },
+          "rematch": {
+            "revision": 3,
+            "is_eligible": false,
+            "state": "accepted",
+            "reason": null,
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": "20000000-0000-0000-0000-000000000001",
+            "consenting_member_ids": [
+              "20000000-0000-0000-0000-000000000001",
+              "20000000-0000-0000-0000-000000000002"
+            ],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": "10000000-0000-0000-0000-000000000002",
+            "successor_available": true
+          }
+        }
+      }
+    },
+    {
+      "name": "accepted_unavailable",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 5,
+            "is_selected": false
+          },
+          "rematch": {
+            "revision": 3,
+            "is_eligible": false,
+            "state": "accepted",
+            "reason": null,
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": "20000000-0000-0000-0000-000000000001",
+            "consenting_member_ids": [
+              "20000000-0000-0000-0000-000000000001",
+              "20000000-0000-0000-0000-000000000002"
+            ],
+            "selected_elsewhere": false,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": "10000000-0000-0000-0000-000000000002",
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "moved",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 5,
+            "is_selected": false
+          },
+          "rematch": {
+            "revision": 3,
+            "is_eligible": true,
+            "state": "closed",
+            "reason": "participation_changed",
+            "generation": 1,
+            "next_generation": 2,
+            "initiator_member_id": null,
+            "consenting_member_ids": [],
+            "selected_elsewhere": true,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": null,
+            "successor_available": false
+          }
+        }
+      }
+    },
+    {
+      "name": "successor_lobby",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000002",
+            "join_code": "DEF234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000003",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "lobby",
+            "expires_at": "2026-10-13T13:01:00Z",
+            "minimum_client_build": 3,
+            "revision": 1,
+            "started_at": null,
+            "completed_at": null,
+            "terminal_reason": null,
+            "admission": "rematch"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000003",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000004",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "pending",
+            "starts_at": null,
+            "ends_at": null,
+            "completed_at": null,
+            "answer": null,
+            "players": []
+          },
+          "revealed_rounds": [],
+          "standings": null,
+          "selection": {
+            "epoch": 5,
+            "is_selected": true
+          },
+          "rematch": null
+        }
+      }
+    },
+    {
+      "name": "accepted_selected_elsewhere",
+      "response": {
+        "data": {
+          "version": 3,
+          "server_time": "2026-10-13T12:01:00Z",
+          "match": {
+            "id": "10000000-0000-0000-0000-000000000001",
+            "join_code": "ABC234",
+            "creator_member_id": "20000000-0000-0000-0000-000000000001",
+            "mode": "classic_live_v1",
+            "round_count": 1,
+            "current_round": 1,
+            "status": "completed",
+            "expires_at": "2026-10-13T12:50:00Z",
+            "minimum_client_build": 1,
+            "revision": 7,
+            "started_at": "2026-10-13T11:56:57Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "terminal_reason": null,
+            "admission": "code"
+          },
+          "members": [
+            {
+              "id": "20000000-0000-0000-0000-000000000001",
+              "seat": 1,
+              "display_name": "Alex",
+              "avatar_seed": "alex",
+              "is_self": true,
+              "is_deleted": false
+            },
+            {
+              "id": "20000000-0000-0000-0000-000000000002",
+              "seat": 2,
+              "display_name": "Blair",
+              "avatar_seed": "blair",
+              "is_self": false,
+              "is_deleted": false
+            }
+          ],
+          "round": {
+            "number": 1,
+            "state": "revealed",
+            "starts_at": "2026-10-13T11:57:00Z",
+            "ends_at": "2026-10-13T12:00:00Z",
+            "completed_at": "2026-10-13T12:00:00Z",
+            "answer": "crane",
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "state": "timed_out",
+                "accepted_guess_count": 0,
+                "solve_duration_ms": null,
+                "efficiency_points": 0,
+                "placement": 1,
+                "board": []
+              }
+            ]
+          },
+          "revealed_rounds": [
+            {
+              "number": 1,
+              "state": "revealed",
+              "starts_at": "2026-10-13T11:57:00Z",
+              "ends_at": "2026-10-13T12:00:00Z",
+              "completed_at": "2026-10-13T12:00:00Z",
+              "answer": "crane",
+              "players": [
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000001",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                },
+                {
+                  "member_id": "20000000-0000-0000-0000-000000000002",
+                  "state": "timed_out",
+                  "accepted_guess_count": 0,
+                  "solve_duration_ms": null,
+                  "efficiency_points": 0,
+                  "placement": 1,
+                  "board": []
+                }
+              ]
+            }
+          ],
+          "standings": {
+            "through_round": 1,
+            "is_final": true,
+            "players": [
+              {
+                "member_id": "20000000-0000-0000-0000-000000000001",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              },
+              {
+                "member_id": "20000000-0000-0000-0000-000000000002",
+                "rounds_solved": 0,
+                "efficiency_points": 0,
+                "total_solve_duration_ms": 0,
+                "placement": 1
+              }
+            ]
+          },
+          "selection": {
+            "epoch": 6,
+            "is_selected": false
+          },
+          "rematch": {
+            "revision": 3,
+            "is_eligible": false,
+            "state": "accepted",
+            "reason": null,
+            "generation": 1,
+            "next_generation": null,
+            "initiator_member_id": "20000000-0000-0000-0000-000000000001",
+            "consenting_member_ids": [
+              "20000000-0000-0000-0000-000000000001",
+              "20000000-0000-0000-0000-000000000002"
+            ],
+            "selected_elsewhere": true,
+            "deadline": "2026-10-13T12:05:00Z",
+            "evaluated_at": "2026-10-13T12:01:00Z",
+            "successor_match_id": "10000000-0000-0000-0000-000000000002",
+            "successor_available": true
+          }
+        }
+      }
+    }
+  ],
+  "signal": {
+    "table": "match_rematch_signals",
+    "event": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "filter": "predecessor_match_id=eq.10000000-0000-0000-0000-000000000001",
+    "new": {
+      "predecessor_match_id": "10000000-0000-0000-0000-000000000001",
+      "revision": 3
+    }
+  },
+  "usage": "Named examples are isolated; reused UUIDs are not a sequential command flow.",
+  "errors": [
+    {
+      "status": 409,
+      "response": {
+        "error": {
+          "code": "rematch_unavailable",
+          "message": "This rematch is unavailable."
+        }
+      }
+    },
+    {
+      "status": 410,
+      "response": {
+        "error": {
+          "code": "rematch_expired",
+          "message": "This rematch opportunity has expired."
+        }
+      }
+    },
+    {
+      "status": 409,
+      "response": {
+        "error": {
+          "code": "answer_pool_unavailable",
+          "message": "There are not enough available answers for this rematch."
+        }
+      }
+    },
+    {
+      "status": 409,
+      "response": {
+        "error": {
+          "code": "participation_changed",
+          "message": "Your selected race changed. Refresh and try again."
+        }
+      }
+    }
+  ]
+}

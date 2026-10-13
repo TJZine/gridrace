@@ -245,3 +245,39 @@ Deno.test("returns SQL snapshot v2 history and standings unchanged", async () =>
   assertEquals(invoked.response.status, 200);
   assertEquals(invoked.body, { data: snapshot });
 });
+
+Deno.test("v3 roster drift retries at most twice in fresh RPC transactions", async () => {
+  const retry = {
+    data: null,
+    error: { code: "40001", message: "snapshot_roster_changed" },
+  };
+  const invoked = await invoke({
+    request: post({ ...validBody(), client_build: 3 }),
+    rpcResults: [retry, retry, retry],
+  });
+  assertEquals(invoked.response.status, 500);
+  assertEquals(invoked.rpcCalls.length, 3);
+  assertEquals(invoked.authenticateCalls, 1);
+});
+Deno.test("v3 roster retry can converge without replaying authentication", async () => {
+  const invoked = await invoke({
+    request: post({ ...validBody(), client_build: 3 }),
+    rpcResults: [{
+      data: null,
+      error: { code: "40001", message: "snapshot_roster_changed" },
+    }, ok({ version: 3 })],
+  });
+  assertEquals(invoked.response.status, 200);
+  assertEquals(invoked.rpcCalls.length, 2);
+});
+Deno.test("ordinary serialization failures are not silently retried", async () => {
+  const invoked = await invoke({
+    request: post({ ...validBody(), client_build: 3 }),
+    rpcResults: [{
+      data: null,
+      error: { code: "40001", message: "other conflict" },
+    }],
+  });
+  assertEquals(invoked.response.status, 500);
+  assertEquals(invoked.rpcCalls.length, 1);
+});

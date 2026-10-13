@@ -313,6 +313,6 @@ Deno.test("forwards all supported receipt targets without replacing the round", 
   const legacy = await invoke({
     request: post({ ...validBody(), client_build: 1, round_number: 2 }),
   });
-  assertEquals(legacy.response.status, 409);
+  assertEquals(legacy.response.status, 426);
   assertEquals(legacy.rpcCalls.length, 0);
 });

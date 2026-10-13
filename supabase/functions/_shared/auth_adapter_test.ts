@@ -42,7 +42,8 @@ function request(deletion = false): Request {
       },
       body: JSON.stringify(
         deletion ? { client_build: 1 } : {
-          client_build: 1,
+          client_build: 3,
+          round_count: 1,
           request_id: "22222222-2222-4222-8222-222222222222",
         },
       ),
