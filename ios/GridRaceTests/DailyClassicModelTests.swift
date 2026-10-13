@@ -960,7 +960,8 @@ private struct DailyScreenLiveService: LiveMatchServicing {
     func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
         throw LiveMatchServiceError.unavailable
     }
-    func joinMatch(code: String) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func joinMatch(_ command: LiveJoinCommand) async throws -> UUID { throw LiveMatchServiceError.unavailable }
+    func rematch(_ command: LiveRematchCommand) async throws -> LiveRematchReceipt { throw LiveMatchServiceError.unavailable }
     func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
     func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String, clientBuild: Int) async throws -> LiveGuessReceipt {
         throw LiveMatchServiceError.unavailable

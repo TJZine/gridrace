@@ -90,14 +90,14 @@ final class SupabaseAccountService: AccountServicing {
     var sessionKey: String { "sb-\(configuration.projectURL.host()!.split(separator: ".")[0])-auth-token" }
     private var markerKey: String { sessionKey + "-gridrace-retired-v1" }
     private var credentialKeys: [String] { [sessionKey, "supabase.session", sessionKey + "-code-verifier"] }
-    static func configured(bundle: Bundle = .main, clientBuild: Int = 2) -> SupabaseAccountService? {
+    static func configured(bundle: Bundle = .main, clientBuild: Int = 3) -> SupabaseAccountService? {
         guard let configuration = Configuration(
             urlString: bundle.object(forInfoDictionaryKey: "GridRaceSupabaseURL") as? String,
             publishableKey: bundle.object(forInfoDictionaryKey: "GridRaceSupabasePublishableKey") as? String
         ) else { return nil }
         return SupabaseAccountService(configuration: configuration, clientBuild: clientBuild)
     }
-    init(configuration: Configuration, clientBuild: Int = 2,
+    init(configuration: Configuration, clientBuild: Int = 3,
          storage: any AuthLocalStorage = SecureAuthStorage(),
          network: @escaping @Sendable () -> URLSession = { URLSession(configuration: .default) },
          clock: @escaping @Sendable () -> Date = Date.init,

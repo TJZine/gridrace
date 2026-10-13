@@ -1,0 +1,7 @@
+// Copy into an environment-specific private configuration, fill confirmed inputs.
+// xcconfig URLs require the empty expansion to preserve //.
+GRIDRACE_INVITATION_ORIGINS = https:/$()/$(GRIDRACE_INVITATION_HOST)
+// Supply this entitlement only when the host and signing team are confirmed.
+GRIDRACE_ASSOCIATED_DOMAIN = applinks:$(GRIDRACE_INVITATION_HOST)
+// APPLE_TEAM_ID, ENVIRONMENT_BUNDLE_ID, APPLE_PROVIDER_SERVICE_ID and the
+// SUPABASE_APPLE_REDIRECT_URL are separate signing/provider release inputs.

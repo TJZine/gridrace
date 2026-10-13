@@ -816,10 +816,10 @@ extension AccountAuthLifecycleTests {
     func testRealLiveCommandCapturedLeaseRejectsHeldResponseAndCannotBorrowNextAccount() async throws {
         let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
         let original = try await login(service), remote = try service.makeLiveMatchService()
-        let initialMatch = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        let initialMatch = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3)
         XCTAssertEqual(initialMatch, original.userID)
         await http.hold("create-match")
-        let creating = Task { try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2) }
+        let creating = Task { try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3) }
         try await wait { await http.suspended("create-match") }
         _ = await service.signOut()
         let next = UUID(); await http.setUser(next)
@@ -828,11 +828,11 @@ extension AccountAuthLifecycleTests {
         do { _ = try await creating.value; XCTFail("Old Live response must fail its immutable binding") }
         catch { XCTAssertTrue(error is CancellationError) }
         let count = await http.count("create-match")
-        do { _ = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2); XCTFail("Retired service cannot dispatch") } catch {}
+        do { _ = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3); XCTFail("Retired service cannot dispatch") } catch {}
         let unchanged = await http.count("create-match")
         XCTAssertEqual(unchanged, count)
         let newer = try service.makeLiveMatchService()
-        let freshMatch = try await newer.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        let freshMatch = try await newer.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3)
         XCTAssertEqual(freshMatch, next)
         _ = await service.signOut()
     }

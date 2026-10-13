@@ -22,7 +22,7 @@ struct LiveCreateControls: View {
             }
             .buttonStyle(OutlinedInkButtonStyle())
         }
-        .disabled(live.isCommandInFlight || live.pendingIntent != nil)
+        .disabled(live.isCommandInFlight || live.pendingIntent != nil || live.hasPendingStart || live.serviceNeedsUpdate)
     }
 
     private var rounds: some View {
@@ -46,7 +46,7 @@ enum LiveMatchPresentation {
     enum Surface: Equatable { case entry, notice, lobby, countdown, round, reveal }
     enum Action: Equatable {
         case account, backToRace, retry, retryStorage, retryStart, retryRequest
-        case discardCreate, discardGuess, discardRecovery
+        case discardCreate, discardGuess, discardSelection, discardRecovery
         case resume, create, join, copyCode, shareCode, start, selectReveal, home
     }
     struct Control: Equatable {
@@ -81,10 +81,12 @@ enum LiveMatchPresentation {
         var error: LiveMatchServiceError?
         var retainedError: String?
         var displayedTime: Date?
+        var serviceNeedsUpdate = false
         var joinCode = ""
 
         @MainActor
         init(session: LiveMatchSession, isSignedIn: Bool = true, retainedError: String? = nil, joinCode: String = "") {
+            serviceNeedsUpdate = session.serviceNeedsUpdate
             phase = session.phase
             snapshot = session.snapshot
             displayedReveal = session.displayedReveal
@@ -128,11 +130,19 @@ enum LiveMatchPresentation {
         let discard: Action? = switch state.pendingIntent {
         case .create?: .discardCreate
         case .guess?: .discardGuess
+        case .join?, .rematch?: .discardSelection
         case nil: nil
         }
         let decision = state.pendingIntent != nil
             && (state.error == .server(.requestConflict) || state.error == .server(.rateLimited))
         var result = Presentation(controls: [Control(action: .home)])
+        if state.serviceNeedsUpdate {
+            result.notice = Notice(subject: "Room", title: "Live service needs an update",
+                body: "Your saved race and choice are kept. Retry when the service is ready.",
+                requiresAction: true, controls: [.init(action: .retry, enabled: !state.isCommandInFlight)] +
+                    (discard.map { [.init(action: $0)] } ?? []))
+            return result
+        }
         if state.phase == .needsSignIn {
             result.notice = Notice(subject: "Account", title: "Your sign-in expired",
                 body: "Your race is saved on this device. Go back to the race to try again; signing out removes it.",
@@ -165,8 +175,9 @@ enum LiveMatchPresentation {
                 if state.isSignedIn {
                     result.surface = .entry
                     if state.hasSavedMatch { result.controls.append(.init(action: .resume)) }
-                    result.controls += [.init(action: .create, enabled: !state.isCommandInFlight && state.pendingIntent == nil),
-                                        .init(action: .join, enabled: state.joinCode.count == 6 && !state.isCommandInFlight)]
+                    result.controls += [.init(action: .create, enabled: !state.isCommandInFlight && state.pendingIntent == nil && !state.hasPendingStart),
+                                        .init(action: .join, enabled: LiveInvitationParser.canonicalCode(state.joinCode) != nil && !state.isCommandInFlight
+                                            && state.pendingIntent == nil && !state.hasPendingStart)]
                 } else {
                     result.notice = Notice(subject: "Account", title: "Sign in to race",
                         body: "Live races need a player name. Daily stays open without an account.",
@@ -203,11 +214,13 @@ enum LiveMatchPresentation {
         switch snapshot.round.state {
         case .pending:
             result.surface = .lobby
-            if time < snapshot.match.expiresAt {
+            if time < snapshot.match.expiresAt && snapshot.match.admission == .code {
                 result.controls += [.init(action: .copyCode), .init(action: .shareCode)]
             }
             if time >= snapshot.match.expiresAt {
                 result.notice = Notice(subject: "Room", title: "This room closed", body: "It expired before the race started.")
+            } else if snapshot.match.admission == .rematch && snapshot.members.count < 2 {
+                result.notice = Notice(subject: "Room", title: "Rematch player unavailable", body: "This lobby is reserved for the original pair.")
             } else if isHost && snapshot.members.count < 2 {
                 result.notice = Notice(subject: "Room", title: "Waiting for player two", body: "Share the code to invite them.")
             } else if isHost {
@@ -378,6 +391,10 @@ enum LiveMatchPresentation {
             case .roundAlreadyFinished: "The round has finished. Refreshing the result."
             case .invalidMatchConfiguration: "Choose 1, 3, or 5 rounds."
             case .matchIncomplete: "This match cannot continue because a player account was deleted."
+            case .rematchUnavailable: "This rematch is unavailable."
+            case .rematchExpired: "This rematch opportunity has expired."
+            case .answerPoolUnavailable: "There are not enough available answers for this rematch."
+            case .participationChanged: "Your selected race changed. Refresh and try again."
             case .invalidGuessFormat: "Enter exactly five English letters."
             case .wordNotAccepted: "That word is not accepted. Try another word."
             case .rateLimited: "Try again in a moment."
@@ -414,12 +431,18 @@ struct LiveMatchFlowView: View {
     let highContrast: Bool
     var isSignedIn = true
     var openAccount: () -> Void = {}
+    var accountName: String? = nil
+    var accountID: UUID? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .headline) private var codeLetterWidth: CGFloat = 10.2
     @State private var retainedError: String?
     @State private var retainsDraftError = false
     @State private var joinCode = ""
+    @State private var confirmedJoinCode: String?
+    @State private var confirmedAccountID: UUID?
+    @State private var confirmedSourceMatchID: UUID?
+    @AccessibilityFocusState private var resumeFocused: Bool
     @State private var discardConfirmation: LiveMatchPresentation.Action?
 
     private var presentation: LiveMatchPresentation.Presentation {
@@ -430,7 +453,7 @@ struct LiveMatchFlowView: View {
     var body: some View {
         ZStack {
             Color.page.ignoresSafeArea()
-            if presentation.surface == .round, let snapshot = session.snapshot {
+            if presentation.surface == .round, !session.requiresResumeConfirmation, let snapshot = session.snapshot {
                 LiveRoundView(session: session, snapshot: snapshot, hapticsEnabled: hapticsEnabled,
                     highContrast: highContrast, retainedError: $retainedError, perform: perform)
                     .id(LiveMatchPresentation.roundIdentity(snapshot))
@@ -460,6 +483,7 @@ struct LiveMatchFlowView: View {
                 switch action {
                 case .discardCreate: session.discardPendingCreate()
                 case .discardGuess: session.discardPendingGuess()
+                case .discardSelection: session.discardPendingSelection()
                 case .discardRecovery: session.discardRecovery()
                 default: break
                 }
@@ -467,6 +491,24 @@ struct LiveMatchFlowView: View {
             Button("Cancel", role: .cancel) { discardConfirmation = nil }
         } message: {
             Text("This removes the saved data from this device. It can't undo a guess or race already accepted.")
+        }
+        .confirmationDialog("Join this race?", isPresented: Binding(
+            get: { confirmedJoinCode != nil }, set: { if !$0 { confirmedJoinCode = nil } }
+        ), titleVisibility: .visible) {
+            Button(session.hasSavedMatch ? "Switch race and join" : "Join") {
+                guard let code = confirmedJoinCode, presentation.permits(.join), session.pendingIntent == nil,
+                      !session.hasPendingStart, isSignedIn,
+                      accountID == confirmedAccountID, session.savedMatchID == confirmedSourceMatchID else {
+                    confirmedJoinCode = nil
+                    return
+                }
+                confirmedJoinCode = nil
+                session.joinMatch(code: code)
+            }
+            Button("Cancel", role: .cancel) { confirmedJoinCode = nil }
+        } message: {
+            Text("Join \(confirmedJoinCode ?? "") as \(accountName ?? "your current player")?" +
+                 (session.hasSavedMatch ? " This switches your selected race." : ""))
         }
         .navigationTitle("Live race")
         .navigationBarTitleDisplayMode(.inline)
@@ -499,44 +541,54 @@ struct LiveMatchFlowView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch presentation.surface {
-        case .entry:
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Live race").font(StampType.display)
-                if presentation.permits(.resume) {
-                    Button { session.resumeSavedMatch() } label: {
-                        Label("Resume saved race", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }.buttonStyle(InkButtonStyle())
+        if session.requiresResumeConfirmation, !session.serviceNeedsUpdate, let target = session.resumeConfirmationTarget ?? session.snapshot {
+            NoticeCard(subject: "Room", title: "Resume \(target.match.joinCode)?",
+                       message: "Switch races as \(accountName ?? "your current player") to \(target.members.map(\.displayName).joined(separator: " and "))?" +
+                       (target.match.admission == .rematch ? " This is your rematch lobby." : "")) {
+                Button("Switch race and resume") { session.confirmResumeSavedMatch() }.buttonStyle(InkButtonStyle())
+                    .disabled(session.isCommandInFlight || session.hasPendingStart)
+                Button("Cancel", action: goHome).buttonStyle(OutlinedInkButtonStyle())
+            }.accessibilityFocused($resumeFocused).onAppear { resumeFocused = true }
+        } else {
+            switch presentation.surface {
+            case .entry:
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("Live race").font(StampType.display)
+                    if presentation.permits(.resume) {
+                        Button { session.resumeSavedMatch() } label: {
+                            Label("Resume saved race", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }.buttonStyle(InkButtonStyle())
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Host a race").font(StampType.title2.bold())
+                        LiveCreateControls(live: session, isSignedIn: isSignedIn, openRoute: { route in
+                            if route == .account { openAccount() }
+                        })
+                    }.padding(16).paperCard()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Join a race").font(StampType.title2.bold())
+                        joinField
+                        Button("Join", action: join)
+                            .frame(maxWidth: .infinity, minHeight: 44).buttonStyle(InkButtonStyle())
+                            .disabled(!presentation.permits(.join))
+                    }.padding(16).paperCard()
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Host a race").font(StampType.title2.bold())
-                    LiveCreateControls(live: session, isSignedIn: isSignedIn, openRoute: { route in
-                        if route == .account { openAccount() }
-                    })
-                }.padding(16).paperCard()
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Join a race").font(StampType.title2.bold())
-                    joinField
-                    Button("Join", action: join)
-                        .frame(maxWidth: .infinity, minHeight: 44).buttonStyle(InkButtonStyle())
-                        .disabled(!presentation.permits(.join))
-                }.padding(16).paperCard()
+            case .notice:
+                if let notice = presentation.notice { LiveControlNotice(notice: notice, perform: perform) }
+            case .lobby:
+                if let snapshot = session.snapshot { LiveLobbyView(session: session, snapshot: snapshot, perform: perform).id(snapshot.match.id) }
+            case .countdown:
+                if let snapshot = session.snapshot {
+                    LiveCountdownView(session: session, snapshot: snapshot)
+                        .id(LiveMatchPresentation.roundIdentity(snapshot))
+                }
+            case .reveal:
+                if let snapshot = session.snapshot {
+                    LiveRevealView(session: session, snapshot: snapshot, highContrast: highContrast, goHome: goHome)
+                }
+            case .round: EmptyView()
             }
-        case .notice:
-            if let notice = presentation.notice { LiveControlNotice(notice: notice, perform: perform) }
-        case .lobby:
-            if let snapshot = session.snapshot { LiveLobbyView(session: session, snapshot: snapshot, perform: perform) }
-        case .countdown:
-            if let snapshot = session.snapshot {
-                LiveCountdownView(session: session, snapshot: snapshot)
-                    .id(LiveMatchPresentation.roundIdentity(snapshot))
-            }
-        case .reveal:
-            if let snapshot = session.snapshot {
-                LiveRevealView(session: session, snapshot: snapshot, highContrast: highContrast, goHome: goHome)
-            }
-        case .round: EmptyView()
         }
     }
 
@@ -576,7 +628,10 @@ struct LiveMatchFlowView: View {
 
     private func join() {
         guard presentation.permits(.join) else { return }
-        session.joinMatch(code: joinCode)
+        guard LiveInvitationParser.canonicalCode(joinCode) != nil, session.pendingIntent == nil, !session.hasPendingStart else { return }
+        confirmedAccountID = accountID
+        confirmedSourceMatchID = session.savedMatchID
+        confirmedJoinCode = joinCode
     }
 
     private func perform(_ action: LiveMatchPresentation.Action) {
@@ -586,7 +641,7 @@ struct LiveMatchFlowView: View {
         case .retry, .retryRequest, .retryStart, .retryStorage:
             retainedError = nil
             session.retry()
-        case .discardCreate, .discardGuess, .discardRecovery: discardConfirmation = action
+        case .discardCreate, .discardGuess, .discardSelection, .discardRecovery: discardConfirmation = action
         case .home: goHome()
         default: break
         }
@@ -631,7 +686,8 @@ struct LiveControlNotice: View {
             : AnyLayout(HStackLayout(spacing: 8))
         return layout {
             ForEach(Array(notice.controls.enumerated()), id: \.offset) { index, control in
-                let destructive = control.action == .discardCreate || control.action == .discardGuess || control.action == .discardRecovery
+                let destructive = control.action == .discardCreate || control.action == .discardGuess
+                    || control.action == .discardSelection || control.action == .discardRecovery
                 let button = Button(role: destructive ? .destructive : nil) { perform(control.action) } label: {
                     Text(title(control.action)).fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)
@@ -653,7 +709,7 @@ struct LiveControlNotice: View {
         case .retryStart: "Retry saved start"
         case .retryRequest: "Retry saved request"
         case .discardRecovery: "Discard saved race"
-        case .discardCreate, .discardGuess: "Discard saved request"
+        case .discardCreate, .discardGuess, .discardSelection: "Discard saved request"
         default: "Home"
         }
     }
@@ -665,6 +721,7 @@ private struct LiveLobbyView: View {
     let perform: (LiveMatchPresentation.Action) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var copied = false
+    @AccessibilityFocusState private var lobbyFocused: Bool
 
     private var presentation: LiveMatchPresentation.Presentation {
         LiveMatchPresentation.map(.init(session: session))
@@ -676,6 +733,7 @@ private struct LiveLobbyView: View {
                 Text(snapshot.match.roundCount == 1 ? "1 round" : "\(snapshot.match.roundCount) rounds")
                     .font(StampType.caption).foregroundStyle(Color.secondaryInk)
                 ScorecardSeal(title: snapshot.match.joinCode)
+                    .accessibilityFocused($lobbyFocused)
                     .accessibilityLabel("Room code \(snapshot.match.joinCode.map(String.init).joined(separator: " "))")
                 let layout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
@@ -688,7 +746,7 @@ private struct LiveLobbyView: View {
                             Label(copied ? "Copied" : "Copy", systemImage: "doc.on.doc")
                                 .frame(minWidth: 44, minHeight: 44)
                         }.buttonStyle(OutlinedInkButtonStyle())
-                        ShareLink(item: snapshot.match.joinCode) {
+                        ShareLink(item: LiveInvitationConfiguration.configured().shareURL(code: snapshot.match.joinCode)?.absoluteString ?? snapshot.match.joinCode) {
                             Label("Share", systemImage: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44)
                         }.buttonStyle(OutlinedInkButtonStyle())
                     }
@@ -707,7 +765,7 @@ private struct LiveLobbyView: View {
                     }.accessibilityElement(children: .combine)
                 }
                 if snapshot.members.count == 1 {
-                    Label("02 · Open seat", systemImage: "person.badge.clock")
+                    Label(snapshot.match.admission == .code ? "02 · Open seat" : "02 · Rematch player unavailable", systemImage: "person.badge.clock")
                         .font(StampType.caption).foregroundStyle(Color.secondaryInk)
                 }
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).paperCard()
@@ -718,6 +776,7 @@ private struct LiveLobbyView: View {
                     .disabled(!presentation.permits(.start))
             }
         }
+        .onAppear { lobbyFocused = true }
     }
 }
 

@@ -7,7 +7,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
     private let clientBuild: Int
     private let invoke: Invoke
 
-    init(lease: AuthClientLease, clientBuild: Int = 2) {
+    init(lease: AuthClientLease, clientBuild: Int = 3) {
         self.clientBuild = clientBuild
         invoke = { function, body in
             try await lease.perform { client in
@@ -18,24 +18,42 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         }
     }
 
-    init(clientBuild: Int = 2, invoke: @escaping Invoke) {
+    init(clientBuild: Int = 3, invoke: @escaping Invoke) {
         self.clientBuild = clientBuild
         self.invoke = invoke
     }
 
     func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID {
-        try await matchID(
+        guard clientBuild >= 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
+        return try await matchID(
             function: "create-match",
             request: CreateRequest(clientBuild: clientBuild, requestID: requestID,
-                                   roundCount: clientBuild == 1 ? nil : roundCount)
+                                   roundCount: roundCount)
         )
     }
 
-    func joinMatch(code: String) async throws -> UUID {
-        try await matchID(
-            function: "join-match",
-            request: JoinRequest(clientBuild: clientBuild, joinCode: code.uppercased())
-        )
+    func joinMatch(_ value: LiveJoinCommand) async throws -> UUID {
+        guard value.clientBuild >= 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
+        let id = try await matchID(function: "join-match", request: DurableJoinRequest(value: value))
+        guard value.expectedMatchID == nil || value.expectedMatchID == id else {
+            throw LiveMatchServiceError.invalidResponse
+        }
+        return id
+    }
+
+    func rematch(_ value: LiveRematchCommand) async throws -> LiveRematchReceipt {
+        guard value.clientBuild >= 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
+        let receipt: LiveRematchReceipt = try await command(function: "rematch-command",
+                                                           request: RematchRequest(value: value))
+        guard receipt.predecessorMatchID == value.predecessorMatchID,
+              receipt.generation == value.generation,
+              ([LiveRematchState.offered, .closed, .accepted].contains(receipt.state)
+                || (receipt.state == .unavailable && [.cancel, .decline].contains(value.action))),
+              (receipt.state == .accepted) == (receipt.successorMatchID != nil),
+              receipt.successorMatchID != value.predecessorMatchID else {
+            throw LiveMatchServiceError.invalidResponse
+        }
+        return receipt
     }
 
     func startMatch(id: UUID, roundNumber: Int) async throws -> UUID {
@@ -54,6 +72,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         guess: String,
         clientBuild: Int
     ) async throws -> LiveGuessReceipt {
+        guard clientBuild >= 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
         let response: GuessResponse = try await command(
             function: "submit-guess",
             request: GuessRequest(
@@ -105,6 +124,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         function: String,
         request: Request
     ) async throws -> Response {
+        guard clientBuild >= 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
         do {
             let body = try JSONEncoder().encode(request)
             let data = try await invoke(function, body)
@@ -112,7 +132,11 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         } catch let error as LiveMatchServiceError {
             throw error
         } catch FunctionsError.httpError(let status, let data) {
-            throw Self.serverError(status: status, data: data) ?? .unavailable
+            let mapped = Self.serverError(status: status, data: data)
+            if status == 404 || (status == 400 && (mapped == nil || mapped == .server(.internalError))) {
+                throw LiveMatchServiceError.server(.clientUpdateRequired)
+            }
+            throw mapped ?? .unavailable
         } catch is CancellationError {
             throw CancellationError()
         } catch is EncodingError {
@@ -139,8 +163,9 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         case .notAuthenticated: status == 401
         case .notAMatchMember, .notHost: status == 403
         case .matchNotJoinable, .roomFull, .notEnoughPlayers, .roundNotActive,
-             .roundAlreadyFinished, .requestConflict, .matchIncomplete: status == 409
-        case .roomExpired: status == 410
+             .roundAlreadyFinished, .requestConflict, .matchIncomplete, .rematchUnavailable,
+             .answerPoolUnavailable, .participationChanged: status == 409
+        case .roomExpired, .rematchExpired: status == 410
         case .wordNotAccepted: status == 422
         case .clientUpdateRequired: status == 426
         case .rateLimited: status == 429
@@ -190,7 +215,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
         let members = value.members
         let memberIDs = Set(members.map(\.id))
         let seats = members.map(\.seat)
-        guard value.version == 2,
+        guard value.version == 3,
               value.match.mode == "classic_live_v1",
               [1, 3, 5].contains(value.match.roundCount),
               (1...value.match.roundCount).contains(value.match.currentRound),
@@ -265,6 +290,13 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
             else { throw LiveMatchServiceError.invalidResponse }
         }
 
+        guard (0...9_007_199_254_740_991).contains(value.selection.epoch),
+              (value.match.status == .completed) == (value.rematch != nil) else {
+            throw LiveMatchServiceError.invalidResponse
+        }
+        if let rematch = value.rematch {
+            try validateRematch(rematch, match: value.match, members: members, serverTime: value.serverTime)
+        }
         return LiveMatchSnapshot(
             serverTime: value.serverTime,
             match: LiveMatch(id: value.match.id, joinCode: value.match.joinCode,
@@ -272,7 +304,7 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
                              expiresAt: value.match.expiresAt, minimumClientBuild: value.match.minimumClientBuild,
                              roundCount: value.match.roundCount, currentRound: value.match.currentRound,
                              startedAt: value.match.startedAt, completedAt: value.match.completedAt,
-                             terminalReason: value.match.terminalReason),
+                             terminalReason: value.match.terminalReason, admission: value.match.admission),
             members: members.map {
                 LiveMatchMember(id: $0.id, seat: $0.seat, displayName: $0.displayName,
                                 avatarSeed: $0.avatarSeed, isSelf: $0.isSelf, isDeleted: $0.isDeleted)
@@ -286,8 +318,31 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
                                       totalSolveDurationMilliseconds: $0.totalSolveDurationMilliseconds,
                                       placement: $0.placement)
                 })
-            }
+            }, selection: value.selection, rematch: value.rematch
         )
+    }
+
+    private static func validateRematch(_ value: LiveRematch, match: MatchDTO,
+                                        members: [MemberDTO], serverTime: Date) throws {
+        let ids = members.map(\.id)
+        guard value.revision > 0, (1...Int(Int32.max)).contains(value.generation),
+              value.nextGeneration.map({ $0 == value.generation + 1 && $0 <= Int(Int32.max) }) ?? true,
+              Set(value.consentingMemberIDs).count == value.consentingMemberIDs.count,
+              value.consentingMemberIDs == ids.filter({ value.consentingMemberIDs.contains($0) }),
+              value.initiatorMemberID.map(ids.contains) ?? true,
+              value.evaluatedAt <= serverTime,
+              match.completedAt.map({ abs(value.deadline.timeIntervalSince($0) - 300) < 0.000_002 }) == true,
+              (value.state == .accepted) == (value.successorMatchID != nil),
+              !value.successorAvailable || value.state == .accepted,
+              value.successorMatchID != match.id,
+              value.state == .accepted || !value.isEligible || value.evaluatedAt < value.deadline,
+              value.state != .offered || (value.initiatorMemberID != nil && value.consentingMemberIDs.count == 1),
+              value.state != .accepted || value.consentingMemberIDs.count == 2,
+              value.nextGeneration == nil || value.state == .closed,
+              ![LiveRematchState.eligible, .closed, .expired, .unavailable].contains(value.state)
+                || value.consentingMemberIDs.isEmpty else {
+            throw LiveMatchServiceError.invalidResponse
+        }
     }
 
     private static func mapRound(
@@ -464,19 +519,13 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
 private struct CreateRequest: Encodable, Sendable {
     let clientBuild: Int
     let requestID: String
-    let roundCount: Int?
-    init(clientBuild: Int, requestID: UUID, roundCount: Int?) {
+    let roundCount: Int
+    init(clientBuild: Int, requestID: UUID, roundCount: Int) {
         self.clientBuild = clientBuild
         self.requestID = requestID.uuidString.lowercased()
         self.roundCount = roundCount
     }
     enum CodingKeys: String, CodingKey { case clientBuild = "client_build", requestID = "request_id", roundCount = "round_count" }
-}
-
-private struct JoinRequest: Encodable, Sendable {
-    let clientBuild: Int
-    let joinCode: String
-    enum CodingKeys: String, CodingKey { case clientBuild = "client_build", joinCode = "join_code" }
 }
 
 private struct MatchRequest: Encodable, Sendable {
@@ -576,20 +625,24 @@ private struct SnapshotResponse: Decodable, Sendable {
     let round: RoundDTO
     let revealedRounds: [RoundDTO]
     let standings: StandingsDTO?
+    let selection: LiveMatchSelection
+    let rematch: LiveRematch?
     enum CodingKeys: String, CodingKey {
-        case version, match, members, round, standings
+        case version, match, members, round, standings, selection, rematch
         case serverTime = "server_time", revealedRounds = "revealed_rounds"
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
-        guard version == 2 else { throw LiveMatchServiceError.invalidResponse }
+        guard version == 3 else { throw LiveMatchServiceError.server(.clientUpdateRequired) }
         serverTime = try values.decode(Date.self, forKey: .serverTime)
         match = try values.decode(MatchDTO.self, forKey: .match)
         members = try values.decode([MemberDTO].self, forKey: .members)
         round = try values.decode(RoundDTO.self, forKey: .round)
         revealedRounds = try values.decode([RoundDTO].self, forKey: .revealedRounds)
         standings = try values.decodeRequiredIfPresent(StandingsDTO.self, forKey: .standings)
+        selection = try values.decode(LiveMatchSelection.self, forKey: .selection)
+        rematch = try values.decodeRequiredIfPresent(LiveRematch.self, forKey: .rematch)
     }
 }
 
@@ -607,8 +660,9 @@ private struct MatchDTO: Decodable, Sendable {
     let startedAt: Date?
     let completedAt: Date?
     let terminalReason: LiveMatchTerminalReason?
+    let admission: LiveMatchAdmission
     enum CodingKeys: String, CodingKey {
-        case id, mode, status
+        case id, mode, status, admission
         case joinCode = "join_code"
         case creatorMemberID = "creator_member_id"
         case roundCount = "round_count"
@@ -619,6 +673,7 @@ private struct MatchDTO: Decodable, Sendable {
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        admission = try values.decode(LiveMatchAdmission.self, forKey: .admission)
         id = try values.decode(UUID.self, forKey: .id)
         joinCode = try values.decode(String.self, forKey: .joinCode)
         creatorMemberID = try values.decode(UUID.self, forKey: .creatorMemberID)
@@ -751,3 +806,33 @@ extension LiveRoundState: Decodable {}
 extension LivePlayerState: Decodable {}
 
 extension LiveMatchTerminalReason: Decodable {}
+
+private struct DurableJoinRequest: Encodable, Sendable {
+    let value: LiveJoinCommand
+    enum CodingKeys: String, CodingKey {
+        case clientBuild = "client_build", requestID = "request_id", code = "join_code", expectedMatchID = "expected_match_id"
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(value.clientBuild, forKey: .clientBuild)
+        try c.encode(value.requestID.uuidString.lowercased(), forKey: .requestID)
+        try c.encode(value.code.uppercased(), forKey: .code)
+        try c.encode(value.expectedMatchID?.uuidString.lowercased(), forKey: .expectedMatchID)
+    }
+}
+private struct RematchRequest: Encodable, Sendable {
+    let value: LiveRematchCommand
+    enum CodingKeys: String, CodingKey {
+        case clientBuild = "client_build", requestID = "request_id", predecessorMatchID = "predecessor_match_id"
+        case generation, action, expectedParticipationEpoch = "expected_participation_epoch"
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(value.clientBuild, forKey: .clientBuild)
+        try c.encode(value.requestID.uuidString.lowercased(), forKey: .requestID)
+        try c.encode(value.predecessorMatchID.uuidString.lowercased(), forKey: .predecessorMatchID)
+        try c.encode(value.generation, forKey: .generation)
+        try c.encode(value.action, forKey: .action)
+        try c.encode(value.expectedParticipationEpoch, forKey: .expectedParticipationEpoch)
+    }
+}

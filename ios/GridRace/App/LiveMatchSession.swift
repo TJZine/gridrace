@@ -53,7 +53,14 @@ final class LiveMatchSession {
     private var recovery = LiveRecoveryState()
     private var generation = 0
     private var commandEpoch = 0
+    private var isExplicitServiceRetry = false
     private var presentationGeneration = 0
+    private var navigationGeneration = UUID()
+    private var acceptedSnapshot: LiveMatchSnapshot?
+    private var viewerSelectionEpoch: Int64 = 0
+    private(set) var resumeConfirmationTarget: LiveMatchSnapshot?
+    private(set) var completedInvitationGeneration: UUID?
+    private(set) var serviceNeedsUpdate = false
     private var pendingStart: (matchID: UUID, roundNumber: Int)?
     private(set) var selectedRevealNumber: Int?
     private var isForeground = true
@@ -77,18 +84,22 @@ final class LiveMatchSession {
     private(set) var guessDraft = ""
     private(set) var isCommandInFlight = false
 
+    var completedInvitationAccountID: UUID? { completedInvitationGeneration == nil ? nil : accountID }
+
     var hasSavedMatch: Bool { recovery.matchID != nil || recovery.pendingIntent != nil }
     var savedMatchID: UUID? { recovery.matchID }
     var pendingIntent: LivePendingIntent? { recovery.pendingIntent }
     var hasPendingStart: Bool { pendingStart != nil }
     var canRetry: Bool {
-        guard canBeginCommand, phase != .needsSignIn, isForeground, isOpen else { return false }
+        guard accountID != nil, service != nil, !isCommandInFlight,
+              phase != .storageUnavailable, phase != .needsSignIn, isForeground, isOpen else { return false }
+        if serviceNeedsUpdate { return hasSavedMatch || pendingStart != nil }
         return recovery.pendingIntent != nil || pendingStart != nil
             || (recovery.matchID != nil && shouldRecover)
     }
     private var hasPendingDecision: Bool {
         recovery.pendingIntent != nil
-            && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
+            && (serviceNeedsUpdate || lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
     }
     var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && (accountID != nil || cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false) }
     var canDiscardRecovery: Bool { canRetryRecoveryStorage }
@@ -102,7 +113,7 @@ final class LiveMatchSession {
     var canStart: Bool {
         guard canBeginCommand, phase == .ready, isOpen, isForeground,
               recovery.pendingIntent == nil, pendingStart == nil,
-              let snapshot, recovery.matchID == snapshot.match.id,
+              let snapshot, snapshot.selection.isSelected, recovery.matchID == snapshot.match.id,
               let displayedServerTime,
               snapshot.match.terminalReason == nil,
               snapshot.members.count == 2,
@@ -118,7 +129,7 @@ final class LiveMatchSession {
 
     var canInput: Bool {
         guard canBeginCommand, isOpen, isForeground, pendingStart == nil,
-              !isInputLocked, let snapshot, recovery.matchID == snapshot.match.id,
+              !isInputLocked, let snapshot, snapshot.selection.isSelected, recovery.matchID == snapshot.match.id,
               snapshot.match.status == .inProgress,
               let member = snapshot.members.first(where: \.isSelf), !member.isDeleted,
               let player = snapshot.round.players.first(where: { $0.memberID == member.id })
@@ -342,10 +353,10 @@ final class LiveMatchSession {
     }
 
     func createMatch(roundCount: Int = 3) {
-        guard canBeginCommand, recovery.pendingIntent == nil else { return }
-        let intent = LivePendingIntent.create(requestID: makeUUID(), roundCount: roundCount, clientBuild: 2)
+        guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil else { return }
+        let intent = LivePendingIntent.create(requestID: makeUUID(), roundCount: roundCount, clientBuild: 3)
         let previous = recovery
-        recovery = LiveRecoveryState(pendingIntent: intent)
+        recovery = LiveRecoveryState(pendingIntent: intent, completedInvitationGeneration: previous.completedInvitationGeneration)
         guard saveRecovery() else {
             recovery = previous
             return
@@ -362,9 +373,38 @@ final class LiveMatchSession {
         startCommand { [weak self] in await self?.recoverPendingIntent() }
     }
 
-    func joinMatch(code: String) {
-        guard canBeginCommand, recovery.pendingIntent == nil, let service else { return }
-        let accountGeneration = generation
+    /// Called only after the presentation owner obtains explicit Join confirmation.
+    /// A URL's generation is returned on durable success so replacement URLs survive.
+    func joinMatch(code: String, invitationGeneration: UUID? = nil) {
+        guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil,
+              invitationGeneration == nil || recovery.completedInvitationGeneration == nil else { return }
+        beginJoin(code: code, expectedMatchID: nil, invitationGeneration: invitationGeneration)
+    }
+
+    var requiresResumeConfirmation: Bool {
+        isOpen && recovery.pendingIntent == nil
+            && (resumeConfirmationTarget != nil || snapshot?.selection.isSelected == false)
+    }
+
+    /// Passive Resume reads first. A stale pointer requires this separate confirmation.
+    func confirmResumeSavedMatch() {
+        guard canBeginCommand, requiresResumeConfirmation, let snapshot else { return }
+        let target = resumeConfirmationTarget ?? snapshot
+        beginJoin(code: target.match.joinCode, expectedMatchID: target.match.id, invitationGeneration: nil)
+    }
+
+    private func beginJoin(code: String, expectedMatchID: UUID?, invitationGeneration: UUID?) {
+        let nextNavigation = UUID()
+        let command = LiveJoinCommand(requestID: makeUUID(), code: code.uppercased(),
+                                      expectedMatchID: expectedMatchID, clientBuild: 3)
+        let intent = LivePendingIntent.join(command: command, sourceMatchID: recovery.matchID,
+                                            navigationGeneration: nextNavigation,
+                                            invitationGeneration: invitationGeneration)
+        guard persistPending(intent) else { return }
+        setSuccessorFollowAllowed(true)
+        guard phase != .storageUnavailable else { return }
+        resumeConfirmationTarget = nil
+        navigationGeneration = nextNavigation
         isOpen = true
         isRecoverySelected = false
         snapshot = nil
@@ -374,20 +414,51 @@ final class LiveMatchSession {
         pendingStart = nil
         presentationGeneration += 1
         cancelMatchTasks()
-        beginCommand()
-        commandTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let matchID = try await request { try await service.joinMatch(code: code) }
-                guard isCurrent(accountGeneration) else { return }
-                try saveResolvedMatch(matchID)
-                open(matchID: matchID)
-            } catch {
-                guard isCurrent(accountGeneration) else { return }
-                handleCommandError(error, uncertainIntent: false)
-            }
-            finishCommand(accountGeneration)
+        startCommand { [weak self] in await self?.recoverPendingIntent() }
+    }
+
+    var availableRematchActions: [LiveRematchAction] {
+        guard canBeginCommand, phase == .ready, isOpen, isForeground,
+              recovery.pendingIntent == nil, pendingStart == nil,
+              let snapshot, snapshot.selection.isSelected,
+              let rematch = snapshot.rematch,
+              let selfID = snapshot.members.first(where: \.isSelf)?.id else { return [] }
+        switch rematch.state {
+        case .eligible: return rematch.isEligible ? [.offer] : []
+        case .closed: return rematch.isEligible && rematch.nextGeneration != nil ? [.offer] : []
+        case .offered:
+            if rematch.consentingMemberIDs.contains(selfID) { return [.cancel] }
+            return rematch.isEligible ? [.accept, .decline] : [.decline]
+        case .expired, .unavailable, .accepted: return []
         }
+    }
+
+    func performRematch(_ action: LiveRematchAction) {
+        guard availableRematchActions.contains(action), let snapshot,
+              let rematch = snapshot.rematch else { return }
+        let targetGeneration = action == .offer ? (rematch.nextGeneration ?? rematch.generation) : rematch.generation
+        let command = LiveRematchCommand(requestID: makeUUID(), predecessorMatchID: snapshot.match.id,
+                                         generation: targetGeneration, action: action,
+                                         expectedParticipationEpoch: snapshot.selection.epoch, clientBuild: 3)
+        let intent = LivePendingIntent.rematch(command: command, sourceMatchID: snapshot.match.id,
+                                               navigationGeneration: navigationGeneration)
+        guard persistPending(intent) else { return }
+        startCommand { [weak self] in await self?.recoverPendingIntent() }
+    }
+
+    func discardPendingSelection() {
+        guard !isCommandInFlight, let intent = recovery.pendingIntent else { return }
+        switch intent {
+        case .join, .rematch: break
+        default: return
+        }
+        let previous = recovery
+        recovery.pendingIntent = nil
+        guard saveRecovery() else { recovery = previous; return }
+        lastError = nil
+        if serviceNeedsUpdate { phase = .unavailable; return }
+        phase = snapshot == nil ? .recovering : .ready
+        requestRefresh()
     }
 
     func startMatch() {
@@ -414,7 +485,8 @@ final class LiveMatchSession {
                 guard isCurrent(accountGeneration) else { return }
                 let mapped = map(error)
                 if mapped != .unavailable && mapped != .invalidResponse
-                    && mapped != .server(.internalError) && mapped != .server(.notAuthenticated) {
+                    && mapped != .server(.internalError) && mapped != .server(.notAuthenticated)
+                    && mapped != .server(.clientUpdateRequired) {
                     pendingStart = nil
                 }
                 if presentation == presentationGeneration {
@@ -422,6 +494,9 @@ final class LiveMatchSession {
                 }
             }
             guard isCurrent(accountGeneration) else { return }
+            if isExplicitServiceRetry, lastError == nil {
+                await confirmUpdatedService(accountGeneration: accountGeneration)
+            }
             finishCommand(accountGeneration)
             requestRefresh()
         }
@@ -447,7 +522,7 @@ final class LiveMatchSession {
             requestID: makeUUID(),
             word: word,
             roundNumber: snapshot.match.currentRound,
-            clientBuild: 2
+            clientBuild: 3
         )
         guessDraft = word
         guard persistPending(intent) else { return }
@@ -470,6 +545,24 @@ final class LiveMatchSession {
         }
         guard canRetry else { return }
         lastError = nil
+        if serviceNeedsUpdate {
+            // Keep the mismatch fence raised throughout this user-requested attempt.
+            // Receipt replay cannot enable ordinary commands or automatic retries;
+            // only a current canonical response proves the service was corrected.
+            isExplicitServiceRetry = true
+            if pendingStart != nil {
+                performStart()
+            } else {
+                let accountGeneration = generation
+                startCommand { [weak self] in
+                    guard let self else { return }
+                    if recovery.pendingIntent != nil { await recoverPendingIntent() }
+                    guard isCurrent(accountGeneration), lastError == nil else { return }
+                    await confirmUpdatedService(accountGeneration: accountGeneration)
+                }
+            }
+            return
+        }
         if recovery.pendingIntent != nil {
             startCommand { [weak self] in await self?.recoverPendingIntent() }
         } else if pendingStart != nil {
@@ -477,6 +570,26 @@ final class LiveMatchSession {
         } else if let matchID = recovery.matchID {
             phase = .recovering
             startRealtime(matchID: matchID)
+        }
+    }
+
+    private func confirmUpdatedService(accountGeneration: Int) async {
+        guard let matchID = recovery.matchID, let service,
+              isOpen, isForeground, phase != .storageUnavailable else { return }
+        let presentation = presentationGeneration
+        do {
+            let canonical = try await request { try await service.snapshot(matchID: matchID) }
+            guard isCurrent(accountGeneration), presentation == presentationGeneration,
+                  isOpen, isForeground, phase != .storageUnavailable,
+                  recovery.matchID == matchID else { return }
+            serviceNeedsUpdate = false
+            acceptSnapshot(canonical)
+        } catch {
+            guard isCurrent(accountGeneration), presentation == presentationGeneration,
+                  phase != .storageUnavailable else { return }
+            lastError = map(error)
+            phase = lastError == .server(.notAuthenticated) ? .needsSignIn : .unavailable
+            stopRecoveryLoop()
         }
     }
 
@@ -511,8 +624,26 @@ final class LiveMatchSession {
         recoveryTimer = nil
     }
 
+    /// Invalidate post-match follow when the composition owner presents a newer
+    /// invitation/navigation target, even if this result remains underneath it.
+    func invitationNavigationChanged() {
+        navigationGeneration = UUID()
+        resumeConfirmationTarget = nil
+        setSuccessorFollowAllowed(false)
+    }
+
+    private func setSuccessorFollowAllowed(_ allowed: Bool) {
+        guard phase != .storageUnavailable, store != nil, recovery.successorFollowAllowed != allowed else { return }
+        let previous = recovery
+        recovery.successorFollowAllowed = allowed
+        if !saveRecovery() { recovery = previous }
+    }
+
     func leaveToHome() {
+        setSuccessorFollowAllowed(false)
+        resumeConfirmationTarget = nil
         presentationGeneration += 1
+        navigationGeneration = UUID()
         selectedRevealNumber = nil
         isOpen = false
         isRecoverySelected = false
@@ -523,12 +654,18 @@ final class LiveMatchSession {
     }
 
     func resumeSavedMatch() {
-        guard phase != .storageUnavailable, hasSavedMatch else { return }
+        guard phase != .storageUnavailable, !serviceNeedsUpdate, hasSavedMatch else { return }
+        setSuccessorFollowAllowed(true)
+        guard phase != .storageUnavailable else { return }
+        resumeConfirmationTarget = nil
         presentationGeneration += 1
         cancelMatchTasks()
         isOpen = true
         // While Join is unresolved, Resume opens its eventual result, not the old pointer.
-        if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
+        if case .join(_, _, let navigation, _) = recovery.pendingIntent {
+            navigationGeneration = navigation
+            isRecoverySelected = false
+        } else if !isCommandInFlight || recovery.pendingIntent != nil { isRecoverySelected = true }
         phase = .recovering
         beginRecovery()
     }
@@ -560,14 +697,19 @@ final class LiveMatchSession {
         accountID != nil
             && service != nil
             && phase != .storageUnavailable
+            && !serviceNeedsUpdate
             && !isCommandInFlight
     }
 
     private func beginRecovery() {
-        guard phase != .storageUnavailable, isForeground,
+        guard phase != .storageUnavailable, !serviceNeedsUpdate, isForeground,
               isRecoverySelected || recovery.pendingIntent != nil else { return }
         if recovery.pendingIntent != nil {
-            if let matchID = recovery.matchID {
+            if case .join = recovery.pendingIntent {
+                if !hasPendingDecision, !isCommandInFlight {
+                    startCommand { [weak self] in await self?.recoverPendingIntent() }
+                }
+            } else if let matchID = recovery.matchID {
                 startRealtime(matchID: matchID)
             } else if hasPendingDecision {
                 phase = .unavailable
@@ -613,7 +755,7 @@ final class LiveMatchSession {
                 for try await event in events {
                     guard isCurrent(accountGeneration), presentation == presentationGeneration,
                           isForeground, isOpen, recovery.matchID == matchID else { return }
-                    guard phase != .storageUnavailable else { continue }
+                    guard phase != .storageUnavailable, !serviceNeedsUpdate else { continue }
                     switch event {
                     case .ready:
                         realtimeFailureCount = 0
@@ -680,6 +822,11 @@ final class LiveMatchSession {
         guard isCurrent(accountGeneration) else { return }
         isCommandInFlight = false
         commandTask = nil
+        if isExplicitServiceRetry {
+            isExplicitServiceRetry = false
+            if serviceNeedsUpdate { stopRecoveryLoop() }
+            else { beginRecovery() }
+        }
         if trailingRefresh, recovery.matchID != nil { requestRefresh() }
     }
 
@@ -689,11 +836,62 @@ final class LiveMatchSession {
         let presentation = presentationGeneration
         do {
             switch intent {
+            case .join(let command, let source, let navigation, let invitation):
+                let matchID = try await request { try await service.joinMatch(command) }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent,
+                      recovery.matchID == source else { return }
+                let admitted = try await request { try await service.snapshot(matchID: matchID) }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent,
+                      recovery.matchID == source else { return }
+                try saveResolvedMatch(matchID, completedInvitationGeneration: invitation)
+                if navigation == navigationGeneration, recovery.successorFollowAllowed {
+                    open(matchID: matchID)
+                    if isOpen, isForeground { acceptSnapshot(admitted) }
+                } else {
+                    // The admitted room remains resumable, but an older Join
+                    // response cannot take over a newer invitation or Home.
+                    isRecoverySelected = false
+                    phase = .inactive
+                }
+            case .rematch(let command, let source, let navigation):
+                _ = try await request { try await service.rematch(command) }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent,
+                      recovery.matchID == source else { return }
+                let canonical = try await request { try await service.snapshot(matchID: source) }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent,
+                      recovery.matchID == source else { return }
+                let predecessor = mergeSnapshot(canonical)
+                if navigation == navigationGeneration, isOpen, recovery.successorFollowAllowed,
+                   let rematch = predecessor.rematch, rematch.state == .accepted,
+                   rematch.successorAvailable, !rematch.selectedElsewhere,
+                   let successorID = rematch.successorMatchID {
+                    let successor = try await request { try await service.snapshot(matchID: successorID) }
+                    guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent,
+                          recovery.matchID == source, navigation == navigationGeneration, isOpen else { return }
+                    if canFollowSuccessor(successor, from: predecessor) {
+                        try saveResolvedMatch(successorID)
+                        open(matchID: successorID)
+                        if isForeground { acceptSnapshot(successor) }
+                    } else {
+                        // Settle the original receipt without replacing its source
+                        // pointer. A failed save retains the exact pending command.
+                        try saveResolvedMatch(source)
+                        if isForeground, presentation == presentationGeneration {
+                            acceptSnapshot(predecessor)
+                            rememberSuccessorConfirmation(successor)
+                        }
+                    }
+                } else {
+                    let previous = recovery
+                    recovery.pendingIntent = nil
+                    guard saveRecovery() else { recovery = previous; return }
+                    if isOpen, presentation == presentationGeneration { acceptSnapshot(canonical) }
+                }
             case .create(let requestID, let count, let build):
                 let matchID = try await request {
                     try await service.createMatch(requestID: requestID, roundCount: count, clientBuild: build)
                 }
-                guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent else { return }
                 try saveResolvedMatch(matchID)
                 open(matchID: matchID)
             case .guess(let matchID, let requestID, let word, let round, let build):
@@ -706,7 +904,7 @@ final class LiveMatchSession {
                         clientBuild: build
                     )
                 }
-                guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
+                guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent else { return }
                 let previous = recovery
                 recovery.pendingIntent = nil
                 guard saveRecovery() else {
@@ -718,14 +916,14 @@ final class LiveMatchSession {
                 requestRefresh()
             }
         } catch {
-            guard isCurrent(accountGeneration), recovery.pendingIntent == intent else { return }
+            guard isCurrent(accountGeneration), phase != .storageUnavailable, recovery.pendingIntent == intent else { return }
             handlePendingError(error, intent: intent, presentation: presentation)
         }
     }
 
     private func requestRefresh() {
         guard isRecoverySelected, isForeground, isOpen,
-              phase != .storageUnavailable, recovery.matchID != nil else { return }
+              phase != .storageUnavailable, !serviceNeedsUpdate, recovery.matchID != nil else { return }
         if isCommandInFlight || fetchTask != nil {
             trailingRefresh = true
             return
@@ -759,33 +957,95 @@ final class LiveMatchSession {
                   responseEpoch == commandEpoch,
                   recovery.matchID == matchID
             else { return }
-            if let acceptedRevision, acceptedRevision.matchID == received.match.id,
-               received.revision < acceptedRevision.revision {
-                if snapshot == nil { scheduleRetry(recoverPending: false) }
-                else { scheduleNextRefresh() }
-                return
+            acceptSnapshot(received)
+            if recovery.pendingIntent == nil, let rematch = snapshot?.rematch,
+               rematch.state == .accepted, rematch.successorAvailable,
+               let successorID = rematch.successorMatchID {
+                let navigation = navigationGeneration
+                let successor = try await request { try await service.snapshot(matchID: successorID) }
+                guard isCurrent(accountGeneration), presentation == presentationGeneration, isOpen,
+                      phase != .storageUnavailable, responseEpoch == commandEpoch,
+                      recovery.matchID == matchID, recovery.pendingIntent == nil,
+                      navigation == navigationGeneration else { return }
+                if !canFollowSuccessor(successor, from: snapshot ?? received) {
+                    rememberSuccessorConfirmation(successor)
+                } else {
+                    try saveResolvedMatch(successorID)
+                    resumeConfirmationTarget = nil
+                    open(matchID: successorID)
+                    acceptSnapshot(successor)
+                }
             }
-            if let acceptedRevision, acceptedRevision.matchID != received.match.id
-                || acceptedRevision.roundNumber != received.round.number {
-                guessDraft = ""
-                selectedRevealNumber = nil
-                if !hasPendingDecision { lastError = nil }
-            }
-            snapshot = received
-            acceptedRevision = (received.match.id, received.revision, received.round.number)
-            snapshotUptime = uptime()
-            if let target = pendingStart, received.match.currentRound >= target.roundNumber,
-               received.round.state != .pending { pendingStart = nil }
-            let preservesPendingDecision = hasPendingDecision
-            phase = preservesPendingDecision ? .unavailable : .ready
-            if !preservesPendingDecision { lastError = nil }
-            failureCount = 0
-            scheduleNextRefresh()
         } catch {
             guard isCurrent(accountGeneration), presentation == presentationGeneration,
                   isForeground, isOpen, responseEpoch == commandEpoch else { return }
             handleSnapshotError(error)
         }
+    }
+
+    /// The second canonical read owns the successor's current selection. Keep an
+    /// account-scoped high-water mark so delayed responses cannot undo a newer
+    /// selection observed on either room, including across Home and Resume.
+    private func canFollowSuccessor(_ successor: LiveMatchSnapshot, from predecessor: LiveMatchSnapshot) -> Bool {
+        viewerSelectionEpoch = max(viewerSelectionEpoch, max(predecessor.selection.epoch, successor.selection.epoch))
+        return recovery.successorFollowAllowed && predecessor.rematch?.selectedElsewhere == false
+            && successor.selection.isSelected && successor.selection.epoch >= viewerSelectionEpoch
+    }
+
+    private func rememberSuccessorConfirmation(_ successor: LiveMatchSnapshot) {
+        if let current = resumeConfirmationTarget, current.match.id == successor.match.id,
+           current.selection.epoch > successor.selection.epoch { return }
+        resumeConfirmationTarget = successor
+    }
+
+    /// The three server revisions advance independently; a delayed gameplay
+    /// projection must still deliver newer consent or viewer selection state.
+    private func acceptSnapshot(_ received: LiveMatchSnapshot) {
+        let old = acceptedSnapshot?.match.id == received.match.id ? acceptedSnapshot : nil
+        if snapshot == nil, let old, received.revision < old.revision,
+           (received.rematch?.revision ?? 0) <= (old.rematch?.revision ?? 0),
+           received.selection.epoch <= old.selection.epoch {
+            scheduleRetry(recoverPending: false)
+            return
+        }
+        let merged = mergeSnapshot(received)
+        if acceptedRevision?.matchID != merged.match.id || acceptedRevision?.roundNumber != merged.round.number {
+            guessDraft = ""
+            selectedRevealNumber = nil
+        }
+        viewerSelectionEpoch = max(viewerSelectionEpoch, merged.selection.epoch)
+        snapshot = merged
+        acceptedSnapshot = merged
+        acceptedRevision = (merged.match.id, merged.revision, merged.round.number)
+        snapshotUptime = uptime()
+        if merged.rematch?.state != .accepted || merged.rematch?.successorAvailable != true
+            || merged.rematch?.successorMatchID != resumeConfirmationTarget?.match.id {
+            resumeConfirmationTarget = nil
+        }
+        if let target = pendingStart, merged.match.currentRound >= target.roundNumber,
+           merged.round.state != .pending { pendingStart = nil }
+        phase = hasPendingDecision ? .unavailable : .ready
+        if !hasPendingDecision { lastError = nil }
+        failureCount = 0
+        scheduleNextRefresh()
+    }
+
+    private func mergeSnapshot(_ received: LiveMatchSnapshot) -> LiveMatchSnapshot {
+        let old = acceptedSnapshot?.match.id == received.match.id ? acceptedSnapshot : nil
+        var merged = old.map { received.revision < $0.revision ? $0 : received } ?? received
+        merged.serverTime = max(received.serverTime, old?.serverTime ?? received.serverTime)
+        merged.selection = old.map { received.selection.epoch < $0.selection.epoch ? $0.selection : received.selection }
+            ?? received.selection
+        if let prior = old?.rematch, (received.rematch?.revision ?? 0) < prior.revision {
+            merged.rematch = prior
+        } else { merged.rematch = received.rematch }
+        if let nextViewerFlag = received.rematch?.selectedElsewhere,
+           received.selection.epoch >= (old?.selection.epoch ?? 0) {
+            merged.rematch?.selectedElsewhere = nextViewerFlag
+        } else if let priorViewerFlag = old?.rematch?.selectedElsewhere {
+            merged.rematch?.selectedElsewhere = priorViewerFlag
+        }
+        return merged
     }
 
     private func request<Value: Sendable>(
@@ -831,7 +1091,12 @@ final class LiveMatchSession {
         } else { isCurrentRound = true }
         let canPresent = presentation == presentationGeneration && isOpen && isCurrentRound
         if canPresent { lastError = mapped }
+        if case .join = intent { lastError = mapped }
         switch mapped {
+        case .server(.clientUpdateRequired):
+            serviceNeedsUpdate = true
+            phase = .unavailable
+            stopRecoveryLoop()
         case .unavailable, .invalidResponse, .server(.internalError):
             phase = .unavailable
             scheduleRetry(recoverPending: true)
@@ -859,7 +1124,11 @@ final class LiveMatchSession {
         guard phase != .storageUnavailable else { return }
         let mapped = map(error)
         lastError = mapped
-        if mapped == .server(.notAuthenticated) {
+        if mapped == .server(.clientUpdateRequired) {
+            serviceNeedsUpdate = true
+            phase = .unavailable
+            stopRecoveryLoop()
+        } else if mapped == .server(.notAuthenticated) {
             phase = .needsSignIn
         } else {
             phase = .unavailable
@@ -881,6 +1150,7 @@ final class LiveMatchSession {
             phase = .needsSignIn
             stopRecoveryLoop()
         case .server(.clientUpdateRequired), .invalidResponse:
+            serviceNeedsUpdate = mapped == .server(.clientUpdateRequired)
             phase = .unavailable
             stopRecoveryLoop()
         default:
@@ -901,12 +1171,15 @@ final class LiveMatchSession {
             return
         }
         var delay = timing.staleAfter
-        let deadline: Date? = switch snapshot.round.state {
+        let roundDeadline: Date? = switch snapshot.round.state {
         case .pending: snapshot.match.expiresAt
         case .countdown: snapshot.round.startsAt
         case .playing: snapshot.round.endsAt
         case .revealed: nil
         }
+        let deadline = snapshot.rematch.flatMap {
+            [.eligible, .offered, .closed].contains($0.state) ? $0.deadline : nil
+        } ?? roundDeadline
         if let deadline {
             let seconds = max(0, deadline.timeIntervalSince(displayedServerTime))
             delay = min(delay, .seconds(seconds))
@@ -938,11 +1211,16 @@ final class LiveMatchSession {
     }
 
     private var shouldRecover: Bool {
-        guard isForeground, isOpen, accountID != nil, phase != .storageUnavailable,
+        guard isForeground, isOpen, accountID != nil, phase != .storageUnavailable, !serviceNeedsUpdate,
               isRecoverySelected || recovery.pendingIntent != nil else { return false }
         guard let snapshot else { return true }
         if recovery.pendingIntent != nil { return true }
-        if snapshot.match.status == .completed || snapshot.match.status == .incomplete { return false }
+        if snapshot.match.status == .completed {
+            guard let rematch = snapshot.rematch else { return false }
+            return rematch.state == .offered || rematch.state == .eligible || rematch.state == .closed
+                || (rematch.state == .accepted && rematch.successorAvailable)
+        }
+        if snapshot.match.status == .incomplete { return false }
         return true
     }
 
@@ -956,14 +1234,35 @@ final class LiveMatchSession {
         return true
     }
 
-    private func saveResolvedMatch(_ matchID: UUID) throws {
+    private func saveResolvedMatch(_ matchID: UUID, completedInvitationGeneration invitation: UUID? = nil) throws {
         let previous = recovery
         recovery.matchID = matchID
         recovery.pendingIntent = nil
+        if let invitation { recovery.completedInvitationGeneration = invitation }
         guard saveRecovery() else {
             recovery = previous
             throw LiveMatchRecoveryError.unavailable
         }
+        completedInvitationGeneration = recovery.completedInvitationGeneration
+    }
+
+    /// The caller captures the completion's account before navigation/journal awaits.
+    /// True means the matching marker was durably removed, or this generation is
+    /// already absent/replaced. False requires retrying the existing storage/account
+    /// recovery first; a failed save never publishes an acknowledgment.
+    @discardableResult
+    func acknowledgeInvitationClear(matchingGeneration invitation: UUID, forAccount expectedAccountID: UUID) -> Bool {
+        guard accountID == expectedAccountID, store != nil, !hasRequestedAccountChange,
+              phase != .storageUnavailable else { return false }
+        guard recovery.completedInvitationGeneration == invitation else { return true }
+        let previous = recovery
+        recovery.completedInvitationGeneration = nil
+        guard saveRecovery() else {
+            recovery = previous
+            return false
+        }
+        completedInvitationGeneration = nil
+        return true
     }
 
     private func saveRecovery() -> Bool {
@@ -978,15 +1277,20 @@ final class LiveMatchSession {
     }
 
     private func clearSavedMatch() {
+        var retained = recovery
+        retained.matchID = nil
+        retained.pendingIntent = nil
         do {
-            try store?.clear()
+            if retained.completedInvitationGeneration != nil { try store?.save(retained) }
+            else { try store?.clear() }
         } catch {
             phase = .storageUnavailable
             stopRecoveryLoop()
             return
         }
-        recovery = LiveRecoveryState()
+        recovery = retained
         acceptedRevision = nil
+        acceptedSnapshot = nil
         snapshot = nil
         snapshotUptime = nil
         isOpen = false
@@ -1018,9 +1322,10 @@ final class LiveMatchSession {
             let store = try storeFactory(accountID)
             self.store = store
             recovery = try store.load()
-            if recovery.formatVersion == 1 {
-                recovery.formatVersion = 2
-                try store.save(recovery)
+            completedInvitationGeneration = recovery.completedInvitationGeneration
+            switch recovery.pendingIntent {
+            case .join(_, _, let navigation, _), .rematch(_, _, let navigation): navigationGeneration = navigation
+            default: break
             }
             phase = .inactive
             guard recovery.matchID != nil || recovery.pendingIntent != nil else { return }
@@ -1040,6 +1345,7 @@ final class LiveMatchSession {
         pendingStart = nil
         selectedRevealNumber = nil
         commandEpoch += 1
+        isExplicitServiceRetry = false
         cancelTasks()
         store = nil
         recovery = LiveRecoveryState()
@@ -1047,6 +1353,12 @@ final class LiveMatchSession {
         snapshotUptime = nil
         guessDraft = ""
         acceptedRevision = nil
+        acceptedSnapshot = nil
+        viewerSelectionEpoch = 0
+        completedInvitationGeneration = nil
+        serviceNeedsUpdate = false
+        resumeConfirmationTarget = nil
+        navigationGeneration = UUID()
         lastError = nil
         phase = .inactive
         isCommandInFlight = false

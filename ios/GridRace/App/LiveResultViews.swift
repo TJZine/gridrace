@@ -73,6 +73,7 @@ struct LiveRevealView: View {
                             }
                         }.accessibilityLabel("Revealed rounds")
                     }
+                    LiveRematchView(session: session, snapshot: snapshot)
                     nextRoundAction
                     Button("Home", action: goHome)
                         .buttonStyle(InkButtonStyle())

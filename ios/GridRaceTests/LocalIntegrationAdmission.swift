@@ -74,8 +74,8 @@ struct LocalIntegrationAdmission {
         else { throw receiptRefusal("receipt-content-invalid") }
         if purpose == .live {
             guard ["host", "guest", "resume", "survivor", "advance-host", "advance-guest",
-                   "solve-host", "solve-guest"].contains(environment["GRIDRACE_LIVE_ROLE"] ?? ""),
-                  ["product", "mixed", "cron", "deletion"].contains(environment["GRIDRACE_LIVE_SCENARIO"] ?? ""),
+                   "solve-host", "solve-guest", "friends-both", "friends-recover", "friends-select", "friends-stale", "friends-resume", "friends-race", "friends-offer", "friends-cancel", "friends-decline", "friends-close-disabled", "friends-signal-host", "friends-signal-guest", "invitation-root"].contains(environment["GRIDRACE_LIVE_ROLE"] ?? ""),
+                  ["product", "mixed", "cron", "deletion", "friends", "invitation"].contains(environment["GRIDRACE_LIVE_SCENARIO"] ?? ""),
                   let count = Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? ""), [1, 3, 5].contains(count),
                   let round = Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? ""), (1...count).contains(round),
                   let guess = environment["GRIDRACE_LIVE_FAILED_GUESS"],

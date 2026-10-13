@@ -29,6 +29,7 @@ final class DailyAccountCoordinator {
 
     private(set) var daily: DailyClassicModel
     let tutorial: TutorialModel
+    var invitations: LiveInvitationCoordinator?
     let live: LiveMatchSession
     private(set) var syncStatus = DailySyncStatus.idle
     private(set) var conflicts: [DailySyncConflict] = []
@@ -43,6 +44,7 @@ final class DailyAccountCoordinator {
         didChangeSession: { [weak self] userID in self?.sessionChanged(to: userID) },
         didFinishRestoration: { [weak self] outcome in self?.restorationFinished(outcome) },
         didCompleteSignedOutIntent: { [weak self] in self?.signedOutIntentCompleted() },
+        willDepartAccount: { [weak self] userID in try self?.invitations?.prepareForAccountDeparture(userID) },
         didSignOut: { [weak self] _ in self?.activateGuest() == .completed },
         didDeleteAccount: { [weak self] userID in
             guard let self else { throw AccountLocalDeletionFailure(dailyCacheUserID: userID, liveRecoveryPending: false) }
@@ -169,9 +171,10 @@ final class DailyAccountCoordinator {
 
     @discardableResult
     private func changeLiveAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
-        guard let liveTransportFactory else { return live.changeAccount(to: userID, transport: nil) }
-        let binding = userID.flatMap { try? liveTransportFactory($0) }
-        return live.changeAccount(to: userID, transport: binding)
+        let binding = userID.flatMap { try? liveTransportFactory?($0) }
+        let outcome = live.changeAccount(to: userID, transport: binding)
+        invitations?.bind(live, userID: userID)
+        return outcome
     }
 
     private func activateAccount(_ userID: UUID) {
