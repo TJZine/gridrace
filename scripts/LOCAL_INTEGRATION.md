@@ -236,3 +236,134 @@ error or unavailable container makes cleanup fail. The private sanitized
 `client-credential-scan-status.tsv` records simulator/status pairs without patterns
 or contents. Old failed-run containers already deleted have no retrospective scan
 claim. Backend-only runs install no containers.
+
+## Friends-beta forward migration and clean-database checks
+
+The staged SQL lives in [`supabase/fixtures`](../supabase/fixtures/), outside
+`supabase/tests`: `supabase test db` recursively discovers SQL there and expects
+standalone TAP output. The before/after scripts need an ordered upgrade and the
+capture script emits JSON. Keep the before script's intentional v1/v2 calls;
+running it against an already migrated v3 database is invalid.
+
+Use the repository-pinned CLI (`npm ci` if needed), Docker, Python 3 and `psql`.
+Run from the repository root in one Bash session with exclusive ownership of a
+fresh, disposable, **unlinked loopback** stack. Inventory existing containers,
+volumes and data first. Create a separate stack directory, copy
+`supabase/config.toml`, `supabase/migrations`, `supabase/seed.sql`, the current
+`supabase/tests` and `supabase/functions` (without local `.env` files) into its
+`supabase/` directory, and assign a new `project_id` and
+unused ports in the copied configuration. Do not copy `.temp/project-ref`, reuse
+retained volumes, or reset the default/shared stack. Set the two variables below
+to that inventoried directory and its configured local database port. Keep the
+source and copied migration/test inputs stable throughout the run.
+
+```bash
+set -euo pipefail
+umask 077
+: "${GRIDRACE_UPGRADE_STACK_DIR:?Set the exclusively owned disposable stack directory}"
+: "${GRIDRACE_UPGRADE_DB_PORT:?Set its configured loopback database port}"
+test ! -e "$GRIDRACE_UPGRADE_STACK_DIR/supabase/.temp/project-ref"
+upgrade_proof=$(mktemp -d "${TMPDIR:-/tmp}/gridrace-forward-proof.XXXXXX")
+git rev-parse HEAD > "$upgrade_proof/source-head.txt"
+git diff --binary -- supabase/fixtures scripts/LOCAL_INTEGRATION.md \
+  > "$upgrade_proof/source.diff"
+shasum -a 256 supabase/fixtures/friends_beta_forward_*.sql \
+  "$GRIDRACE_UPGRADE_STACK_DIR"/supabase/migrations/*.sql \
+  "$GRIDRACE_UPGRADE_STACK_DIR"/supabase/tests/database/*.sql \
+  "$GRIDRACE_UPGRADE_STACK_DIR"/supabase/seed.sql \
+  "$GRIDRACE_UPGRADE_STACK_DIR"/supabase/config.toml \
+  > "$upgrade_proof/input-sha256.txt"
+export PGPASSWORD=postgres
+upgrade_psql=(psql -X -h 127.0.0.1 -p "$GRIDRACE_UPGRADE_DB_PORT" \
+  -U postgres -d postgres -v ON_ERROR_STOP=1)
+
+# Startup output can contain local credentials; retain it privately.
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" start \
+  > "$upgrade_proof/start.log" 2>&1
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" \
+  db reset --local --version 202610080002 \
+  > "$upgrade_proof/baseline-reset.log" 2>&1
+
+# Require the exact pre-friends-beta baseline and an empty fixture database.
+"${upgrade_psql[@]}" <<'SQL'
+do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) <> '202610080002'
+    or exists(select 1 from auth.users)
+    or exists(select 1 from public.matches)
+    or exists(select 1 from private.guess_requests) then
+    raise exception 'expected empty owned pre-friends-beta baseline';
+  end if;
+end $$;
+SQL
+
+# Freeze only this disposable stack's finalizer during byte-preservation proof.
+# This avoids elapsed gameplay deadlines changing the retained live rows.
+"${upgrade_psql[@]}" <<'SQL'
+do $$ declare job bigint; begin
+  if (select count(*) from cron.job
+    where jobname='gridrace-finalize-rounds' and username=current_user and active) <> 1 then
+    raise exception 'expected one active owned finalizer';
+  end if;
+  select jobid into job from cron.job
+    where jobname='gridrace-finalize-rounds' and username=current_user;
+  perform cron.alter_job(job, active:=false);
+end $$;
+SQL
+"${upgrade_psql[@]}" -f supabase/fixtures/friends_beta_forward_before.sql \
+  > "$upgrade_proof/fixture-setup.log" 2>&1
+"${upgrade_psql[@]}" -At -f supabase/fixtures/friends_beta_forward_capture.sql \
+  > "$upgrade_proof/before.json"
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" migration up --local \
+  > "$upgrade_proof/migration-up.log" 2>&1
+"${upgrade_psql[@]}" -f supabase/fixtures/friends_beta_forward_after.sql \
+  > "$upgrade_proof/fixture-assertions.log" 2>&1
+"${upgrade_psql[@]}" -At -f supabase/fixtures/friends_beta_forward_capture.sql \
+  > "$upgrade_proof/after.json"
+python3 - "$upgrade_proof" <<'PY'
+import json, sys
+from pathlib import Path
+proof = Path(sys.argv[1])
+before = json.loads((proof / 'before.json').read_text())
+after = json.loads((proof / 'after.json').read_text())
+expected = {'matches', 'members', 'rounds', 'players', 'secrets', 'guesses',
+            'create_receipts', 'guess_receipts', 'columns'}
+if set(before) != expected or any(not before[key] for key in expected):
+    raise SystemExit('FAIL: missing retained fixture evidence')
+if len(before['matches']) != 7 or before != after:
+    raise SystemExit('FAIL: retained fixture facts changed')
+print('PASS: seven legacy/v2 matches; gameplay, secrets, receipts and grants preserved')
+PY
+
+# Only after forward proof succeeds, discard these owned synthetic fixtures.
+# Clean creation also restores the scheduled finalizer's normal active state.
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" db reset --local \
+  > "$upgrade_proof/clean-reset.log" 2>&1
+"${upgrade_psql[@]}" <<'SQL'
+do $$ begin
+  if (select count(*) from cron.job
+    where jobname='gridrace-finalize-rounds' and username=current_user and active) <> 1 then
+    raise exception 'clean reset did not restore the active finalizer';
+  end if;
+end $$;
+SQL
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" test db \
+  > "$upgrade_proof/database-tests.log" 2>&1
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" \
+  db lint --local --schema public,private,app_rls --level warning --fail-on error \
+  > "$upgrade_proof/database-lint.log" 2>&1
+npx --no-install supabase --workdir "$GRIDRACE_UPGRADE_STACK_DIR" stop --no-backup \
+  > "$upgrade_proof/stop.log" 2>&1
+printf 'PASS: forward upgrade, clean database tests and lint; private proof: %s\n' "$upgrade_proof"
+```
+
+Every failed command is a failed gate. On failure, preserve the private proof and
+inspect the owned stack before any further reset; once diagnosis is complete,
+stop **only that disposable project** with the final `stop --no-backup` command.
+Its paused finalizer must never be left in a reused stack. Verify that the owned
+containers/volumes are removed and the original inventory is unchanged. Captures
+include synthetic answers and receipts: share only sanitized summaries, not raw
+JSON or startup logs. Passing this procedure proves local forward preservation
+and clean creation; it does not establish hosted or independent-native-client
+acceptance. Ordinary discovery should run the eight standalone pgTAP suites and
+940 assertions, with no `friends_beta_forward_*.sql` entries. No new test suite is
+needed for a fixture relocation.
