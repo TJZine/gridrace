@@ -166,6 +166,9 @@ The dated CI addendum above remains evidence for `e7db36f`, not these new fixes.
 Physical/provider/locked-Keychain, persisted-Auth, signed-release/staging,
 distribution/corpus and Stamped S4/A9 limits remain open.
 
-Optional local-only finding report:
-`docs/reviews/comprehensive-review-2026-10-10/REPORT.md`. This checkpoint and its
-tracked companion are understandable without that report or private run artifacts.
+Archived optional local-only finding report (original repository-relative path):
+`docs/reviews/comprehensive-review-2026-10-10/REPORT.md`. Its exact local copy was
+archived outside the project on 2026-10-13 before removal; see the
+[archive location and manifest](../../NOW.md#archived-local-only-artifacts).
+This checkpoint and its tracked companion are understandable without that report
+or private run artifacts.

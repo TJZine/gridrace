@@ -75,9 +75,13 @@ cancelled UI12 action streams remain documented; no global credential-absence cl
 No pending implementation children, leases, human decisions or material findings
 remain for this completed software scope.
 
-Optional local-only review inputs: `docs/2026-10-08-comprehensive-review/REPORT.md`
+Archived optional local-only review inputs (original repository-relative paths):
+`docs/2026-10-08-comprehensive-review/REPORT.md`
 (SHA256 `8d8b3ef4fd3364b3ce02ecba2c23e096f855ba853de2c7c9bb8992200028d82c`),
 `docs/2026-10-08-comprehensive-review/REMEDIATION.md`
 (SHA256 `66ee3c467d35d7288ebce99d95ce9bc2cc50ac73b1b1f2f94ab5d5bbca556e97`),
 and `docs/plans/2026-10-08-comprehensive-review-remediation-kickoff.md`.
-They are not needed to understand this tracked checkpoint.
+Their exact local copies were archived outside the project on 2026-10-13 before
+removal; see the [archive location and manifest](../NOW.md#archived-local-only-artifacts).
+They are not needed to understand this tracked checkpoint. The completed
+remediation does not require the obsolete kickoff.

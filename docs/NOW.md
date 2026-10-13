@@ -50,3 +50,20 @@ device, provider, accessibility or release acceptance.
 | `2026-08-31-accounts-daily-sync.md` | Closed local account/sync milestone; current architecture/privacy contracts and later remediation retain provider/device limits. |
 | `2026-09-05-remaining-adversarial-remediation.md` | Closed repairs and dated hosted-CI proof; retained September 4 history points here for retrieval. |
 | `2026-10-13-friends-beta-orchestrator-handoff.md` | Completed implementation kickoff; the friends-beta roadmap and implementation checkpoint own current scope, proof and remaining release decisions. |
+
+## Archived local-only artifacts
+
+On 2026-10-13, the optional October 8/10 review reports, prompts and review
+handoff, the dictionary integration plan and independent-check JSON, the obsolete
+October 8 remediation kickoff, and the five retired plan copies were archived
+outside this checkout before their local originals were removed. Disposable
+macOS metadata and generated review-cache files were preserved in the same bundle.
+
+The archive is local to this machine at
+`/Users/tristan/Software/gridrace-archives/2026-10-13-local-document-cleanup-a3f97457`.
+It preserves original repository-relative paths; `MANIFEST.json` records each
+file's SHA-256 and size, verified against its original before removal.
+`README.txt` explains retrieval. Historical references to those original local
+paths now refer to this bundle. The archive is optional evidence, not a build
+input or a dependency of the tracked checkpoints; current corpus provenance,
+accepted decisions and outstanding acceptance remain in their existing owners.
