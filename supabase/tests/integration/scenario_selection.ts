@@ -13,13 +13,20 @@ const scenarioIDs: Record<string, string> = {
   "rate-counter concurrency completes without deadlock": "rate-concurrency",
   "lobby deletion isolation": "lobby-deletion",
   "deletion partial-stage recovery": "deletion-recovery",
-  "v2 configured rounds, target concurrency, receipts and exact standings":
-    "v2-rounds-standings",
-  "v2 deletion matrix, future-start race and current-final preservation":
-    "v2-deletion",
-  "v2 deletion blocks queued next Start for either actor":
-    "v2-queued-start-deletion",
-  "v2 ordinary reveal waits for creator after scheduled Cron": "v2-cron",
+  "current configured rounds, target concurrency, receipts and exact standings":
+    "current-rounds-standings",
+  "current deletion matrix, future-start race and current-final preservation":
+    "current-deletion",
+  "current deletion blocks queued next Start for either actor":
+    "current-queued-start-deletion",
+  "current ordinary reveal waits for creator after scheduled Cron":
+    "current-cron",
+  "friends rematch consent receipts and exclusions": "friends-rematch",
+  "friends private selection and pinned resume": "friends-selection",
+  "friends cancel decline expiry and eligibility": "friends-lifecycle",
+  "friends pool failure and rollback closure": "friends-pool",
+  "friends authenticated rematch realtime delivery and privacy":
+    "friends-signal",
 };
 
 export function backendScenarioID(description: string): string {

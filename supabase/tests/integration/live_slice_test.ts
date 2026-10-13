@@ -77,11 +77,13 @@ try {
     const host = await createUser("create-host");
     const requestId = crypto.randomUUID();
     const first = await edge(host.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: requestId,
     });
     const retry = await edge(host.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: requestId,
     });
     assert(first.status === 200 && retry.status === 200, "create retry status");
@@ -89,19 +91,21 @@ try {
     assert(first.bytes < 512 && retry.bytes < 512, "create response size");
 
     const conflict = await edge(host.session, "create-match", {
-      client_build: 2,
+      client_build: 3,
       request_id: requestId,
-      round_count: 1,
+      round_count: 3,
     });
     assertError(conflict, 409, "request_conflict");
 
     const anonymous = await edge(null, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: crypto.randomUUID(),
     });
     assert(anonymous.status === 401, "anonymous create denied");
     assertError(
       await edge(host.session, "create-match", {
+        round_count: 1,
         client_build: 0,
         request_id: crypto.randomUUID(),
       }),
@@ -110,7 +114,8 @@ try {
     );
     assertError(
       await edge(host.session, "create-match", {
-        client_build: 1,
+        round_count: 1,
+        client_build: 3,
         request_id: crypto.randomUUID(),
         unexpected: true,
       }),
@@ -124,7 +129,7 @@ try {
     );
     assertError(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: "not-a-uuid",
       }),
       400,
@@ -132,7 +137,7 @@ try {
     );
     assertError(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: crypto.randomUUID(),
       }),
       403,
@@ -145,13 +150,14 @@ try {
     const guest = await createUser("race-guest");
     const outsider = await createUser("race-outsider");
     const created = await edge(host.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: crypto.randomUUID(),
     });
     const matchIdValue = matchId(created);
     const lobby = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
@@ -159,7 +165,9 @@ try {
 
     const signal = await subscribeToMatchSignal(host, matchIdValue);
     const joined = await edge(guest.session, "join-match", {
-      client_build: 1,
+      request_id: crypto.randomUUID(),
+      expected_match_id: null,
+      client_build: 3,
       join_code: joinCode,
     });
     assert(joined.status === 200, "guest join");
@@ -203,7 +211,7 @@ try {
     assert(privateRead.error !== null, "private schema denied");
     const directRpc = await host.client.rpc("create_match", {
       p_user_id: host.id,
-      p_client_build: 1,
+      p_client_build: 3,
       p_ip_hash: null,
       p_request_id: crypto.randomUUID(),
     });
@@ -211,7 +219,7 @@ try {
 
     const before = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
@@ -222,7 +230,8 @@ try {
     assertOpponentBoardHidden(before);
 
     const started = await edge(host.session, "start-match", {
-      client_build: 1,
+      round_number: 1,
+      client_build: 3,
       match_id: matchIdValue,
     });
     assert(started.status === 200, "creator start");
@@ -254,7 +263,7 @@ try {
     await delay(3200);
     const playing = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
@@ -313,7 +322,7 @@ try {
     );
     const revealed = data(
       await edge(guest.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
@@ -324,28 +333,28 @@ try {
     assertAllBoardsVisible(revealed);
 
     const deleted = await edge(host.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     assert(deleted.status === 200, "completed player deletion");
     createdUsers.delete(host.id);
     const replay = await edge(host.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     assert(replay.status === 200, "lost deletion response replay");
     const survivor = data(
       await edge(guest.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
     assertDeletedMemberIdentity(survivor);
     const stale = await edge(host.session, "match-snapshot", {
-      client_build: 1,
+      client_build: 3,
       match_id: matchIdValue,
     });
     assert(stale.status === 401, "deleted credential denied");
     assert(
-      (await edge(guest.session, "delete-account", { client_build: 1 }))
+      (await edge(guest.session, "delete-account", { client_build: 3 }))
         .status === 200,
       "survivor deletion",
     );
@@ -357,20 +366,31 @@ try {
     const first = await createUser("join-first");
     const second = await createUser("join-second");
     const created = await edge(host.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: crypto.randomUUID(),
     });
     const matchIdValue = matchId(created);
     const snapshot = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
     const code = nestedString(snapshot, "match", "join_code");
     const results = await Promise.all([
-      edge(first.session, "join-match", { client_build: 1, join_code: code }),
-      edge(second.session, "join-match", { client_build: 1, join_code: code }),
+      edge(first.session, "join-match", {
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
+        join_code: code,
+      }),
+      edge(second.session, "join-match", {
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
+        join_code: code,
+      }),
     ]);
     assert(
       results.filter((result) => result.status === 200).length === 1,
@@ -584,7 +604,7 @@ try {
     );
     const failedSnapshot = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
@@ -699,7 +719,7 @@ try {
           );
 
           deletionPromise = edge(deleting.session, "delete-account", {
-            client_build: 1,
+            client_build: 3,
           });
           await waitForSqlValue(
             "select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query ilike '%begin_account_deletion%'",
@@ -750,7 +770,7 @@ try {
         ) {
           const snapshot = data(
             await edge(guest.session, "match-snapshot", {
-              client_build: 1,
+              client_build: 3,
               match_id: matchIdValue,
             }),
           );
@@ -763,20 +783,21 @@ try {
 
         const tokenHash = await sha256(deleting.session.access_token);
         assert(
-          (await edge(deleting.session, "delete-account", { client_build: 1 }))
+          (await edge(deleting.session, "delete-account", { client_build: 3 }))
             .status === 200,
           "multi-match deletion receipt replay completes",
         );
         assert(
           (await edge(deleting.session, "match-snapshot", {
-            client_build: 1,
+            client_build: 3,
             match_id: lowerMatchId,
           })).status === 401,
           "multi-match stale bearer cannot read",
         );
         assert(
           (await edge(deleting.session, "create-match", {
-            client_build: 1,
+            round_count: 1,
+            client_build: 3,
             request_id: crypto.randomUUID(),
           })).status === 401,
           "multi-match stale bearer cannot write",
@@ -819,10 +840,11 @@ try {
     const startMatch = await createLobbyWithGuest(startHost, startGuest);
     const [start, startDelete] = await Promise.all([
       edge(startHost.session, "start-match", {
-        client_build: 1,
+        round_number: 1,
+        client_build: 3,
         match_id: startMatch,
       }),
-      edge(startGuest.session, "delete-account", { client_build: 1 }),
+      edge(startGuest.session, "delete-account", { client_build: 3 }),
     ]);
     assert(startDelete.status === 200, "start-race deletion completes");
     createdUsers.delete(startGuest.id);
@@ -835,10 +857,12 @@ try {
     const joinCode = await matchJoinCode(joinHost, joinMatch);
     const [join, joinDelete] = await Promise.all([
       edge(replacement.session, "join-match", {
-        client_build: 1,
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
         join_code: joinCode,
       }),
-      edge(joinGuest.session, "delete-account", { client_build: 1 }),
+      edge(joinGuest.session, "delete-account", { client_build: 3 }),
     ]);
     assert(joinDelete.status === 200, "join-race deletion completes");
     createdUsers.delete(joinGuest.id);
@@ -875,7 +899,7 @@ try {
     );
     await delay(150);
     const deletePromise = edge(submitGuest.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     const [submit, submitDelete] = await Promise.all([
       submitPromise,
@@ -902,7 +926,8 @@ try {
     const joinFirstHost = await createUser("join-delete-host");
     const joinFirst = await createUser("join-delete-member");
     const created = await edge(joinFirstHost.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: crypto.randomUUID(),
     });
     const matchIdValue = matchId(created);
@@ -916,7 +941,9 @@ try {
     );
 
     const joinPromise = edge(joinFirst.session, "join-match", {
-      client_build: 1,
+      request_id: crypto.randomUUID(),
+      expected_match_id: null,
+      client_build: 3,
       join_code: joinCode,
     });
     await waitForSqlValue(
@@ -933,7 +960,7 @@ try {
     );
 
     const deletePromise = edge(joinFirst.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     await waitForSqlValue(
       `select count(*) from pg_stat_activity where pid <> pg_backend_pid() and wait_event_type = 'Lock' and query ilike '%begin_account_deletion%'`,
@@ -948,20 +975,22 @@ try {
 
     const tokenHash = await sha256(joinFirst.session.access_token);
     assert(
-      (await edge(joinFirst.session, "delete-account", { client_build: 1 }))
+      (await edge(joinFirst.session, "delete-account", { client_build: 3 }))
         .status === 200,
       "join-before-delete receipt replay remains completed",
     );
     assert(
       (await edge(joinFirst.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       })).status === 401,
       "join-before-delete stale bearer cannot read",
     );
     assert(
       (await edge(joinFirst.session, "join-match", {
-        client_build: 1,
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
         join_code: joinCode,
       })).status === 401,
       "join-before-delete stale bearer cannot write",
@@ -1008,7 +1037,11 @@ try {
     const deleteFirstCreated = await edge(
       deleteFirstHost.session,
       "create-match",
-      { client_build: 1, request_id: crypto.randomUUID() },
+      {
+        round_count: 1,
+        client_build: 3,
+        request_id: crypto.randomUUID(),
+      },
     );
     const deleteFirstMatch = matchId(deleteFirstCreated);
     const deleteFirstCode = await matchJoinCode(
@@ -1016,14 +1049,16 @@ try {
       deleteFirstMatch,
     );
     assert(
-      (await edge(deleteFirst.session, "delete-account", { client_build: 1 }))
+      (await edge(deleteFirst.session, "delete-account", { client_build: 3 }))
         .status === 200,
       "delete-before-join deletion completes",
     );
     createdUsers.delete(deleteFirst.id);
     assert(
       (await edge(deleteFirst.session, "join-match", {
-        client_build: 1,
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
         join_code: deleteFirstCode,
       })).status === 401,
       "delete-before-join stale join rejected",
@@ -1060,11 +1095,13 @@ try {
       const host = await createUser("rate-host");
       const results = await Promise.all([
         edge(host.session, "create-match", {
-          client_build: 1,
+          round_count: 1,
+          client_build: 3,
           request_id: crypto.randomUUID(),
         }),
         edge(host.session, "create-match", {
-          client_build: 1,
+          round_count: 1,
+          client_build: 3,
           request_id: crypto.randomUUID(),
         }),
       ]);
@@ -1084,52 +1121,57 @@ try {
     const guest = await createUser("lobby-guest");
     const replacement = await createUser("lobby-replacement");
     const created = await edge(host.session, "create-match", {
-      client_build: 1,
+      round_count: 1,
+      client_build: 3,
       request_id: crypto.randomUUID(),
     });
     const matchIdValue = matchId(created);
     const lobby = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
     const code = nestedString(lobby, "match", "join_code");
     assert(
       (await edge(guest.session, "join-match", {
-        client_build: 1,
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
         join_code: code,
       })).status === 200,
       "lobby join",
     );
     assert(
-      (await edge(guest.session, "delete-account", { client_build: 1 }))
+      (await edge(guest.session, "delete-account", { client_build: 3 }))
         .status === 200,
       "guest lobby deletion",
     );
     createdUsers.delete(guest.id);
     const afterGuest = data(
       await edge(host.session, "match-snapshot", {
-        client_build: 1,
+        client_build: 3,
         match_id: matchIdValue,
       }),
     );
     assert(array(afterGuest.members).length === 1, "guest seat removed");
     assert(
       (await edge(replacement.session, "join-match", {
-        client_build: 1,
+        request_id: crypto.randomUUID(),
+        expected_match_id: null,
+        client_build: 3,
         join_code: code,
       })).status === 200,
       "replacement join",
     );
     assert(
-      (await edge(host.session, "delete-account", { client_build: 1 }))
+      (await edge(host.session, "delete-account", { client_build: 3 }))
         .status === 200,
       "host lobby deletion",
     );
     createdUsers.delete(host.id);
     const unavailable = await edge(replacement.session, "match-snapshot", {
-      client_build: 1,
+      client_build: 3,
       match_id: matchIdValue,
     });
     assert(unavailable.status === 403, "deleted host lobby unavailable");
@@ -1144,7 +1186,7 @@ try {
       }', 1, '${beforeHash}')`,
     );
     const resumed = await edge(beforeAuthDelete.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     assert(resumed.status === 200, "resume pending deletion");
     createdUsers.delete(beforeAuthDelete.id);
@@ -1163,24 +1205,24 @@ try {
     assert(removed.error === null, "fixture auth deletion");
     createdUsers.delete(afterAuthDelete.id);
     const completed = await edge(afterAuthDelete.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     assert(completed.status === 200, "complete after auth deletion");
     const replay = await edge(afterAuthDelete.session, "delete-account", {
-      client_build: 1,
+      client_build: 3,
     });
     assert(replay.status === 200, "completed deletion replay");
   });
 
   await scenario(
-    "v2 configured rounds, target concurrency, receipts and exact standings",
+    "current configured rounds, target concurrency, receipts and exact standings",
     async () => {
       for (const count of [1, 3, 5]) {
-        const host = await createUser(`v2-${count}-host`);
-        const guest = await createUser(`v2-${count}-guest`);
+        const host = await createUser(`current-${count}-host`);
+        const guest = await createUser(`current-${count}-guest`);
         const requestId = crypto.randomUUID();
         const created = await edge(host.session, "create-match", {
-          client_build: 2,
+          client_build: 3,
           request_id: requestId,
           round_count: count,
         });
@@ -1188,13 +1230,13 @@ try {
         const snap = async (viewer = host) =>
           data(
             await edge(viewer.session, "match-snapshot", {
-              client_build: 2,
+              client_build: 3,
               match_id: match,
             }),
           );
         const start = (target: number, viewer = host) =>
           edge(viewer.session, "start-match", {
-            client_build: 2,
+            client_build: 3,
             match_id: match,
             round_number: target,
           });
@@ -1206,7 +1248,7 @@ try {
         ) =>
           edge(viewer.session, "submit-guess", {
             ...guessBody(match, id, word),
-            client_build: 2,
+            client_build: 3,
             round_number: target,
           });
         const capture = (label: string, snapshot: Json) => {
@@ -1214,7 +1256,7 @@ try {
         };
         let snapshot = await snap();
         capture("lobby", snapshot);
-        assert(snapshot.version === 2, "snapshot2 version");
+        assert(snapshot.version === 3, "snapshot3 version");
         assert(
           snapshot.standings === null &&
             array(snapshot.revealed_rounds).length === 0,
@@ -1222,7 +1264,7 @@ try {
         );
         assertError(
           await edge(host.session, "match-snapshot", {
-            client_build: 1,
+            client_build: 2,
             match_id: match,
           }),
           426,
@@ -1230,7 +1272,7 @@ try {
         );
         assertError(
           await edge(host.session, "create-match", {
-            client_build: 2,
+            client_build: 3,
             request_id: requestId,
             round_count: count === 1 ? 3 : 1,
           }),
@@ -1239,7 +1281,7 @@ try {
         );
         assertError(
           await edge(host.session, "create-match", {
-            client_build: 2,
+            client_build: 3,
             request_id: crypto.randomUUID(),
             round_count: 2,
           }),
@@ -1248,20 +1290,20 @@ try {
         );
         const deniedCreate = await host.client.rpc("create_match", {
           p_user_id: host.id,
-          p_client_build: 2,
+          p_client_build: 3,
           p_ip_hash: null,
           p_request_id: crypto.randomUUID(),
           p_round_count: count,
         });
         const deniedStart = await host.client.rpc("start_match", {
           p_user_id: host.id,
-          p_client_build: 2,
+          p_client_build: 3,
           p_match_id: match,
           p_round_number: 1,
         });
         assert(
           deniedCreate.error !== null && deniedStart.error !== null,
-          "v2 direct RPC denial",
+          "current direct RPC denial",
         );
         const reason = await host.client.from("matches").select(
           "terminal_reason",
@@ -1269,10 +1311,12 @@ try {
         assert(reason.error !== null, "terminal reason direct denial");
         assert(
           (await edge(guest.session, "join-match", {
-            client_build: 2,
+            request_id: crypto.randomUUID(),
+            expected_match_id: null,
+            client_build: 3,
             join_code: nestedString(snapshot, "match", "join_code"),
           })).status === 200,
-          "v2 guest join",
+          "current guest join",
         );
         assertError(await start(1, guest), 403, "not_host");
         let originalReceipt: EdgeResult | undefined;
@@ -1285,7 +1329,7 @@ try {
             : undefined;
           const barrier = await holdMatchLockBarrier(
             match,
-            `gridrace-v2-start-${crypto.randomUUID()}`,
+            `gridrace-v3-start-${crypto.randomUUID()}`,
           );
           let starts: Promise<EdgeResult[]>;
           const startsRequests: Promise<EdgeResult>[] = [];
@@ -1315,15 +1359,15 @@ try {
                   Object.keys(payload).every((key) =>
                     safeMatchColumns.split(",").includes(key)
                   ),
-                  "v2 Realtime safe column projection",
+                  "current Realtime safe column projection",
                 );
                 assert(
                   payload.current_round === target,
-                  "v2 Realtime next-round signal",
+                  "current Realtime next-round signal",
                 );
                 assert(
                   !("terminal_reason" in payload) && !("standings" in payload),
-                  "v2 Realtime no reason or totals",
+                  "current Realtime no reason or totals",
                 );
               } finally {
                 await signal.close();
@@ -1432,7 +1476,7 @@ try {
           const id = target === 1 ? receiptId : crypto.randomUUID();
           const guessBarrier = await holdMatchLockBarrier(
             match,
-            `gridrace-v2-guess-${crypto.randomUUID()}`,
+            `gridrace-v3-guess-${crypto.randomUUID()}`,
           );
           let guesses: Promise<EdgeResult[]>;
           const guessesRequests: Promise<EdgeResult>[] = [];
@@ -1563,7 +1607,7 @@ try {
           const before = await snap();
           const staleBarrier = await holdMatchLockBarrier(
             match,
-            `gridrace-v2-stale-${crypto.randomUUID()}`,
+            `gridrace-v3-stale-${crypto.randomUUID()}`,
           );
           let stale: Promise<EdgeResult[]>;
           const staleRequests: Promise<EdgeResult>[] = [];
@@ -1634,7 +1678,7 @@ try {
         assert(
           matchId(
             await edge(host.session, "create-match", {
-              client_build: 2,
+              client_build: 3,
               request_id: requestId,
               round_count: count,
             }),
@@ -1646,7 +1690,7 @@ try {
   );
 
   await scenario(
-    "v2 deletion matrix, future-start race and current-final preservation",
+    "current deletion matrix, future-start race and current-final preservation",
     async () => {
       for (
         const boundary of [
@@ -1656,11 +1700,11 @@ try {
           "completed",
         ] as const
       ) {
-        const host = await createUser(`v2-delete-${boundary}-host`);
-        const guest = await createUser(`v2-delete-${boundary}-guest`);
+        const host = await createUser(`current-delete-${boundary}-host`);
+        const guest = await createUser(`current-delete-${boundary}-guest`);
         const match = matchId(
           await edge(host.session, "create-match", {
-            client_build: 2,
+            client_build: 3,
             request_id: crypto.randomUUID(),
             round_count: 3,
           }),
@@ -1668,13 +1712,15 @@ try {
         const snap = async () =>
           data(
             await edge(host.session, "match-snapshot", {
-              client_build: 2,
+              client_build: 3,
               match_id: match,
             }),
           );
         assert(
           (await edge(guest.session, "join-match", {
-            client_build: 2,
+            request_id: crypto.randomUUID(),
+            expected_match_id: null,
+            client_build: 3,
             join_code: nestedString(await snap(), "match", "join_code"),
           })).status === 200,
           "deletion fixture joins",
@@ -1685,7 +1731,7 @@ try {
         for (let round = 1; round <= target; round++) {
           assert(
             (await edge(host.session, "start-match", {
-              client_build: 2,
+              client_build: 3,
               match_id: match,
               round_number: round,
             })).status === 200,
@@ -1707,13 +1753,13 @@ try {
         // A held match ensures deletion and same-actor command are separate waiting transactions.
         const barrier = await holdMatchLockBarrier(
           match,
-          `gridrace-v2-delete-${crypto.randomUUID()}`,
+          `gridrace-v3-delete-${crypto.randomUUID()}`,
         );
         let pending: Promise<EdgeResult[]>;
         const pendingRequests: Promise<EdgeResult>[] = [];
         try {
           const deleting = edge(guest.session, "delete-account", {
-            client_build: 2,
+            client_build: 3,
           });
           pendingRequests.push(deleting);
           await waitForSqlValue(
@@ -1723,7 +1769,7 @@ try {
           );
           const guessing = edge(guest.session, "submit-guess", {
             ...guessBody(match, crypto.randomUUID(), "apple"),
-            client_build: 2,
+            client_build: 3,
             round_number: target,
           });
           pendingRequests.push(guessing);
@@ -1769,7 +1815,7 @@ try {
         if (nonfinal) {
           assertError(
             await edge(host.session, "start-match", {
-              client_build: 2,
+              client_build: 3,
               match_id: match,
               round_number: 2,
             }),
@@ -1816,7 +1862,7 @@ try {
         );
         const stableRevision = nested(snapshot, "match", "revision");
         assert(
-          (await edge(guest.session, "delete-account", { client_build: 2 }))
+          (await edge(guest.session, "delete-account", { client_build: 3 }))
             .status === 200,
           "deletion receipt replay",
         );
@@ -1841,7 +1887,7 @@ try {
           "Cron never advances",
         );
         assert(
-          (await edge(host.session, "delete-account", { client_build: 2 }))
+          (await edge(host.session, "delete-account", { client_build: 3 }))
             .status === 200,
           "later deletion completes",
         );
@@ -1857,36 +1903,38 @@ try {
   );
 
   await scenario(
-    "v2 deletion blocks queued next Start for either actor",
+    "current deletion blocks queued next Start for either actor",
     async () => {
       for (const deleteCreator of [false, true]) {
-        const host = await createUser("v2-start-delete-host");
-        const guest = await createUser("v2-start-delete-guest");
+        const host = await createUser("current-start-delete-host");
+        const guest = await createUser("current-start-delete-guest");
         const deleting = deleteCreator ? host : guest;
         const survivor = deleteCreator ? guest : host;
         const match = matchId(
           await edge(host.session, "create-match", {
-            client_build: 2,
+            client_build: 3,
             request_id: crypto.randomUUID(),
             round_count: 3,
           }),
         );
         const lobby = data(
           await edge(host.session, "match-snapshot", {
-            client_build: 2,
+            client_build: 3,
             match_id: match,
           }),
         );
         assert(
           (await edge(guest.session, "join-match", {
-            client_build: 2,
+            request_id: crypto.randomUUID(),
+            expected_match_id: null,
+            client_build: 3,
             join_code: nestedString(lobby, "match", "join_code"),
           })).status === 200,
           "Start/delete fixture join",
         );
         assert(
           (await edge(host.session, "start-match", {
-            client_build: 2,
+            client_build: 3,
             match_id: match,
             round_number: 1,
           })).status === 200,
@@ -1901,12 +1949,12 @@ try {
         );
         const barrier = await holdMatchLockBarrier(
           match,
-          `gridrace-v2-next-delete-${crypto.randomUUID()}`,
+          `gridrace-v3-next-delete-${crypto.randomUUID()}`,
         );
         const requests: Promise<EdgeResult>[] = [];
         try {
           requests.push(
-            edge(deleting.session, "delete-account", { client_build: 2 }),
+            edge(deleting.session, "delete-account", { client_build: 3 }),
           );
           await waitForSqlValue(
             `select count(*) from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query ilike '%begin_account_deletion%'`,
@@ -1915,7 +1963,7 @@ try {
           );
           requests.push(
             edge(host.session, "start-match", {
-              client_build: 2,
+              client_build: 3,
               match_id: match,
               round_number: 2,
             }),
@@ -1939,7 +1987,7 @@ try {
         );
         const snapshot = data(
           await edge(survivor.session, "match-snapshot", {
-            client_build: 2,
+            client_build: 3,
             match_id: match,
           }),
         );
@@ -1968,13 +2016,13 @@ try {
   );
 
   await scenario(
-    "v2 ordinary reveal waits for creator after scheduled Cron",
+    "current ordinary reveal waits for creator after scheduled Cron",
     async () => {
-      const host = await createUser("v2-cron-host");
-      const guest = await createUser("v2-cron-guest");
+      const host = await createUser("current-cron-host");
+      const guest = await createUser("current-cron-guest");
       const match = matchId(
         await edge(host.session, "create-match", {
-          client_build: 2,
+          client_build: 3,
           request_id: crypto.randomUUID(),
           round_count: 3,
         }),
@@ -1982,21 +2030,23 @@ try {
       const snap = async () =>
         data(
           await edge(host.session, "match-snapshot", {
-            client_build: 2,
+            client_build: 3,
             match_id: match,
           }),
         );
       const lobby = await snap();
       assert(
         (await edge(guest.session, "join-match", {
-          client_build: 2,
+          request_id: crypto.randomUUID(),
+          expected_match_id: null,
+          client_build: 3,
           join_code: nestedString(lobby, "match", "join_code"),
         })).status === 200,
         "Cron fixture join",
       );
       assert(
         (await edge(host.session, "start-match", {
-          client_build: 2,
+          client_build: 3,
           match_id: match,
           round_number: 1,
         })).status === 200,
@@ -2042,7 +2092,7 @@ try {
       );
       assert(
         (await edge(host.session, "start-match", {
-          client_build: 2,
+          client_build: 3,
           match_id: match,
           round_number: 2,
         })).status === 200,
@@ -2059,6 +2109,462 @@ try {
           JSON.stringify(snapshot.revealed_rounds),
         "prior reveals retained",
       );
+    },
+  );
+
+  await scenario(
+    "friends rematch consent receipts and exclusions",
+    async () => {
+      await sql(
+        "update private.live_feature_configuration set allow_new_rematches=true",
+      );
+      for (const count of [1, 3, 5]) {
+        const host = await createUser(`friends-${count}-host`);
+        const guest = await createUser(`friends-${count}-guest`);
+        const outsider = await createUser(`friends-${count}-outsider`);
+        const predecessor = await completeFriendsMatch(host, guest, count);
+        const original = await gameplayFacts(predecessor);
+        const first = await friendsCommand(host, predecessor, "offer");
+        const second = await friendsCommand(guest, predecessor, "offer");
+        const [a, b] = await Promise.all([
+          edge(host.session, "rematch-command", first),
+          edge(guest.session, "rematch-command", second),
+        ]);
+        assert(
+          a.status === 200 && b.status === 200,
+          "simultaneous consent succeeds",
+        );
+        const accepted = data(a).successor_match_id ? a : b;
+        const successor = String(data(accepted).successor_match_id);
+        uuid(successor);
+        createdMatches.add(successor);
+        assert(
+          JSON.stringify(
+            (await edge(guest.session, "rematch-command", second)).body,
+          ) === JSON.stringify(b.body),
+          "lost consent response exact replay",
+        );
+        assertError(
+          await edge(host.session, "rematch-command", {
+            ...first,
+            action: "cancel",
+          }),
+          409,
+          "request_conflict",
+        );
+        const lobby = await friendsSnapshot(host, successor);
+        assert(
+          nested(lobby, "match", "admission") === "rematch",
+          "private successor admission",
+        );
+        assert(
+          nested(lobby, "match", "round_count") === count,
+          "same round count",
+        );
+        assert(
+          nested(lobby, "match", "status") === "lobby",
+          "creator must explicitly Start",
+        );
+        assertError(
+          await edge(outsider.session, "join-match", {
+            client_build: 3,
+            request_id: crypto.randomUUID(),
+            expected_match_id: null,
+            join_code: nestedString(lobby, "match", "join_code"),
+          }),
+          409,
+          "match_not_joinable",
+        );
+        assert(
+          await sqlScalar(
+            `select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+              uuid(successor)
+            }'`,
+          ) === "0",
+          "no future answers selected",
+        );
+        // Acknowledged allocation and original receipts survive operational rollback.
+        await sql(
+          "update private.live_feature_configuration set allow_new_rematches=false",
+        );
+        assert(
+          JSON.stringify(
+            (await edge(guest.session, "rematch-command", second)).body,
+          ) === JSON.stringify(b.body),
+          "receipt survives feature rollback",
+        );
+        assert(
+          nested(
+            await friendsSnapshot(host, predecessor),
+            "rematch",
+            "successor_match_id",
+          ) === successor,
+          "accepted recovery survives rollback",
+        );
+        await sql(
+          "update private.live_feature_configuration set allow_new_rematches=true",
+        );
+        await playFriendsRounds(host, guest, successor, count);
+        assert(
+          await sqlScalar(
+            `select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id join private.rematch_successors x on x.match_id=r.match_id where r.match_id='${
+              uuid(successor)
+            }' and s.answer=any(x.excluded_answers)`,
+          ) === "0",
+          "all predecessor answers excluded",
+        );
+        assert(
+          await sqlScalar(
+            `select count(distinct s.answer) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+              uuid(successor)
+            }'`,
+          ) === String(count),
+          "no successor repeats",
+        );
+        assert(
+          await gameplayFacts(predecessor) === original,
+          "old result immutable",
+        );
+        console.log(
+          `PASS friends actual Auth/Edge pair consent count ${count} exclusions receipts/private lobby`,
+        );
+      }
+    },
+  );
+
+  await scenario("friends private selection and pinned resume", async () => {
+    const host = await createUser("selection-host"),
+      guest = await createUser("selection-guest");
+    const predecessor = await completeFriendsMatch(host, guest, 1);
+    const old = await friendsSnapshot(host, predecessor);
+    const epoch = nested(old, "selection", "epoch");
+    const newer = matchId(
+      await edge(host.session, "create-match", {
+        client_build: 3,
+        request_id: crypto.randomUUID(),
+        round_count: 1,
+      }),
+    );
+    const after = await friendsSnapshot(host, predecessor);
+    assert(
+      nested(after, "selection", "is_selected") === false,
+      "old pointer passive read unselected",
+    );
+    const newerEpoch = nested(after, "selection", "epoch");
+    assert(
+      Number(newerEpoch) > Number(epoch),
+      "new selection increments epoch",
+    );
+    assert(
+      nested(await friendsSnapshot(host, predecessor), "selection", "epoch") ===
+        newerEpoch,
+      "passive reconnect cannot select",
+    );
+    const stale = {
+      ...await friendsCommand(host, predecessor, "offer"),
+      expected_participation_epoch: epoch,
+    };
+    assertError(
+      await edge(host.session, "rematch-command", stale),
+      409,
+      "participation_changed",
+    );
+    const pinned = {
+      client_build: 3,
+      request_id: crypto.randomUUID(),
+      expected_match_id: predecessor,
+      join_code: nestedString(old, "match", "join_code"),
+    };
+    const resumed = await edge(host.session, "join-match", pinned);
+    assert(
+      resumed.status === 200 && matchId(resumed) === predecessor,
+      "explicit pinned member Resume",
+    );
+    assert(
+      nested(
+        await friendsSnapshot(host, predecessor),
+        "selection",
+        "is_selected",
+      ) === true,
+      "explicit Resume selected",
+    );
+    const other = await friendsSnapshot(host, newer);
+    await edge(host.session, "join-match", {
+      client_build: 3,
+      request_id: crypto.randomUUID(),
+      expected_match_id: newer,
+      join_code: nestedString(other, "match", "join_code"),
+    });
+    assert(
+      JSON.stringify((await edge(host.session, "join-match", pinned)).body) ===
+        JSON.stringify(resumed.body),
+      "original Join receipt replay",
+    );
+    assert(
+      nested(await friendsSnapshot(host, newer), "selection", "is_selected") ===
+        true,
+      "old receipt cannot reselect",
+    );
+    assertError(
+      await edge(guest.session, "join-match", {
+        ...pinned,
+        request_id: crypto.randomUUID(),
+        expected_match_id: newer,
+      }),
+      409,
+      "match_not_joinable",
+    );
+  });
+
+  await scenario("friends cancel decline expiry and eligibility", async () => {
+    await sql(
+      "update private.live_feature_configuration set allow_new_rematches=true",
+    );
+    const host = await createUser("lifecycle-host"),
+      guest = await createUser("lifecycle-guest");
+    const match = await completeFriendsMatch(host, guest, 1);
+    await edge(
+      host.session,
+      "rematch-command",
+      await friendsCommand(host, match, "offer"),
+    );
+    await edge(
+      guest.session,
+      "rematch-command",
+      await friendsCommand(guest, match, "decline"),
+    );
+    assert(
+      nested(await friendsSnapshot(host, match), "rematch", "reason") ===
+        "declined",
+      "decline closes",
+    );
+    await edge(
+      host.session,
+      "rematch-command",
+      await friendsCommand(host, match, "offer"),
+    );
+    assert(
+      nested(await friendsSnapshot(host, match), "rematch", "generation") === 2,
+      "fresh generation after decline",
+    );
+    await edge(
+      host.session,
+      "rematch-command",
+      await friendsCommand(host, match, "cancel"),
+    );
+    await edge(
+      host.session,
+      "rematch-command",
+      await friendsCommand(host, match, "offer"),
+    );
+    assert(
+      nested(await friendsSnapshot(host, match), "rematch", "generation") === 3,
+      "fresh generation after cancel",
+    );
+    // Backend boundary fixtures only; native deadline scenarios retain real time.
+    await sql(
+      `update public.matches set completed_at=transaction_timestamp()-interval '6 minutes' where id='${
+        uuid(match)
+      }'; update public.rounds set completed_at=transaction_timestamp()-interval '6 minutes' where match_id='${
+        uuid(match)
+      }' and round_number=1; update private.rematch_contexts set deadline=transaction_timestamp()-interval '1 second' where predecessor_match_id='${
+        uuid(match)
+      }'`,
+    );
+    assertError(
+      await edge(
+        guest.session,
+        "rematch-command",
+        await friendsCommand(guest, match, "accept"),
+      ),
+      410,
+      "rematch_expired",
+    );
+    const deletion = await completeFriendsMatch(host, guest, 1);
+    await edge(
+      host.session,
+      "rematch-command",
+      await friendsCommand(host, deletion, "offer"),
+    );
+    assert(
+      (await edge(guest.session, "delete-account", { client_build: 3 }))
+        .status === 200,
+      "eligible account deletion",
+    );
+    createdUsers.delete(guest.id);
+    assert(
+      nested(
+        await friendsSnapshot(host, deletion),
+        "rematch",
+        "successor_match_id",
+      ) === null,
+      "deletion cannot allocate successor",
+    );
+  });
+
+  await scenario("friends pool failure and rollback closure", async () => {
+    await sql(
+      "update private.live_feature_configuration set allow_new_rematches=true",
+    );
+    const host = await createUser("pool-host"),
+      guest = await createUser("pool-guest");
+    const match = await completeFriendsMatch(host, guest, 1);
+    const backup = `i5_pool_${crypto.randomUUID().replaceAll("-", "")}`;
+    await sql(
+      `create table private.${backup} as select word,is_active from private.words`,
+    );
+    const original = await sqlScalar(
+      "select md5(jsonb_agg(jsonb_build_array(word,is_active) order by word)::text) from private.words",
+    );
+    try {
+      await sql("update private.words set is_active=false where is_answer");
+      assertError(
+        await edge(
+          host.session,
+          "rematch-command",
+          await friendsCommand(host, match, "offer"),
+        ),
+        409,
+        "answer_pool_unavailable",
+      );
+      await sql(
+        `update private.words w set is_active=b.is_active from private.${backup} b where w.word=b.word`,
+      );
+      assert(
+        (await edge(
+          host.session,
+          "rematch-command",
+          await friendsCommand(host, match, "offer"),
+        )).status === 200,
+        "fresh explicit offer after pool failure",
+      );
+      await sql("update private.words set is_active=false where is_answer");
+      assertError(
+        await edge(
+          guest.session,
+          "rematch-command",
+          await friendsCommand(guest, match, "accept"),
+        ),
+        409,
+        "answer_pool_unavailable",
+      );
+      assert(
+        nested(
+          await friendsSnapshot(host, match),
+          "rematch",
+          "successor_match_id",
+        ) === null,
+        "pool failure allocates no successor",
+      );
+    } finally {
+      await sql(
+        `update private.words w set is_active=b.is_active from private.${backup} b where w.word=b.word; drop table private.${backup}`,
+      );
+      assert(
+        await sqlScalar(
+          "select md5(jsonb_agg(jsonb_build_array(word,is_active) order by word)::text) from private.words",
+        ) === original,
+        "pool fixture restored byte-identical",
+      );
+    }
+    const cancel = await friendsCommand(host, match, "cancel");
+    const decline = await friendsCommand(guest, match, "decline");
+    await sql(
+      "update private.live_feature_configuration set allow_new_rematches=false",
+    );
+    for (const [user, command] of [[host, cancel], [guest, decline]] as const) {
+      const response = await edge(user.session, "rematch-command", command);
+      assert(
+        response.status === 200 && data(response).state === "unavailable" &&
+          data(response).successor_match_id === null,
+        "rollback closure is definitive unavailable receipt",
+      );
+      assert(
+        JSON.stringify(
+          (await edge(user.session, "rematch-command", command)).body,
+        ) === JSON.stringify(response.body),
+        "rollback closure exact receipt replay",
+      );
+    }
+  });
+
+  await scenario(
+    "friends authenticated rematch realtime delivery and privacy",
+    async () => {
+      await sql(
+        "update private.live_feature_configuration set allow_new_rematches=true",
+      );
+      const host = await createUser("signal-host"),
+        guest = await createUser("signal-guest"),
+        outsider = await createUser("signal-outsider");
+      const match = await completeFriendsMatch(host, guest, 1);
+      const before = await gameplayFacts(match);
+      const observers = await Promise.all(
+        [host, guest, outsider].map((user) =>
+          subscribeRematchSignals(user, match)
+        ),
+      );
+      try {
+        assert(
+          (await edge(
+            host.session,
+            "rematch-command",
+            await friendsCommand(host, match, "offer"),
+          )).status === 200,
+          "rematch-only offer",
+        );
+        await Promise.all(
+          observers.slice(0, 2).map((o) => o.waitFor(1)),
+        );
+        assert(
+          (await edge(
+            guest.session,
+            "rematch-command",
+            await friendsCommand(guest, match, "decline"),
+          )).status === 200,
+          "rematch-only closure",
+        );
+        await Promise.all(observers.slice(0, 2).map((o) => o.waitFor(2)));
+        await delay(500);
+        assert(
+          observers[2].events.length === 0,
+          "outsider receives no protected signal payload",
+        );
+        for (const observer of observers.slice(0, 2)) {
+          assert(
+            observer.events.length >= 2,
+            "member received offer and closure",
+          );
+          for (const payload of observer.events) {
+            assert(
+              Object.keys(payload).length === 2 &&
+                Object.keys(payload).every((key) =>
+                  ["predecessor_match_id", "revision"].includes(key)
+                ),
+              "exact safe rematch Realtime projection",
+            );
+            assert(
+              payload.predecessor_match_id === match &&
+                Number.isSafeInteger(payload.revision),
+              "rematch revision signal only",
+            );
+          }
+          assert(
+            Number(observer.events.at(-1)!.revision) >
+              Number(observer.events[0].revision),
+            "independent rematch revisions advance",
+          );
+        }
+        assert(
+          await gameplayFacts(match) === before,
+          "rematch-only events leave gameplay revision/result immutable",
+        );
+        console.log(
+          "PASS actual authenticated rematch Realtime member delivery outsider silence safe projection",
+        );
+      } finally {
+        await Promise.all(observers.map((o) => o.close()));
+      }
     },
   );
 
@@ -2087,6 +2593,9 @@ try {
     } ${edgeMetrics.length} requests ${snapshotMetrics.length} snapshots ${largestSnapshot} bytes max ${slowestMs}ms max`,
   );
 } finally {
+  await sql(
+    "update private.live_feature_configuration set allow_new_rematches=false",
+  );
   // Track successful Create responses even if their caller fails before extracting ID.
   // Match removal cascades its private answers, guesses and create receipts only.
   for (const match of createdMatches) {
@@ -2100,7 +2609,7 @@ try {
   for (const userId of createdUsers) {
     const prepared = await admin.rpc("delete_account", {
       p_user_id: userId,
-      p_client_build: 2,
+      p_client_build: 3,
     });
     assert(prepared.error === null, "fixture deletion preparation");
     const deleted = await admin.auth.admin.deleteUser(userId, false);
@@ -2134,13 +2643,16 @@ async function createLobbyWithGuest(
   guest: TestUser,
 ): Promise<string> {
   const created = await edge(host.session, "create-match", {
-    client_build: 1,
+    round_count: 1,
+    client_build: 3,
     request_id: crypto.randomUUID(),
   });
   const matchIdValue = matchId(created);
   const joinCode = await matchJoinCode(host, matchIdValue);
   const joined = await edge(guest.session, "join-match", {
-    client_build: 1,
+    request_id: crypto.randomUUID(),
+    expected_match_id: null,
+    client_build: 3,
     join_code: joinCode,
   });
   assert(joined.status === 200, "fixture guest join");
@@ -2153,7 +2665,8 @@ async function createPlayingMatch(
 ): Promise<string> {
   const matchIdValue = await createLobbyWithGuest(host, guest);
   const started = await edge(host.session, "start-match", {
-    client_build: 1,
+    round_number: 1,
+    client_build: 3,
     match_id: matchIdValue,
   });
   assert(started.status === 200, "fixture match start");
@@ -2173,7 +2686,7 @@ async function matchJoinCode(
 ): Promise<string> {
   const snapshot = data(
     await edge(user.session, "match-snapshot", {
-      client_build: 1,
+      client_build: 3,
       match_id: matchIdValue,
     }),
   );
@@ -2489,7 +3002,7 @@ function matchId(result: EdgeResult): string {
 
 function guessBody(matchId: string, requestId: string, word: string): Json {
   return {
-    client_build: 1,
+    client_build: 3,
     match_id: uuid(matchId),
     round_number: 1,
     request_id: uuid(requestId),
@@ -2635,4 +3148,151 @@ async function sha256(value: string): Promise<string> {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function friendsSnapshot(user: TestUser, match: string): Promise<Json> {
+  return data(
+    await edge(user.session, "match-snapshot", {
+      client_build: 3,
+      match_id: match,
+    }),
+  );
+}
+async function friendsCommand(
+  user: TestUser,
+  match: string,
+  action: string,
+): Promise<Json> {
+  const snapshot = await friendsSnapshot(user, match);
+  return {
+    client_build: 3,
+    request_id: crypto.randomUUID(),
+    predecessor_match_id: match,
+    generation: action === "offer"
+      ? (nested(snapshot, "rematch", "next_generation") ??
+        nested(snapshot, "rematch", "generation"))
+      : nested(snapshot, "rematch", "generation"),
+    action,
+    expected_participation_epoch: nested(snapshot, "selection", "epoch"),
+  };
+}
+async function completeFriendsMatch(
+  host: TestUser,
+  guest: TestUser,
+  count: number,
+): Promise<string> {
+  const match = matchId(
+    await edge(host.session, "create-match", {
+      client_build: 3,
+      request_id: crypto.randomUUID(),
+      round_count: count,
+    }),
+  );
+  const snapshot = await friendsSnapshot(host, match);
+  assert(
+    (await edge(guest.session, "join-match", {
+      client_build: 3,
+      request_id: crypto.randomUUID(),
+      expected_match_id: null,
+      join_code: nestedString(snapshot, "match", "join_code"),
+    })).status === 200,
+    "friends Join",
+  );
+  await playFriendsRounds(host, guest, match, count);
+  return match;
+}
+async function playFriendsRounds(
+  host: TestUser,
+  guest: TestUser,
+  match: string,
+  count: number,
+): Promise<void> {
+  for (let round = 1; round <= count; round++) {
+    assert(
+      (await edge(host.session, "start-match", {
+        client_build: 3,
+        match_id: match,
+        round_number: round,
+      })).status === 200,
+      "friends explicit Start",
+    );
+    await delay(3200);
+    const answer = await sqlScalar(
+      `select s.answer from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='${
+        uuid(match)
+      }' and r.round_number=${round}`,
+    );
+    const results = await Promise.all(
+      [host, guest].map((user) =>
+        edge(user.session, "submit-guess", {
+          ...guessBody(match, crypto.randomUUID(), answer),
+          round_number: round,
+        })
+      ),
+    );
+    assert(
+      results.every((r) => r.status === 200),
+      "friends pair complete round",
+    );
+    assert(
+      nested(await friendsSnapshot(host, match), "round", "state") ===
+        "revealed",
+      "friends canonical reveal",
+    );
+  }
+}
+async function gameplayFacts(match: string): Promise<string> {
+  return await sqlScalar(
+    `select jsonb_build_object('match',to_jsonb(m),'rounds',(select jsonb_agg(to_jsonb(r) order by r.round_number) from public.rounds r where r.match_id=m.id),'players',(select jsonb_agg(to_jsonb(p) order by p.round_id,p.member_id) from public.player_rounds p join public.rounds r on r.id=p.round_id where r.match_id=m.id))::text from public.matches m where m.id='${
+      uuid(match)
+    }'`,
+  );
+}
+
+async function subscribeRematchSignals(
+  user: TestUser,
+  match: string,
+): Promise<
+  {
+    events: Json[];
+    waitFor: (count: number) => Promise<void>;
+    close: () => Promise<void>;
+  }
+> {
+  await user.client.realtime.setAuth(user.session.access_token);
+  const channel = user.client.channel(
+    `integration-rematch-${crypto.randomUUID()}`,
+  );
+  const events: Json[] = [];
+  channel.on("postgres_changes", {
+    event: "UPDATE",
+    schema: "public",
+    table: "match_rematch_signals",
+    filter: `predecessor_match_id=eq.${match}`,
+  }, (change) => {
+    events.push(isJson(change.new) ? change.new : {});
+  });
+  await subscribe(channel);
+  await waitForSqlValue(
+    `select count(*) from realtime.subscription where entity='public.match_rematch_signals'::regclass and claims->>'sub'='${
+      uuid(user.id)
+    }'`,
+    "1",
+    "rematch subscription readiness",
+  );
+  return {
+    events,
+    waitFor: async (count) => {
+      const deadline = performance.now() + 10_000;
+      while (performance.now() < deadline) {
+        if (events.length >= count) return;
+        await delay(50);
+      }
+      throw new Error("rematch-only Realtime delivery timeout");
+    },
+    close: async () => {
+      await user.client.removeChannel(channel);
+      user.client.realtime.disconnect();
+    },
+  };
 }
