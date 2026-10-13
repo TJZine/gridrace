@@ -140,13 +140,13 @@ struct LiveMatchRecoveryStore: LiveMatchRecoveryStoring, Sendable {
     }
 
     func load() throws -> LiveRecoveryState {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        guard let data = try PersistenceFile.readIfPresent(at: fileURL) else {
             return LiveRecoveryState()
         }
         do {
             let state = try JSONDecoder().decode(
                 LiveRecoveryState.self,
-                from: Data(contentsOf: fileURL)
+                from: data
             )
             guard (state.formatVersion == 1 || state.formatVersion == 2),
                   Self.isConsistent(state)
@@ -167,8 +167,7 @@ struct LiveMatchRecoveryStore: LiveMatchRecoveryStoring, Sendable {
     }
 
     func clear() throws {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        try FileManager.default.removeItem(at: fileURL)
+        try PersistenceFile.removeIfPresent(at: fileURL)
     }
 
     private static func isConsistent(_ state: LiveRecoveryState) -> Bool {

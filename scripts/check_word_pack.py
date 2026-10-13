@@ -13,7 +13,7 @@ including CI, which uses only this flag.
 No flags (source gate, fail-closed) revalidates that same portable chain,
 then regenerates the pack, provenance, and builder-owned provenance manifest
 from the pinned Wiktionary intermediates into a temporary directory (via
-``scripts/build_accepted_guesses.py`` with its pinned defaults) and compares
+``scripts/build_accepted_guesses.py`` with the selected input paths) and compares
 pack, provenance, and provenance-manifest hashes/bytes to the checked-in
 files. Builder import, syntax, execution, and comparison failures are errors.
 Where the required intermediates are absent the gate reports UNAVAILABLE and
@@ -47,8 +47,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from generate_daily_word_pack import BANNED_ANSWERS
-
+import corpus_input_identity as input_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "shared/word-packs"
@@ -70,6 +69,22 @@ ANSWERS_SHA256 = "31330cbe412018d0ea94991c321d032def17def40e725fcadc90363b11cebd
 
 RULES = ("standalone", "explicit_arg", "explicit_altsection", "explicit_reciprocal")
 REVISION_STATUSES = ("five_letter_index", "dump_parent", "unavailable")
+BANNED_ANSWERS = frozenset(
+    {
+        "bitch",
+        "chink",
+        "cunts",
+        "dykes",
+        "fagot",
+        "gooks",
+        "kikes",
+        "nigga",
+        "nigger",
+        "sluts",
+        "spics",
+        "whore",
+    }
+)
 PROVENANCE_KEYS = frozenset(
     {
         "normalized",
@@ -93,9 +108,6 @@ PROVENANCE_KEYS = frozenset(
     }
 )
 
-DUMP_SHA256 = "0b7f554b1884e52e1c06de74cecab5e370c6b9f765711cedb0759f6d14c5e719"
-WIKTEXTRACT_COMMIT = "ccec6f120efedd84f57fe0f1631e89408e9cb62a"
-WIKITEXTPROCESSOR_COMMIT = "4deed5191c9e4cb61ee1a4c822e3f6686ae8541b"
 FIVE_LETTER_INDEX_SHA256 = "b140a40bf5d0e327d99d1ef032719b83319387a67b35defd7736e2f6264ab70d"
 WIKTIONARY_CHUNKS = 99
 WIKTIONARY_RECORDS = 125730
@@ -522,7 +534,7 @@ def validate_chain(
     )
 
     manifest = load_provenance_manifest()
-    require(manifest.get("formatVersion") == 1, "provenance manifest formatVersion must be 1")
+    require(manifest.get("formatVersion") == 2, "provenance manifest formatVersion must be 2 (retained-input identity contract)")
     require(
         manifest.get("provenanceFile") == PROVENANCE_FILE,
         "provenance manifest provenanceFile must name the provenance file",
@@ -567,17 +579,23 @@ def validate_chain(
     inputs = manifest.get("inputs")
     require(isinstance(inputs, dict), "provenance manifest inputs must be an object")
     assert isinstance(inputs, dict)
+    attestation = input_identity.load_attestation(PACKS)
     require(
-        inputs.get("dumpSha256") == DUMP_SHA256,
-        "provenance manifest dump pin does not match the pinned Wiktionary dump",
+        inputs.get("retainedInputAttestationSha256") == input_identity.ATTESTATION_SHA256
+        and inputs.get("historicalOrigin") == "unverified"
+        and inputs.get("recordedExtraction") == attestation["recordedExtraction"],
+        "provenance manifest retained-input identity/origin contract changed",
     )
     require(
-        inputs.get("wiktextractCommit") == WIKTEXTRACT_COMMIT,
-        "provenance manifest wiktextract pin changed",
+        attestation["baselineSha256"] == BASELINE_SHA256
+        and attestation["revisionIndexSha256"] == FIVE_LETTER_INDEX_SHA256
+        and attestation["parentRevisionsSha256"] == inputs.get("parentRevisionsSha256"),
+        "retained-input attestation contradicts baseline/index/parent evidence",
     )
     require(
-        inputs.get("wikitextprocessorCommit") == WIKITEXTPROCESSOR_COMMIT,
-        "provenance manifest wikitextprocessor pin changed",
+        inputs.get("targetJsonChunks") == len(attestation["targetFiles"])
+        and inputs.get("wiktionaryJsonChunks") == len(attestation["candidateFiles"]),
+        "provenance manifest file counts contradict retained-input attestation",
     )
     require(
         inputs.get("fiveLetterRevisionIndexSha256") == FIVE_LETTER_INDEX_SHA256,
@@ -650,15 +668,7 @@ def validate_chain(
         isinstance(found, dict) and isinstance(missing_sidecar, list),
         "parent-revisions sidecar must carry found/missing maps",
     )
-    dump_parent_pages = {
-        str(row["page"]) for row in rows if row["revision_status"] == "dump_parent"
-    }
-    uncovered = dump_parent_pages - set(found.keys())
-    require(
-        not uncovered,
-        "every dump_parent provenance page must be covered by the parent-revisions sidecar: "
-        f"{len(uncovered)} pages uncovered",
-    )
+    validate_parent_revisions(rows, found, missing_sidecar)
     manifest_line = (
         "word-pack chain OK: pack sha256 "
         f"{sha256(pack_raw)} agrees across pack and provenance manifests; "
@@ -679,8 +689,34 @@ def validate_one(
     return pack, raw, expected, counts
 
 
-def builder_intermediate_paths() -> dict[str, Path]:
-    """Resolve the maintenance transform's pinned intermediate defaults.
+def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> None:
+    """Compare cross-evidence tuples; a matching file checksum is insufficient."""
+    require(
+        all(isinstance(title, str) and title for title in missing)
+        and len(missing) == len(set(missing)),
+        "parent-revisions missing titles must be unique nonempty strings",
+    )
+    require(not set(found).intersection(missing), "parent-revisions found/missing titles overlap")
+    for row in rows:
+        if row["revision_status"] != "dump_parent":
+            continue
+        page = row["page"]
+        parent = found.get(page)
+        require(isinstance(parent, dict), f"dump_parent page {page!r} is absent from sidecar")
+        require(parent.get("title") == page, f"parent-revisions title contradicts page {page!r}")
+        for field, sidecar_field in (
+            ("page_id", "pageId"), ("revision_id", "revisionId"), ("timestamp", "timestamp")
+        ):
+            # The builder represents empty/missing dump fields as null. The
+            # provenance schema validates which statuses can carry nulls.
+            require(
+                row[field] == (parent.get(sidecar_field) or None),
+                f"dump_parent page {page!r} {field} contradicts parent-revisions sidecar",
+            )
+
+
+def builder_intermediate_paths(args: argparse.Namespace | None = None) -> dict[str, Path]:
+    """Resolve selected inputs over the maintenance transform's defaults.
 
     Paths come from ``build_accepted_guesses.pinned_defaults()`` so the gate
     stays in sync by construction. Import, syntax, and resolution failures
@@ -699,28 +735,39 @@ def builder_intermediate_paths() -> dict[str, Path]:
         raise ValueError(
             f"source gate cannot load scripts/build_accepted_guesses.py: {error}"
         ) from error
-    return {key: Path(value) for key, value in defaults.items()}
+    paths = {key: Path(value) for key, value in defaults.items()}
+    for key in paths:
+        selected = getattr(args, key, None)
+        if selected is not None:
+            paths[key] = Path(selected)
+    return paths
 
 
-def probe_intermediates() -> int:
+def probe_intermediates(args: argparse.Namespace) -> int:
     """Report which pinned intermediates exist; informational only, exit 0."""
     try:
-        paths = builder_intermediate_paths()
+        paths = builder_intermediate_paths(args)
     except ValueError as error:
         print(f"word-pack intermediates probe: unloadable ({error})")
         return 0
     for key in sorted(paths):
-        print(f"word-pack intermediates probe: {key} {'present' if paths[key].exists() else 'ABSENT'}")
+        path = paths[key]
+        print(f"word-pack intermediates probe: {key} {'present' if path.exists() else 'ABSENT'} {path}")
     return 0
 
 
-def run_source_gate(pack_raw: bytes, prov_raw: bytes, prov_manifest_raw: bytes) -> None:
+def run_source_gate(
+    pack_raw: bytes,
+    prov_raw: bytes,
+    prov_manifest_raw: bytes,
+    args: argparse.Namespace | None = None,
+) -> None:
     """Regenerate pack+provenance+manifest from pinned intermediates and compare bytes.
 
     Fail-closed: every failure mode raises. Missing intermediates report
     UNAVAILABLE instead of passing.
     """
-    paths = builder_intermediate_paths()
+    paths = builder_intermediate_paths(args)
     absent = [key for key, path in paths.items() if not path.exists()]
     if absent:
         raise ValueError(
@@ -735,17 +782,16 @@ def run_source_gate(pack_raw: bytes, prov_raw: bytes, prov_manifest_raw: bytes) 
         out_provenance = tmpdir / PROVENANCE_FILE
         out_manifest = tmpdir / PROVENANCE_MANIFEST_FILE
         seed.write_bytes(pack_raw)
+        command = [sys.executable, str(SCRIPTS / "build_accepted_guesses.py")]
+        for key, path in paths.items():
+            command.extend(("--" + key.replace("_", "-"), str(path)))
+        command.extend((
+            "--pack", str(seed),
+            "--provenance", str(out_provenance),
+            "--provenance-manifest", str(out_manifest),
+        ))
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPTS / "build_accepted_guesses.py"),
-                "--pack",
-                str(seed),
-                "--provenance",
-                str(out_provenance),
-                "--provenance-manifest",
-                str(out_manifest),
-            ],
+            command,
             cwd=str(ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -799,10 +845,14 @@ def main() -> int:
         action="store_true",
         help="report which pinned intermediates exist; informational only",
     )
+    # Resolve builder-owned defaults only for source operations. The portable
+    # gate neither imports the builder nor inspects external input paths.
+    for flag in ("--wiktionary-json", "--database", "--revision-index", "--target-json"):
+        parser.add_argument(flag, help="source input path (default: builder's pinned path)")
     args = parser.parse_args()
 
     if args.probe_intermediates:
-        return probe_intermediates()
+        return probe_intermediates(args)
 
     try:
         dev_pack, dev_raw, dev_expected, development = validate_one(
@@ -812,6 +862,14 @@ def main() -> int:
             DAILY_ID, validate_daily
         )
         chain_lines, prov_raw = validate_chain(daily_pack, daily_raw)
+        # A source-input failure must precede even checker-owned manifest writes.
+        if not args.checked_in_only:
+            run_source_gate(
+                daily_raw,
+                prov_raw,
+                (PACKS / PROVENANCE_MANIFEST_FILE).read_bytes(),
+                args,
+            )
         dev_manifest_path = PACKS / "development-en-US-v1.manifest.json"
         daily_manifest_path = PACKS / f"{DAILY_ID}.manifest.json"
         if args.write_manifest:
@@ -839,12 +897,6 @@ def main() -> int:
             )
         for line in chain_lines:
             print(line)
-        if not args.checked_in_only:
-            run_source_gate(
-                daily_raw,
-                prov_raw,
-                (PACKS / PROVENANCE_MANIFEST_FILE).read_bytes(),
-            )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"word-pack check failed: {error}", file=sys.stderr)
         return 1

@@ -7,22 +7,25 @@ set -euo pipefail
 # simulators and unique Auth/match/non-answer-word fixtures; cleanup owns only those.
 # Logs and xcresults remain in the printed /tmp proof directory after cleanup.
 # Requires macOS/Xcode, iOS 26.5, cached frozen SourcePackages, Deno, npm and psql.
+# Set GRIDRACE_INTEGRATION_STACK_DIR and GRIDRACE_SOURCE_PACKAGES_CACHE; see
+# scripts/LOCAL_INTEGRATION.md for receipt admission and owned-stack setup.
 # Product 1/3/5 rounds relaunch both clients at every reveal. Cron 1/3 waits the
 # original 180-second deadlines with both clients stopped. Deletion restores the
 # surviving container at nonfinal and final boundaries. Budget roughly 20 minutes.
-if [[ ${1:-} == "--help" ]]; then
-  sed -n '4,12p' "$0"
-  exit 0
-fi
+repo_root=$(cd "$(dirname "$0")/.." && pwd)
+source "$repo_root/scripts/live_integration_selection.sh"
+parse_integration_selection "$@"
+[[ $selection_action == run ]] || exit 0
 [[ ${GRIDRACE_LOCAL_INTEGRATION:-} == 1 ]] || {
   echo "UNAVAILABLE: set GRIDRACE_LOCAL_INTEGRATION=1 after controller inventory" >&2; exit 2;
 }
-repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 source "$repo_root/scripts/scan_client_credentials.sh"
-[[ $(git branch --show-current) == dev/classic-mode ]] || exit 2
-[[ $(sed -n 's/^project_id = "\([^"]*\)"/\1/p' supabase/config.toml) == gridrace ]] || exit 2
-[[ ! -e supabase/.temp/project-ref && ! -e .supabase/project-ref ]] || {
+stack_dir=${GRIDRACE_INTEGRATION_STACK_DIR:-$repo_root}
+[[ -f "$stack_dir/supabase/config.toml" ]] || exit 2
+# Names are not ownership evidence; the controller inventories this exact directory.
+[[ $(sed -n 's/^project_id = "\([^"]*\)"/\1/p' "$stack_dir/supabase/config.toml") != "" ]] || exit 2
+[[ ! -e "$stack_dir/supabase/.temp/project-ref" && ! -e "$stack_dir/.supabase/project-ref" ]] || {
   echo "REFUSED: linked Supabase project" >&2; exit 2;
 }
 work_dir=$(mktemp -d /tmp/gridrace-live-integration.XXXXXX)
@@ -30,21 +33,31 @@ chmod 700 "$work_dir"
 : > "$work_dir/owned-fixtures.tsv"
 chmod 600 "$work_dir/owned-fixtures.tsv"
 echo "PROOF_DIRECTORY $work_dir"
+{
+  printf 'head=%s\nbranch=%s\n' "$(git rev-parse HEAD)" "$(git branch --show-current)"
+  printf 'tracked_diff_sha256=%s\n' "$(git diff HEAD --binary | shasum -a 256 | awk '{print $1}')"
+  printf 'scope=%s\nscenarios=%s\n' "$selection_scope" "$selected_scenarios"
+  shasum -a 256 scripts/run_live_match_integration.sh scripts/live_integration_selection.sh \
+    supabase/tests/integration/live_slice_test.ts supabase/tests/integration/scenario_selection.ts
+} > "$work_dir/source-and-scope.txt"
 derived_data="$work_dir/DerivedData"
-package_cache=/tmp/gridrace-phase4-client-derived-test/SourcePackages
+package_cache=${GRIDRACE_SOURCE_PACKAGES_CACHE:?Set GRIDRACE_SOURCE_PACKAGES_CACHE to an inventoried frozen SourcePackages cache}
 lock=ios/GridRace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 lock_hash=d6b069e121418166c3b844eb1c1b66fc2f0ccb715f0b9808405a14a9a68d0691
 check_lock() { [[ $(shasum -a 256 "$lock" | awk '{print $1}') == "$lock_hash" ]]; }
 check_lock
 [[ -d "$package_cache" ]] || { echo "UNAVAILABLE: retained SourcePackages cache" >&2; exit 2; }
 # Keep privileged environment private to this orchestrator, never exported to Xcode.
-eval "$(npx --no-install supabase status -o env 2>/dev/null)"
+eval "$(npx --no-install supabase --workdir "$stack_dir" status -o env 2>/dev/null)"
 export -n API_URL ANON_KEY SERVICE_ROLE_KEY DB_URL JWT_SECRET 2>/dev/null || true
-[[ $API_URL == http://127.0.0.1:54321 || $API_URL == http://localhost:54321 ]] || exit 2
-[[ $DB_URL == postgresql://postgres:postgres@127.0.0.1:54322/postgres || \
-   $DB_URL == postgresql://postgres:postgres@localhost:54322/postgres ]] || exit 2
+[[ $API_URL =~ ^http://(127\.0\.0\.1|localhost):([1-9][0-9]*)$ ]] || exit 2
+api_port=${BASH_REMATCH[2]}
+[[ $api_port -gt 0 && $api_port -le 65535 ]] || exit 2
+[[ $DB_URL =~ ^postgresql://postgres:postgres@(127\.0\.0\.1|localhost):([1-9][0-9]*)/postgres$ ]] || exit 2
+db_port=${BASH_REMATCH[2]}
+[[ $db_port -gt 0 && $db_port -le 65535 ]] || exit 2
 sql_scalar() {
-  PGPASSWORD=postgres /opt/homebrew/opt/libpq/bin/psql --host 127.0.0.1 --port 54322 \
+  PGPASSWORD=postgres /opt/homebrew/opt/libpq/bin/psql --host 127.0.0.1 --port "$db_port" \
     --username postgres --dbname postgres -XAtq -v ON_ERROR_STOP=1 -c "$1" | tail -n 1
 }
 host_pid=""; guest_pid=""; failed_guess=""
@@ -89,6 +102,7 @@ status=$(curl --silent --output /dev/null --write-out '%{http_code}' --request P
   --header 'Content-Type: application/json' --data '{}' "$API_URL/functions/v1/create-match")
 [[ $status == 400 ]] || { echo "UNAVAILABLE: controller-owned Edge gateway" >&2; exit 2; }
 # Do not replace or delete a preexisting non-answer fixture.
+if integration_has_live_scenarios; then
 for _ in {1..20}; do
   candidate=$(python3 -c 'import secrets,string; print("z"+"".join(secrets.choice(string.ascii_lowercase) for _ in range(4)))')
   failed_guess=$(sql_scalar "insert into private.words(word,is_accepted,is_answer,is_active,pack_version) values('$candidate',true,false,true,1) on conflict do nothing returning word")
@@ -97,6 +111,7 @@ done
 [[ -n "$failed_guess" ]] || { echo "UNAVAILABLE: unique non-answer fixture" >&2; exit 2; }
 # Record a digest for controller cleanup inventory without storing the guess word.
 printf 'non_answer_word_sha256\t%s\n' "$(printf '%s' "$failed_guess" | shasum -a 256 | awk '{print $1}')" >> "$work_dir/owned-fixtures.tsv"
+fi
 run_tag=$(uuidgen)
 for role in host guest; do
   simulator=$(xcrun simctl create "GridRace-proof-$run_tag-$role" \
@@ -112,6 +127,34 @@ xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace "${xcode_flags[@]}" 
   -clonedSourcePackagesDirPath "$package_cache" -destination "platform=iOS Simulator,id=$host_simulator" \
   -derivedDataPath "$derived_data" build-for-testing >"$work_dir/build-for-testing.log" 2>&1
 check_lock
+# Install the host app before receipt delivery; XCTest uses this same container.
+app_path="$derived_data/Build/Products/Debug-iphonesimulator/GridRace.app"
+for simulator in "$host_simulator" "$guest_simulator"; do
+  xcrun simctl install "$simulator" "$app_path"
+done
+write_receipt() {
+  local simulator=$1 purpose=$2 email=$3 user_id=$4 owned=0 candidate container
+  for candidate in "${created_users[@]}"; do
+    [[ $candidate != "$user_id" ]] || owned=1
+  done
+  [[ $owned == 1 ]] || { echo "REFUSED: unowned Auth fixture" >&2; return 1; }
+  [[ $(sql_scalar "select email from auth.users where id='$user_id'") == "$email" ]] || return 1
+  container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data)
+  receipt_name="fixture-$run_tag.json"
+  receipt_directory="$container/Library/Application Support/GridRaceIntegration"
+  mkdir -p "$receipt_directory"
+  chmod 700 "$receipt_directory"
+  receipt_path="$receipt_directory/$receipt_name"
+  python3 - "$receipt_path" "$run_tag" "$API_URL" "$purpose" "$user_id" "$email" <<'RECEIPT'
+import json,os,sys,time
+path,run,endpoint,purpose,user,email=sys.argv[1:]
+with open(path,'w') as f:
+    json.dump(dict(version=1,runID=run,endpoint=endpoint,unlinked=True,
+                   createdAt=time.time(),purpose=purpose,userID=user,email=email),f)
+os.chmod(path,0o600)
+RECEIPT
+  cp "$receipt_path" "$work_dir/fixture-$user_id-$purpose.json"
+}
 create_user() {
   local suffix response
   suffix=$(uuidgen | tr '[:upper:]' '[:lower:]')
@@ -129,11 +172,17 @@ create_user() {
 run_client() {
   local simulator=$1 role=$2 scenario=$3 email=$4 password=$5 log=$6 code=$7 match_id=$8 count=$9 target=${10}
   # These launchd environments belong exclusively to newly created simulators.
-  local name value client_status client_pid test_guess=${11:-$failed_guess}
+  local name value client_status client_pid test_guess=${11:-$failed_guess} user_id
+  if [[ $email == "$host_email" ]]; then user_id=$host_id
+  elif [[ $email == "$guest_email" ]]; then user_id=$guest_id
+  else echo "REFUSED: credentials outside owned pair" >&2; return 1; fi
+  write_receipt "$simulator" live "$email" "$user_id"
   while IFS='=' read -r name value; do
     xcrun simctl spawn "$simulator" launchctl setenv "$name" "$value"
   done <<ENV
 GRIDRACE_LOCAL_INTEGRATION=1
+GRIDRACE_FIXTURE_RUN_ID=$run_tag
+GRIDRACE_FIXTURE_RECEIPT=$receipt_name
 GRIDRACE_LIVE_ROLE=$role
 GRIDRACE_LIVE_SCENARIO=$scenario
 GRIDRACE_LIVE_EMAIL=$email
@@ -149,7 +198,7 @@ GRIDRACE_LOCAL_SUPABASE_URL=$API_URL
 GRIDRACE_LOCAL_SUPABASE_KEY=$ANON_KEY
 ENV
   set +e
-  env -u SERVICE_ROLE_KEY -u SUPABASE_SERVICE_ROLE_KEY -u SUPABASE_SECRET_KEY -u DB_URL -u JWT_SECRET \
+  env -u SERVICE_ROLE_KEY -u SUPABASE_SERVICE_ROLE_KEY -u SUPABASE_SECRET_KEY -u DB_URL -u DATABASE_URL -u JWT_SECRET -u SUPABASE_DB_PASSWORD \
     xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace "${xcode_flags[@]}" \
     -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$derived_data" \
     -resultBundlePath "${log%.log}.xcresult" test-without-building \
@@ -226,7 +275,55 @@ assert_sql_reveal() {
   [[ $(sql_scalar "select count(*) from public.rounds where match_id='$match_id' and state='revealed'") == "$target" ]]
   [[ $(sql_scalar "select count(distinct answer) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='$match_id'") == "$target" ]]
 }
+# Each destructive native proof owns a distinct newly created disposable account.
+run_disposable_daily_test() {
+  local selector=$1 slug=$2 user_id method
+  create_user
+  user_id=$fixture_user_id
+  method=${selector##*/}
+  write_receipt "$host_simulator" daily "$fixture_email" "$user_id"
+  while IFS='=' read -r name value; do
+    xcrun simctl spawn "$host_simulator" launchctl setenv "$name" "$value"
+  done <<ENV
+GRIDRACE_LOCAL_INTEGRATION=1
+GRIDRACE_FIXTURE_RUN_ID=$run_tag
+GRIDRACE_FIXTURE_RECEIPT=$receipt_name
+GRIDRACE_LOCAL_SYNC_EMAIL=$fixture_email
+GRIDRACE_LOCAL_SYNC_PASSWORD=$fixture_password
+GRIDRACE_LOCAL_SUPABASE_URL=$API_URL
+GRIDRACE_LOCAL_SUPABASE_KEY=$ANON_KEY
+ENV
+  env -u SERVICE_ROLE_KEY -u SUPABASE_SERVICE_ROLE_KEY -u SUPABASE_SECRET_KEY \
+    -u DB_URL -u DATABASE_URL -u JWT_SECRET -u SUPABASE_DB_PASSWORD \
+    xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace "${xcode_flags[@]}" \
+    -destination "platform=iOS Simulator,id=$host_simulator" -derivedDataPath "$derived_data" \
+    -resultBundlePath "$work_dir/$slug.xcresult" test-without-building \
+    -test-timeouts-enabled YES -default-test-execution-time-allowance 150 \
+    -maximum-test-execution-time-allowance 180 -collect-test-diagnostics never \
+    -only-testing:"$selector" >"$work_dir/$slug.log" 2>&1
+  rg -q "$method.*passed" "$work_dir/$slug.log"
+  ! rg -qi "$method.*skipped" "$work_dir/$slug.log"
+  [[ $(sql_scalar "select count(*) from auth.users where id='$user_id'") == 0 ]]
+  xcrun simctl terminate "$host_simulator" com.example.GridRace >/dev/null 2>&1 || true
+  check_lock
+  for name in GRIDRACE_LOCAL_SYNC_EMAIL GRIDRACE_LOCAL_SYNC_PASSWORD; do
+    xcrun simctl spawn "$host_simulator" launchctl unsetenv "$name"
+  done
+  echo "PASS disposable $slug Auth deletion verified by host"
+}
+if integration_selected deletion-receipt; then
+run_disposable_daily_test \
+  GridRaceTests/AccountAuthLifecycleTests/testLocalCommittedDeletionReceiptAfterLostResponseAndIssuedRefreshWhenConfigured \
+  deletion-receipt
+rg -q 'GRIDRACE_P4_ORIGINAL_BEARER_RECEIPT_PASS' "$work_dir/deletion-receipt.log"
+fi
+if integration_selected daily; then
+run_disposable_daily_test \
+  GridRaceTests/DailySyncTests/testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured daily
+rg -q 'PASS disposable Daily two-client sync and deletion' "$work_dir/daily.log"
+fi
 for count in 1 3 5; do
+  integration_selected "product-$count" || continue
   start_pair product "$count"
   for ((target=1;target<=count;target++)); do
     [[ $target == 1 ]] || launch_round advance-host advance-guest product "$count" "$target"
@@ -238,6 +335,7 @@ for count in 1 3 5; do
 done
 # Controlled privileged fixture knowledge becomes a test input only. Neither
 # authenticated client reads secrets or gets a privileged credential.
+if integration_selected mixed-3; then
 start_pair mixed 3
 for target in 1 2 3; do
   [[ $target == 1 ]] || launch_round advance-host advance-guest mixed 3 "$target"
@@ -254,9 +352,11 @@ for target in 1 2 3; do
   echo "PASS two-process mixed solved/nonzero count 3 round $target"
 done
 launch_round resume resume mixed 3 3
+fi
 # Each test process exits at playing; only SQL observations occur until Cron reveals.
 # No timestamp mutation, snapshot request or manual finalize is used during the wait.
 for count in 1 3; do
+  integration_selected "cron-$count" || continue
   start_pair cron "$count"
   for ((target=1;target<=count;target++)); do
     [[ $target == 1 ]] || launch_round advance-host advance-guest cron "$count" "$target"
@@ -271,6 +371,7 @@ done
 # Delete a stopped guest through the existing privileged deletion preparation, then
 # remove only that owned Auth identity. Real API deletion/concurrency uses B below.
 for count in 1 3; do
+  integration_selected "deletion-$count" || continue
   start_pair deletion "$count"
   sql_scalar "select public.delete_account('$guest_id',2)" >/dev/null
   curl --fail --silent --show-error --request DELETE --header "apikey: $SERVICE_ROLE_KEY" \
@@ -283,17 +384,25 @@ for count in 1 3; do
   [[ $(sql_scalar "select status from public.matches where id='$match_id'") == "$expected" ]]
   echo "PASS survivor relaunch $expected after guest deletion"
 done
+if integration_selected product-1 || integration_selected product-3 || integration_selected product-5; then
 rg -q 'INJECTION dropped real Realtime signal' "$work_dir"/product-*-host.log
 rg -q 'INJECTION duplicated and reordered real Realtime signals' "$work_dir"/product-*-host.log
+fi
+if integration_selected backend; then
 GRIDRACE_LOCAL_INTEGRATION=1 API_URL="$API_URL" ANON_KEY="$ANON_KEY" \
   SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" DB_URL="$DB_URL" deno run \
   --config supabase/functions/deno.json \
   --allow-env=GRIDRACE_LOCAL_INTEGRATION,API_URL,ANON_KEY,SERVICE_ROLE_KEY,DB_URL \
   --allow-net=127.0.0.1,localhost --allow-run=/opt/homebrew/opt/libpq/bin/psql \
   supabase/tests/integration/live_slice_test.ts >"$work_dir/backend.log" 2>&1
+fi
 for simulator in "$host_simulator" "$guest_simulator"; do
   container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data)
   scan_client_credentials "$container" "$SERVICE_ROLE_KEY" "$DB_URL"
 done
 rg 'PASS live client|INJECTION|Executed [0-9]+ test' "$work_dir"/*.log || true
-echo "PASS real independent-client matrix and reused exact backend standings/races"
+if [[ $selection_scope == full ]]; then
+  echo "PASS real independent-client matrix and reused exact backend standings/races"
+else
+  echo "PASS focused integration scenarios: $selected_scenarios (full matrix not run)"
+fi

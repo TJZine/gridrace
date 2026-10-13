@@ -17,25 +17,31 @@ struct DailyImportedResultsCursor: Equatable, Sendable {
 
 actor SupabaseDailySyncRemote: DailySyncRemote {
     private let client: SupabaseClient
+    private let lease: AuthClientLease?
     private let pageSize: Int
-    private let fetchProgress: @Sendable () async throws -> [DailyProgressDTO]
+    private let fetchProgress: @Sendable (String?) async throws -> [DailyProgressDTO]
     private let fetchResultsPage: @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
 
-    init(client: SupabaseClient, pageSize: Int = 1000) {
+    init(lease: AuthClientLease, pageSize: Int = 1000) {
+        self.lease = lease
+        let client = lease.lifetime.client
         precondition(pageSize > 0, "Imported-results page size must be positive")
         self.client = client
         self.pageSize = pageSize
-        fetchProgress = {
-            let rows: [DailyProgressDTO] = try await client
-                .from("daily_progress")
-                .select()
+        fetchProgress = { puzzleID in
+            try lease.check()
+            var request = client.from("daily_progress").select()
+            if let puzzleID { request = request.eq("puzzle_id", value: puzzleID) }
+            let rows: [DailyProgressDTO] = try await request
                 .order("puzzle_day", ascending: false)
                 .limit(1)
                 .execute()
                 .value
+            try lease.check()
             return rows
         }
         fetchResultsPage = { cursor, limit in
+            try lease.check()
             var request = client
                 .from("daily_imported_results")
                 .select()
@@ -50,6 +56,7 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
                 .limit(limit)
                 .execute()
                 .value
+            try lease.check()
             return rows
         }
     }
@@ -57,21 +64,28 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
     init(
         client: SupabaseClient,
         pageSize: Int = 1000,
-        fetchProgress: @escaping @Sendable () async throws -> [DailyProgressDTO],
+        fetchProgress: @escaping @Sendable (String?) async throws -> [DailyProgressDTO],
         fetchResultsPage: @escaping @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
     ) {
         precondition(pageSize > 0, "Imported-results page size must be positive")
+        self.lease = nil // Explicit synthetic fetch seam used by pagination tests.
         self.client = client
         self.pageSize = pageSize
         self.fetchProgress = fetchProgress
         self.fetchResultsPage = fetchResultsPage
     }
 
-    func pull() async throws -> DailyCloudSnapshot {
+    func pull(puzzleID: String?) async throws -> DailyCloudSnapshot {
         do {
-            async let progressRequest = fetchProgress()
+            try lease?.check()
+            async let progressRequest = fetchProgress(puzzleID)
             let importedResults = try await fetchAllImportedResults()
             let progress = try await progressRequest
+            try lease?.check()
+            guard progress.count <= 1 else { throw DailySyncRemoteError.invalidData }
+            if let puzzleID, let row = progress.first, row.puzzleID != puzzleID {
+                throw DailySyncRemoteError.invalidData
+            }
             return DailyCloudSnapshot(progress: progress.first, importedResults: importedResults)
         } catch let error as DailySyncRemoteError {
             throw error
@@ -89,7 +103,9 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
         var cursor: DailyImportedResultsCursor?
         while true {
             try Task.checkCancellation()
+            try lease?.check()
             let page = try await fetchResultsPage(cursor, pageSize)
+            try lease?.check()
             for result in page {
                 let next = DailyImportedResultsCursor(result)
                 guard cursor?.precedes(next) ?? true else {
@@ -107,11 +123,13 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
 
     func pushProgress(_ progress: DailyProgressUploadDTO) async throws -> DailyProgressPushOutcome {
         do {
+            try lease?.check()
             let response: ProgressResponse = try await client
                 .rpc("sync_daily_progress", params: ProgressParameters(progress))
                 .execute()
                 .value
 
+            try lease?.check()
             if let error = response.error { throw error.remoteError }
             switch response.status {
             case "inserted", "exact", "advanced":
@@ -140,11 +158,13 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
 
     func importResult(_ result: DailyImportedResultUploadDTO) async throws -> DailyResultImportOutcome {
         do {
+            try lease?.check()
             let response: ResultResponse = try await client
                 .rpc("import_daily_result", params: ResultParameters(result))
                 .execute()
                 .value
 
+            try lease?.check()
             if let error = response.error { throw error.remoteError }
             switch response.status {
             case "inserted", "exact":

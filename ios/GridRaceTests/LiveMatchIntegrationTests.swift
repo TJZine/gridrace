@@ -6,46 +6,34 @@ import XCTest
 final class LiveMatchIntegrationTests: XCTestCase {
     func testTwoClientProcess() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["GRIDRACE_LOCAL_INTEGRATION"] == "1",
-              let role = environment["GRIDRACE_LIVE_ROLE"],
-              let scenario = environment["GRIDRACE_LIVE_SCENARIO"],
-              let email = environment["GRIDRACE_LIVE_EMAIL"],
-              let password = environment["GRIDRACE_LIVE_PASSWORD"],
-              let failedGuess = environment["GRIDRACE_LIVE_FAILED_GUESS"],
-              let url = environment["GRIDRACE_LOCAL_SUPABASE_URL"],
-              let key = environment["GRIDRACE_LOCAL_SUPABASE_KEY"]
-        else {
-            throw XCTSkip(
-                "P4-V requires GRIDRACE_LOCAL_INTEGRATION=1 and the host orchestration environment"
-            )
-        }
-        XCTAssertTrue(environment["SERVICE_ROLE_KEY"] == nil)
-        XCTAssertTrue(environment["SUPABASE_SERVICE_ROLE_KEY"] == nil)
-        XCTAssertTrue(environment["SUPABASE_SECRET_KEY"] == nil)
-        XCTAssertTrue(environment["DB_URL"] == nil)
-        XCTAssertTrue(environment["JWT_SECRET"] == nil)
-
-        let configuration = try XCTUnwrap(SupabaseAccountService.Configuration(
-            urlString: url,
-            publishableKey: key
-        ))
-        XCTAssertTrue(["127.0.0.1", "localhost"].contains(configuration.projectURL.host()))
-        let account = SupabaseAccountService(configuration: configuration)
-        let signedIn = try await account.signInForLocalTesting(email: email, password: password)
-        let count = Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? "1") ?? 0
-        let target = Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? "1") ?? 0
-        XCTAssertTrue([1, 3, 5].contains(count))
-        XCTAssertTrue((1...count).contains(target))
+        let admission = try LocalIntegrationAdmission.admit(environment: environment, purpose: .live)
+        let role = try XCTUnwrap(environment["GRIDRACE_LIVE_ROLE"])
+        let scenario = try XCTUnwrap(environment["GRIDRACE_LIVE_SCENARIO"])
+        let failedGuess = try XCTUnwrap(environment["GRIDRACE_LIVE_FAILED_GUESS"])
+        let count = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? ""))
+        let target = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? ""))
+        // The host app restores its own account while XCTest runs. Keep this
+        // simulated device's real Keychain credentials separate from the app,
+        // with the same namespace on every process relaunch of this fixture.
+        let credentialNamespace = "GridRaceLiveIntegration.\(admission.receipt.runID.uuidString).\(admission.receipt.userID.uuidString)"
+        let account = SupabaseAccountService(configuration: admission.configuration,
+            storage: SecureAuthStorage(service: credentialNamespace))
+        let signedIn = try await account.signInForLocalTesting(
+            email: admission.email, password: admission.password)
+        try admission.validateIdentity(signedIn.userID)
+        let bound = try account.makeLiveTransport(userID: signedIn.userID)
         let service = MeasuredLiveMatchService(
-            account.makeLiveMatchService(), injectLoss: scenario == "product" && role != "resume",
+            bound.service, injectLoss: scenario == "product" && role != "resume",
             target: target, waitForAdvance: role == "advance-guest"
         )
         let realtime: (any LiveMatchRealtimeServicing)? =
             environment["GRIDRACE_LIVE_DISABLE_REALTIME"] == "1"
             ? nil
-            : FaultedRealtimeService(base: account.makeLiveRealtimeService())
-        let session = LiveMatchSession(service: service, realtime: realtime)
-        session.changeAccount(to: signedIn.userID)
+            : FaultedRealtimeService(base: try XCTUnwrap(bound.realtime))
+        let session = LiveMatchSession()
+        let transport = LiveAccountTransport(userID: bound.userID, service: service, realtime: realtime,
+            refresh: bound.refresh, isValid: bound.isValid)
+        session.changeAccount(to: signedIn.userID, transport: transport)
         if session.pendingIntent != nil { XCTAssertTrue(session.isInputLocked) }
 
         if role == "host" {

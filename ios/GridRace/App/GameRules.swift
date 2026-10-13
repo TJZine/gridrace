@@ -273,6 +273,41 @@ struct RuleVectorFile: Decodable, Sendable {
         let feedback: [Feedback]?
         let acceptedGuessCount: Int
         let roundState: RoundState
+
+        private enum CodingKeys: String, CodingKey {
+            case normalizedGuess
+            case validationError
+            case feedback
+            case acceptedGuessCount
+            case roundState
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            for key in [CodingKeys.normalizedGuess, .validationError, .feedback] {
+                guard container.contains(key) else {
+                    throw DecodingError.keyNotFound(
+                        key,
+                        DecodingError.Context(
+                            codingPath: decoder.codingPath,
+                            debugDescription: "Required key '\(key.stringValue)' is missing"
+                        )
+                    )
+                }
+            }
+
+            normalizedGuess = try container.decode(
+                String?.self,
+                forKey: .normalizedGuess
+            )
+            validationError = try container.decode(
+                GuessValidationError?.self,
+                forKey: .validationError
+            )
+            feedback = try container.decode([Feedback]?.self, forKey: .feedback)
+            acceptedGuessCount = try container.decode(Int.self, forKey: .acceptedGuessCount)
+            roundState = try container.decode(RoundState.self, forKey: .roundState)
+        }
     }
 
     struct Case: Decodable, Sendable {

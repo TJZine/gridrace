@@ -1,8 +1,5 @@
-import {
-  type DatabaseResult,
-  type Dependencies,
-  type JsonObject,
-} from "../_shared/command.ts";
+import { type DatabaseResult, type JsonObject } from "../_shared/command.ts";
+import { createCommandInvoker } from "../_shared/command_test_fixture.ts";
 import { makeHandler } from "./index.ts";
 
 const USER_ID = "40000000-0000-0000-0000-000000000001";
@@ -10,56 +7,7 @@ const MATCH_ID = "50000000-0000-0000-0000-000000000001";
 const REQUEST_ID = "60000000-0000-0000-0000-000000000001";
 const TOKEN = "signed-bearer-token";
 
-interface RpcCall {
-  name: string;
-  parameters: JsonObject;
-}
-
-interface Invocation {
-  request: Request;
-  authenticate?: string | null;
-  rpcResults?: DatabaseResult[];
-}
-
-interface Invoked {
-  response: Response;
-  body: JsonObject;
-  rpcCalls: RpcCall[];
-  authenticateCalls: number;
-}
-
-async function invoke(invocation: Invocation): Promise<Invoked> {
-  const rpcCalls: RpcCall[] = [];
-  const queued = [...(invocation.rpcResults ?? [])];
-  let authenticateCalls = 0;
-  const dependencies: Dependencies = {
-    async authenticate() {
-      authenticateCalls += 1;
-      const user = invocation.authenticate === undefined
-        ? USER_ID
-        : invocation.authenticate;
-      return await Promise.resolve(user);
-    },
-    createService: () => ({
-      async rpc(name: string, parameters: JsonObject) {
-        rpcCalls.push({ name, parameters });
-        const result = queued.shift();
-        if (!result) throw new Error(`unexpected RPC ${name}`);
-        return await Promise.resolve(result);
-      },
-      deleteUser() {
-        return Promise.reject(new Error("unexpected deleteUser"));
-      },
-    }),
-  };
-  const response = await makeHandler(dependencies)(invocation.request);
-  return {
-    response,
-    body: await response.json() as JsonObject,
-    rpcCalls,
-    authenticateCalls,
-  };
-}
+const invoke = createCommandInvoker(makeHandler, USER_ID);
 
 function post(body: JsonObject, token: string | null = TOKEN): Request {
   const headers: Record<string, string> = {

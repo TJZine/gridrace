@@ -176,3 +176,46 @@ Deno.test("vector decoder rejects malformed contracts and tolerates extra fields
   mutableCases(compatible)[0].futureField = "ignored";
   decodeRuleVectors(compatible, wordPack);
 });
+
+Deno.test("vector decoder requires nullable expected keys and preserves nulls", () => {
+  const allCorrect = vectors.cases.find((item) => item.id === "all-correct");
+  assert(allCorrect, "all-correct vector expected");
+  assertEquals(
+    allCorrect.expected.normalizedGuess,
+    "stone",
+    "non-null normalizedGuess",
+  );
+  assertEquals(
+    allCorrect.expected.validationError,
+    null,
+    "explicit null validationError",
+  );
+  assert(allCorrect.expected.feedback !== null, "non-null feedback");
+
+  const invalidLength = vectors.cases.find((item) =>
+    item.id === "invalid-length"
+  );
+  assert(invalidLength, "invalid-length vector expected");
+  assertEquals(invalidLength.expected.feedback, null, "explicit null feedback");
+
+  const nonAscii = vectors.cases.find((item) => item.id === "non-ascii");
+  assert(nonAscii, "non-ascii vector expected");
+  assertEquals(
+    nonAscii.expected.normalizedGuess,
+    null,
+    "explicit null normalizedGuess",
+  );
+
+  for (const key of ["normalizedGuess", "validationError", "feedback"]) {
+    const copy = mutableRecord(structuredClone(vectorJSON));
+    const item = mutableCases(copy).find((candidate) =>
+      candidate.id === "all-correct"
+    );
+    assert(item, "all-correct vector expected");
+    delete mutableRecord(item.expected)[key];
+    assertThrows(
+      () => decodeRuleVectors(copy, wordPack),
+      `missing expected.${key}`,
+    );
+  }
+});

@@ -1,4 +1,9 @@
 import {
+  backendScenarioID,
+  backendScenarios,
+  parseBackendSelection,
+} from "./scenario_selection.ts";
+import {
   createClient,
   type RealtimeChannel,
   type Session,
@@ -6,6 +11,23 @@ import {
 } from "@supabase/supabase-js";
 
 type Json = Record<string, unknown>;
+
+// Parse before environment admission, client construction or fixture work.
+const selection = parseBackendSelection(Deno.args);
+if (selection.action !== "run") {
+  if (selection.action === "help") {
+    console.log(
+      "Usage: deno run [permissions] live_slice_test.ts [--scenarios NAME[,NAME...]]",
+    );
+    console.log(
+      "Omitted selection runs all backend scenarios. --list-scenarios lists names.",
+    );
+  } else {
+    console.log(backendScenarios.join("\n"));
+  }
+  Deno.exit(0);
+}
+const completedScenarios: string[] = [];
 
 assert(
   required("GRIDRACE_LOCAL_INTEGRATION") === "1",
@@ -2040,15 +2062,29 @@ try {
     },
   );
 
+  assert(
+    completedScenarios.length === selection.names.length,
+    "selected scenario coverage",
+  );
   const snapshotMetrics = edgeMetrics.filter((metric) =>
     metric.name === "match-snapshot"
   );
-  const slowestMs = Math.max(...edgeMetrics.map((metric) => metric.elapsedMs));
+  const slowestMs = Math.max(
+    0,
+    ...edgeMetrics.map((metric) => metric.elapsedMs),
+  );
   const largestSnapshot = Math.max(
+    0,
     ...snapshotMetrics.map((metric) => metric.bytes),
   );
   console.log(
-    `PASS live-slice integration ${edgeMetrics.length} requests ${snapshotMetrics.length} snapshots ${largestSnapshot} bytes max ${slowestMs}ms max`,
+    `PASS ${
+      selection.focused
+        ? `focused backend scenarios: ${
+          completedScenarios.join(",")
+        } (full matrix not run)`
+        : "live-slice integration"
+    } ${edgeMetrics.length} requests ${snapshotMetrics.length} snapshots ${largestSnapshot} bytes max ${slowestMs}ms max`,
   );
 } finally {
   // Track successful Create responses even if their caller fails before extracting ID.
@@ -2417,8 +2453,11 @@ async function scenario(
   name: string,
   action: () => Promise<void>,
 ): Promise<void> {
+  const id = backendScenarioID(name);
+  if (!selection.names.includes(id)) return;
   const started = performance.now();
   await action();
+  completedScenarios.push(id);
   console.log(`PASS ${name} ${Math.round(performance.now() - started)}ms`);
 }
 
@@ -2538,25 +2577,25 @@ function required(name: string): string {
 }
 
 function localApiUrl(value: string): string {
-  const url = new URL(value);
-  assert(
-    url.protocol === "http:" &&
-      ["127.0.0.1", "localhost"].includes(url.hostname) &&
-      url.port === "54321",
-    "API_URL must target local Supabase",
+  const origin = /^http:\/\/(127\.0\.0\.1|localhost):([1-9][0-9]*)$/.exec(
+    value,
   );
-  return url.origin;
+  assert(
+    origin && Number(origin[2]) <= 65535,
+    "API_URL must target an exact unlinked loopback origin",
+  );
+  return value;
 }
 
 function localDatabase(value: string): LocalDatabase {
-  const url = new URL(value);
+  const local =
+    /^(postgres|postgresql):\/\/postgres:postgres@(127\.0\.0\.1|localhost):([1-9][0-9]*)\/postgres$/
+      .exec(value);
   assert(
-    ["postgres:", "postgresql:"].includes(url.protocol) &&
-      ["127.0.0.1", "localhost"].includes(url.hostname) &&
-      url.port === "54322" &&
-      url.pathname === "/postgres",
-    "DB_URL must target local Supabase",
+    local && Number(local[3]) <= 65535,
+    "DB_URL must target local Supabase postgres",
   );
+  const url = new URL(value);
   const password = decodeURIComponent(url.password);
   const args = [
     "--host",

@@ -33,18 +33,22 @@ final class LiveMatchSession {
     typealias StoreFactory = @MainActor (UUID) throws -> any LiveMatchRecoveryStoring
     typealias AuthRefresh = @MainActor @Sendable (UUID) async -> Bool
 
-    private let service: (any LiveMatchServicing)?
-    private let realtime: (any LiveMatchRealtimeServicing)?
+    private var service: (any LiveMatchServicing)?
+    private var realtime: (any LiveMatchRealtimeServicing)?
     private let storeFactory: StoreFactory
-    private let refreshAuth: AuthRefresh
+    private let cleanupJournal: AccountCleanupJournal?
+    private var refreshAuth: AuthRefresh = { _ in false }
     private let timing: LiveMatchSessionTiming
     private let sleep: @Sendable (Duration) async throws -> Void
     private let uptime: @MainActor () -> TimeInterval
     private let makeUUID: @MainActor () -> UUID
 
     private var accountID: UUID?
+    private var transport: LiveAccountTransport?
+    private var requestedTransport: LiveAccountTransport?
     private var requestedAccountID: UUID?
     private var hasRequestedAccountChange = false
+    private var phaseBeforeCapturedCleanup: LiveMatchSessionPhase?
     private var store: (any LiveMatchRecoveryStoring)?
     private var recovery = LiveRecoveryState()
     private var generation = 0
@@ -86,12 +90,40 @@ final class LiveMatchSession {
         recovery.pendingIntent != nil
             && (lastError == .server(.requestConflict) || lastError == .server(.rateLimited))
     }
-    var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && accountID != nil }
+    var canRetryRecoveryStorage: Bool { phase == .storageUnavailable && (accountID != nil || cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false) }
     var canDiscardRecovery: Bool { canRetryRecoveryStorage }
 
     var displayedServerTime: Date? {
         guard let snapshot, let snapshotUptime else { return nil }
         return snapshot.serverTime.addingTimeInterval(max(0, uptime() - snapshotUptime))
+    }
+
+    /// Eligibility for a new Start. Retrying a captured target uses `canRetry` instead.
+    var canStart: Bool {
+        guard canBeginCommand, phase == .ready, isOpen, isForeground,
+              recovery.pendingIntent == nil, pendingStart == nil,
+              let snapshot, recovery.matchID == snapshot.match.id,
+              let displayedServerTime,
+              snapshot.match.terminalReason == nil,
+              snapshot.members.count == 2,
+              snapshot.members.allSatisfy({ !$0.isDeleted }),
+              snapshot.members.first(where: \.isSelf)?.id == snapshot.match.creatorMemberID
+        else { return false }
+        if snapshot.match.status == .lobby {
+            return snapshot.round.state == .pending && displayedServerTime < snapshot.match.expiresAt
+        }
+        return snapshot.match.status == .inProgress && snapshot.round.state == .revealed
+            && snapshot.match.currentRound < snapshot.match.roundCount
+    }
+
+    var canInput: Bool {
+        guard canBeginCommand, isOpen, isForeground, pendingStart == nil,
+              !isInputLocked, let snapshot, recovery.matchID == snapshot.match.id,
+              snapshot.match.status == .inProgress,
+              let member = snapshot.members.first(where: \.isSelf), !member.isDeleted,
+              let player = snapshot.round.players.first(where: { $0.memberID == member.id })
+        else { return false }
+        return player.state == .playing
     }
 
     var isInputLocked: Bool {
@@ -106,12 +138,10 @@ final class LiveMatchSession {
     }
 
     init(
-        service: (any LiveMatchServicing)?,
-        realtime: (any LiveMatchRealtimeServicing)?,
         storeFactory: @escaping StoreFactory = {
             try LiveMatchRecoveryStore.applicationSupport(userID: $0)
         },
-        refreshAuth: @escaping AuthRefresh = { _ in false },
+        cleanupJournal: AccountCleanupJournal? = nil,
         timing: LiveMatchSessionTiming = .production,
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
@@ -122,14 +152,15 @@ final class LiveMatchSession {
         makeUUID: @escaping @MainActor () -> UUID = UUID.init
     ) {
         precondition(!timing.retryBackoff.isEmpty)
-        self.service = service
-        self.realtime = realtime
         self.storeFactory = storeFactory
-        self.refreshAuth = refreshAuth
+        self.cleanupJournal = cleanupJournal
         self.timing = timing
         self.sleep = sleep
         self.uptime = uptime
         self.makeUUID = makeUUID
+        if cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            phase = .storageUnavailable
+        }
     }
 
     isolated deinit {
@@ -137,11 +168,125 @@ final class LiveMatchSession {
     }
 
     @discardableResult
-    func changeAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
+    func changeAccount(to userID: UUID?, transport next: LiveAccountTransport?) -> LiveAccountChangeOutcome {
+        if accountID == userID, transport?.userID == userID, transport?.isValid() == true {
+            return .completed
+        }
+        service = nil
+        realtime = nil
+        refreshAuth = { _ in false }
+        transport = nil
+        requestedTransport = next
+        return transitionAccount(to: userID)
+    }
+
+    func hasPendingAccountCleanup(for userID: UUID) -> Bool {
+        (accountID == userID && hasRequestedAccountChange) || cleanupJournal?.liveUsers.contains(userID) == true
+    }
+
+    @discardableResult
+    func cleanupCapturedAccount(_ userID: UUID) -> LiveAccountChangeOutcome {
+        if accountID == userID { resetRuntime() }
+        do {
+            try cleanupJournal?.capture(userID, deleting: false)
+            try storeFactory(userID).clear()
+            try cleanupJournal?.completeLive(userID)
+            return .completed
+        } catch {
+            if accountID != userID, !hasRequestedAccountChange, phaseBeforeCapturedCleanup == nil {
+                phaseBeforeCapturedCleanup = phase
+            }
+            phase = .storageUnavailable
+            return .recoveryCleanupPending
+        }
+    }
+
+    private func retryCapturedCleanup() {
+        guard let cleanupJournal else { return }
+        do { try cleanupJournal.reload() }
+        catch { phase = .storageUnavailable; return }
+        if let accountID, hasRequestedAccountChange {
+            do { try cleanupJournal.capture(accountID, deleting: false) }
+            catch { phase = .storageUnavailable; return }
+        }
+        var failed = false
+        for userID in cleanupJournal.liveUsers {
+            do {
+                try storeFactory(userID).clear()
+                try cleanupJournal.completeLive(userID)
+            } catch { failed = true }
+        }
+        guard !failed else { phase = .storageUnavailable; return }
+        // A captured old-account obligation can be retried while a later account
+        // remains active. Only an actual pending transition may replace its runtime.
+        guard hasRequestedAccountChange else {
+            if phase == .storageUnavailable, let previousPhase = phaseBeforeCapturedCleanup { phase = previousPhase }
+            else if accountID == nil { phase = .inactive }
+            phaseBeforeCapturedCleanup = nil
+            return
+        }
+        let userID = requestedAccountID
+        resetRuntime()
+        accountID = userID
+        hasRequestedAccountChange = false
+        requestedAccountID = nil
+        guard installRequestedTransport(for: userID) else { return }
+        loadRecovery()
+    }
+
+    private func installRequestedTransport(for userID: UUID?) -> Bool {
+        guard let userID else {
+            requestedTransport = nil
+            return true
+        }
+        guard let target = requestedTransport, target.userID == userID, target.isValid() else {
+            requestedTransport = nil
+            phase = .needsSignIn
+            return false
+        }
+        transport = target
+        service = target.service
+        realtime = target.realtime
+        refreshAuth = target.refresh
+        requestedTransport = nil
+        return true
+    }
+
+    @discardableResult
+    private func transitionAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
+        if let cleanupJournal, cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty {
+            if hasRequestedAccountChange, requestedAccountID == userID {
+                // Repeated Auth notifications retain the captured transition and
+                // retry its local cleanup; they never reload the old intent.
+                retryCapturedCleanup()
+                return hasRequestedAccountChange || cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty
+                    ? .recoveryCleanupPending : .completed
+            }
+            // No saved command can dispatch before captured cleanup is resolved,
+            // even if Auth later returns to the same UUID.
+            resetRuntime()
+            requestedAccountID = userID
+            hasRequestedAccountChange = true
+            phase = .storageUnavailable
+            return .recoveryCleanupPending
+        }
         guard accountID != userID else {
             if hasRequestedAccountChange {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
+            }
+            if service == nil {
+                if phase == .storageUnavailable {
+                    // Auth can revert a failed switch without authorizing a storage
+                    // retry. Bind only this account; retain its failure until explicit
+                    // retry/discard, including when the replacement lease is invalid.
+                    _ = installRequestedTransport(for: userID)
+                    phase = .storageUnavailable
+                } else {
+                    resetRuntime()
+                    guard installRequestedTransport(for: userID) else { return .completed }
+                    loadRecovery()
+                }
             }
             return .completed
         }
@@ -150,8 +295,10 @@ final class LiveMatchSession {
         resetRuntime()
         if let oldAccountID {
             do {
+                try cleanupJournal?.capture(oldAccountID, deleting: false)
                 let oldStore = try oldStore ?? storeFactory(oldAccountID)
                 try oldStore.clear()
+                try cleanupJournal?.completeLive(oldAccountID)
             } catch {
                 store = oldStore
                 requestedAccountID = userID
@@ -163,12 +310,18 @@ final class LiveMatchSession {
         requestedAccountID = nil
         hasRequestedAccountChange = false
         accountID = userID
+        guard installRequestedTransport(for: userID) else { return .completed }
         loadRecovery()
         return .completed
     }
 
     func discardRecovery() {
-        guard canDiscardRecovery, let accountID else { return }
+        guard canDiscardRecovery else { return }
+        if cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            retryCapturedCleanup()
+            return
+        }
+        guard let accountID else { return }
         do {
             let store = try store ?? storeFactory(accountID)
             try store.clear()
@@ -178,6 +331,7 @@ final class LiveMatchSession {
                 requestedAccountID = nil
                 hasRequestedAccountChange = false
                 self.accountID = userID
+                guard installRequestedTransport(for: userID) else { return }
                 loadRecovery()
             } else {
                 self.store = store
@@ -237,12 +391,7 @@ final class LiveMatchSession {
     }
 
     func startMatch() {
-        guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil,
-              isOpen, isForeground, let snapshot,
-              snapshot.match.status == .lobby || (snapshot.match.status == .inProgress
-                && snapshot.round.state == .revealed && snapshot.match.currentRound < snapshot.match.roundCount),
-              snapshot.match.terminalReason == nil
-        else { return }
+        guard canStart, let snapshot else { return }
         let target = snapshot.round.state == .pending ? 1 : snapshot.match.currentRound + 1
         pendingStart = (snapshot.match.id, target)
         performStart()
@@ -292,16 +441,12 @@ final class LiveMatchSession {
     }
 
     func submitGuess(_ word: String) {
-        guard canBeginCommand,
-              !isInputLocked,
-              let matchID = recovery.matchID,
-              recovery.pendingIntent == nil
-        else { return }
+        guard canInput, let snapshot, let matchID = recovery.matchID else { return }
         let intent = LivePendingIntent.guess(
             matchID: matchID,
             requestID: makeUUID(),
             word: word,
-            roundNumber: snapshot!.match.currentRound,
+            roundNumber: snapshot.match.currentRound,
             clientBuild: 2
         )
         guessDraft = word
@@ -310,10 +455,14 @@ final class LiveMatchSession {
     }
 
     func retry() {
+        if phase == .storageUnavailable, cleanupJournal?.isUnavailable == true || cleanupJournal?.liveUsers.isEmpty == false {
+            retryCapturedCleanup()
+            return
+        }
         guard accountID != nil else { return }
         if phase == .storageUnavailable {
             if hasRequestedAccountChange {
-                changeAccount(to: requestedAccountID)
+                transitionAccount(to: requestedAccountID)
             } else {
                 loadRecovery()
             }
@@ -643,11 +792,12 @@ final class LiveMatchSession {
         _ operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
         let requestGeneration = generation
+        let boundRefresh = refreshAuth
         do {
             return try await timed(operation)
         } catch LiveMatchServiceError.server(.notAuthenticated) {
             guard let accountID,
-                  try await timed({ await self.refreshAuth(accountID) }),
+                  try await timed({ await boundRefresh(accountID) }),
                   generation == requestGeneration,
                   self.accountID == accountID
             else { throw LiveMatchServiceError.server(.notAuthenticated) }
@@ -884,6 +1034,7 @@ final class LiveMatchSession {
     }
 
     private func resetRuntime() {
+        phaseBeforeCapturedCleanup = nil
         generation += 1
         presentationGeneration += 1
         pendingStart = nil

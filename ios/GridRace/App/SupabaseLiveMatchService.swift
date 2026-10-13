@@ -7,14 +7,14 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
     private let clientBuild: Int
     private let invoke: Invoke
 
-    init(client: SupabaseClient, clientBuild: Int = 2) {
+    init(lease: AuthClientLease, clientBuild: Int = 2) {
         self.clientBuild = clientBuild
         invoke = { function, body in
-            try await client.functions.invoke(
-                function,
-                options: .init(headers: ["Content-Type": "application/json"], body: body),
-                decode: { data, _ in data }
-            )
+            try await lease.perform { client in
+                try await client.functions.invoke(function,
+                    options: .init(headers: ["Content-Type": "application/json"], body: body),
+                    decode: { data, _ in data })
+            }
         }
     }
 

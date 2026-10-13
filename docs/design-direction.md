@@ -1,9 +1,10 @@
 # GridRace Design Direction
 
-Status: Accepted direction, not implemented. The shipped app still uses the
-2026-09-04 indigo/coral/teal tokens in `ios/GridRace/App/Views.swift`. Until an
-implementation plan lands, [`screen-flow.md`](screen-flow.md) describes current
-behavior; this file describes the target presentation.
+Status: Accepted direction; S0b foundation and S1–S3 feature screens are implemented
+and integrated. S4/A9 OS/device acceptance remains open in the
+[active Stamped plan](plans/2026-10-03-stamped-ui-refresh.md).
+[`screen-flow.md`](screen-flow.md) describes the shipped checkpoint; this file
+describes the full accepted target presentation.
 
 Accepted by the human on 2026-10-03 after a simulator audit and rendered direction
 comparisons. It supersedes the 2026-09-04 refresh's visual direction (lane-edge
@@ -89,6 +90,10 @@ Rules:
   tiles hurt legibility; trigger from Increased Contrast or a setting.
 - Meaning never depends on color: symbol, ring/fill form, and accessibility label
   all carry it.
+- Human-approved compact keyboard exception (2026-10-03): standard QWERTY
+  letter keys may be about 32pt wide on iPhone SE, retaining at least 48pt height.
+  Action controls retain 44×44pt targets. No overlapping hit regions or alternate
+  default layout; S4 measures actual regions and checks usability.
 
 ### Structure
 
@@ -103,6 +108,17 @@ Rules:
 - Gameplay screens are a slim header, the board, and the keyboard. Opponent
   progress is one compact line (name and accepted count in stable roster order) so
   all six rows fit above the keyboard on every supported device.
+- S4 disposition approved 2026-10-04: short, wide phone game space uses two
+  columns at default type: six-row board left; slim header, compact opponent
+  line and keyboard/notice/result slot right. Choose from available space,
+  preserve navigation safe areas, and fit without default-type scrolling or an
+  orientation lock. AX sizes keep scrolling. Landscape tiles remain about
+  48pt or larger; letter keys remain at least32×48pt and action targets44pt.
+  Return to the human if these floors cannot fit.
+- SE portrait Practice uses one compact opponent line for both bots, preserving
+  names, accepted counts, coarse states and full spoken summaries. The timer
+  lives in the header row. Reserve measured error/status height above the
+  keyboard before allocating board height. Live's navigation title is Live race.
 
 ### Live race flow
 
@@ -243,5 +259,6 @@ strengthening all carry over unchanged from `screen-flow.md` and `game-rules.md`
 
 All surfaces are designed (2026-10-03). Code structure, slicing, and verification
 live in [`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md),
-which activates after Phase 4 closes or is rescoped so the OS-assisted VoiceOver,
-Reduce Motion, and hit-region proof runs once on the refreshed UI.
+now Active after the human-approved Phase 4 rescope. S4 owns the transferred
+OS-assisted VoiceOver, Reduce Motion, hardware keyboard, haptic preference,
+and hit-region proof, which runs once on the refreshed UI.

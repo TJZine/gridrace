@@ -1,59 +1,41 @@
-# AGENTS.md
+# GridRace agent entrypoint
 
-Short entrypoint map for agents working in GridRace.
+GridRace contains native SwiftUI Daily Classic, optional private account synchronization, and Supabase-authoritative live racing.
 
-If a tracked plan is active, locate and read it before changing the repository:
+Read [the project profile](.agents/project.md) for ownership, verification commands, local-runtime precautions, and the authority map. Inspect the current revision and working state; a prior plan's source hash or passing result is historical evidence.
 
-```sh
-rg -l '^Status: Active$' docs/plans
-```
+Run independent investigation, checks, and implementation in parallel when ownership,
+contracts, and working state permit it. A plan is not a mandatory sequential
+pipeline. Serialize only actual dependencies or conflicting shared resources.
 
-If multiple plans are active, the primary controller resolves ownership before
-affected writes; workers return the conflict to the controller. Continue independent
-read-only work.
+## Workflow
 
-Use [docs/ENGINEERING_RUNBOOK.md](docs/ENGINEERING_RUNBOOK.md) for workflow, risk,
-verification, review, and handoff policy rather than duplicating it here.
+Use the shared `develop-code` workflow for scoped implementation. Load `design-code` for unresolved domain or ownership decisions, `review-code` for independent review and suggestion adjudication, and `verify-code` for diagnosis and behavioral evidence. These are conditional procedures, not four mandatory agents or sequential ceremonies.
 
-Always preserve these product boundaries:
+Use `maintain-workflow` only for explicitly requested workflow cleanup or evaluation; it is not an automatic phase of every code change.
 
-Server-authoritative gameplay and pre-reveal answer secrecy apply to live racing and
-future verified competition. Daily Classic and the tutorial follow their documented
-local behavior; imported Daily results remain owner-private personal history and
-cannot become verified competitive results.
+Give each coherent implementation unit one owner. Parallel writers may use isolated worktrees or explicit disjoint ownership in a shared tree when contracts and test inputs are stable. Read-only specialists should answer distinct questions. Keep one Git/integration owner for shared state; coordinate shared files, databases and simulators explicitly. Disjoint files do not make shared runtime mutations independent.
 
-- Supabase is authoritative for answers, guess validation and feedback, timestamps,
-  scoring, and match transitions.
-- Authenticated clients cannot read round secrets or directly mutate game state.
-- Swift and TypeScript evaluators consume the same versioned rule test vectors.
-- Realtime events prompt UI updates; canonical snapshots own recovery and convergence.
-- Do not simplify away RLS, secret handling, idempotency, accessibility, or safe
-  production data practices.
-- Follow the accepted Daily Classic scope. For live racing, prove the focused
-  vertical slice before broader match flow or generalized architecture.
+Existing implementation and process are evidence to assess. Consolidate or replace them when the authorized change demonstrates a clearer owner, smaller caller contract, or lower maintenance burden while preserving required behavior. Do not preserve an abstraction, model assignment, historical lease, or test merely because it exists.
 
-Coordination boundaries:
+## Product and trust boundaries
 
-- The orchestrator owns shared contracts, the active plan, integration, staging, and
-  commits.
-- Bounded workers stay inside their assigned write paths and report evidence; they do
-  not edit tracking state or mutate Git.
-- Preserve unrelated user and agent changes in the shared worktree.
-- Use only commands documented for surfaces that currently exist; the runbook owns
-  verification selection.
+- Daily Classic is local-first and account-optional. Bundled Daily/tutorial answers make no secrecy claim. Imported personal history cannot become verified competition.
+- Live answers, feedback, timestamps, scoring and transitions are server-owned. Normal clients cannot read private answers before reveal or directly mutate authoritative game state.
+- Preserve authenticated command validation, grants/RLS, transaction/idempotency semantics, original retry identities, account isolation/deletion, and log privacy.
+- Realtime signals request refresh; canonical snapshots own recovery and convergence.
+- Swift and TypeScript rule implementations follow the shared versioned vector contract.
+- Published Daily v1 puzzle assignments remain stable. Content evolution needs explicit schedule/version and provenance handling; there is no blanket ban on all future answer changes.
+- Accessibility belongs to affected behavior. Source/render evidence does not establish OS-assisted interaction or physical-device acceptance.
 
-Where to look next:
+Load the applicable product contract from the profile when changing these areas. The current task can revise workflow and implementation policy; consequential unresolved changes to product or trust contracts require an explicit decision.
 
-- Active execution state and evidence: `docs/plans/`
-- Current product behavior and exact rules: [docs/product-spec.md](docs/product-spec.md)
-  and [docs/game-rules.md](docs/game-rules.md)
-- Current system, privacy, and presentation boundaries:
-  [docs/architecture.md](docs/architecture.md),
-  [docs/privacy-data-map.md](docs/privacy-data-map.md), and
-  [docs/screen-flow.md](docs/screen-flow.md)
-- Accepted target visual direction (not yet implemented):
-  [docs/design-direction.md](docs/design-direction.md)
-- Engineering workflow and verification: [docs/ENGINEERING_RUNBOOK.md](docs/ENGINEERING_RUNBOOK.md)
-- Durable architectural decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
-- Non-authoritative backlog candidates: [docs/TODO.md](docs/TODO.md)
-- Tool-specific rule shim: [.agents/rules/general-guidelines.md](.agents/rules/general-guidelines.md)
+## Task state and completion
+
+Use one authoritative record for each task that needs durable tracking. Read the applicable active plan's current checkpoint, accepted decisions and remaining work; load detailed historical evidence only when needed. Resolve overlapping authority before affected writes without blocking independent work.
+
+Match checks and review depth to the changed risk. Reuse useful existing proof, add or replace it when needed, and do not impose universal TDD or a no-tests rule. Record exact unverified requirements when the necessary environment is unavailable. Completion requires evidence for the scoped result, adjudicated material findings, and an accurate handoff.
+
+## Accepted presentation work
+
+The accepted target visual direction is in [docs/design-direction.md](docs/design-direction.md). Its applicable implementation plan owns product scope and dependencies. A workflow refresh does not implement that design, activate its kickoff, or mark it accepted at runtime. Preserve recorded human authorizations and outstanding acceptance. The Stamped plan is already Active; its current checkpoint records D16's resolved layout approval and the adjudicated independent final review, while OS/device acceptance remains human-deferred. S4 owns the transferred Phase 4 A9 checks. This maintenance does not resume product implementation or close that product task.

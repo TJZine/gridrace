@@ -2,9 +2,33 @@
 
 This file preserves stable product and architecture decisions whose rationale should
 survive individual implementation plans. It is not a status log or current-task
-tracker. Current execution is summarized in [`NOW.md`](NOW.md). The detailed
-[Phase 4 Blind Race Plan](plans/2026-10-02-phase-4-blind-race.md)
-tracks the accepted expansion. The Phase 2/3 plan is Historical evidence.
+tracker. Current execution belongs in its task record; [`NOW.md`](NOW.md) is navigation.
+General procedures come from shared coding skills; the [project profile](../.agents/project.md) owns GridRace-specific guidance. The detailed
+[Active Stamped UI Refresh plan](plans/2026-10-03-stamped-ui-refresh.md)
+owns the accepted presentation work and transferred Phase 4 A9 proof. The
+[Phase 4 Blind Race plan](plans/2026-10-02-phase-4-blind-race.md) and Phase 2/3
+plan are Historical evidence.
+
+## 2026-10-04 — Fit Stamped Gameplay in Short Phone Space
+
+**Decision:** At default type, phone landscape uses two columns chosen from
+available space: six-row board left, header/opponents and keyboard/notice/result
+slot right. Preserve orientation support and fit without default scrolling.
+Landscape tiles remain about48pt+, letter keys at least32×48pt, action targets44pt;
+timer and opponent information remain visible within navigation safe areas.
+AX sizes retain scrolling. SE portrait Practice uses both bots on one compact
+line with names, counts, coarse states and unchanged full spoken summaries,
+timer in the header, and measured error/status space reserved above the keyboard.
+Live's navigation title is sentence case, Live race.
+
+**Rationale:** Native S4 evidence reproduced unreachable Live landscape actions,
+Daily landscape separating the board from controls, and a Practice error below
+its upper viewport. The human approved this responsive repair instead of smaller
+controls, an orientation lock or a default scroll fallback.
+
+**Consequences/revisit:** Presentation changes preserve game behavior and privacy.
+Return to the human if fitting requires smaller tiles/keys/targets than these
+floors. The active plan owns implementation evidence and outstanding OS checks.
 
 ## 2026-10-03 — Converge Started Daily Attempts Over Empty Boards
 
@@ -40,8 +64,8 @@ form-like Home, and the sixth row clipped in the tutorial race.
 are unchanged. Passport-stamp tiles are the designated fallback only if testing
 shows round tiles hurt legibility. All surfaces were designed on 2026-10-03;
 [`plans/2026-10-03-stamped-ui-refresh.md`](plans/2026-10-03-stamped-ui-refresh.md)
-implements them after the human-approved rescope moves Phase 4's OS-assisted
-accessibility proof into that plan.
+implements them under the human-approved rescope, with Phase 4's OS-assisted
+accessibility proof transferred to S4.
 
 ## 2026-10-02 — Expand Private Blind Race to Two-Player Multi-Round Matches
 

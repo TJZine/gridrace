@@ -1,4 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  isAuthApiError,
+  isAuthSessionMissingError,
+} from "@supabase/supabase-js";
 
 export const ERROR_MESSAGES = {
   invalid_match_configuration: "Choose 1, 3, or 5 rounds.",
@@ -290,12 +294,42 @@ export function productionDependencies(): Dependencies {
     "SUPABASE_PUBLISHABLE_KEY",
     "SUPABASE_ANON_KEY",
   );
-  const authClient = createClient(url, publishableKey, CLIENT_OPTIONS);
+  const authClient = createClient(url, publishableKey, {
+    ...CLIENT_OPTIONS,
+    global: {
+      async fetch(input, init) {
+        const response = await fetch(input, init);
+        // The SDK's session_not_found translation discards HTTP status. Quota
+        // and every server failure must remain uncertain regardless of body code.
+        if (response.status === 429 || response.status >= 500) {
+          await response.body?.cancel();
+          throw new Error("authentication unavailable");
+        }
+        return response;
+      },
+    },
+  });
 
   return {
     async authenticate(token) {
       const { data, error } = await authClient.auth.getUser(token);
-      return error === null && data.user ? data.user.id : null;
+      if (error !== null) {
+        // The pinned SDK translates remote session_not_found to this class.
+        // Other failures must remain uncertain so callers retain retry identities.
+        if (isAuthSessionMissingError(error)) return null;
+        if (
+          isAuthApiError(error) &&
+          [400, 401, 403, 404].includes(error.status) &&
+          (["bad_jwt", "user_not_found", "user_banned"].includes(
+            error.code ?? "",
+          ) || (error.status === 401 && error.code === undefined))
+        ) return null;
+        throw new Error("authentication unavailable");
+      }
+      if (!isUuid(data.user?.id)) {
+        throw new Error("invalid authentication response");
+      }
+      return data.user.id;
     },
     createService() {
       const secretKey = environmentKey(
