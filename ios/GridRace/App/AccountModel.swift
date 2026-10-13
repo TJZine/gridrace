@@ -47,11 +47,27 @@ final class AccountModel {
     private(set) var isWorking = false
     private(set) var isLoadingProfile = false
     private var storedErrorMessage: String?
+    private enum SignOutGuidance {
+        case credentials
+        case live(UUID)
+    }
+    private var signOutGuidance: SignOutGuidance?
     private var showsDeletionRecovery = false
     private var unknownDeletionCleanupFailure = false
     private(set) var errorMessage: String? {
-        get { showsDeletionRecovery ? deletionRecoveryMessage : storedErrorMessage }
-        set { showsDeletionRecovery = false; storedErrorMessage = newValue }
+        get {
+            if showsDeletionRecovery { return deletionRecoveryMessage }
+            switch signOutGuidance {
+            case .credentials where authRecovery == nil: return nil
+            case .live(let userID) where hasPendingDeletedLiveCleanup?(userID) == false: return nil
+            default: return storedErrorMessage
+            }
+        }
+        set {
+            showsDeletionRecovery = false
+            signOutGuidance = nil
+            storedErrorMessage = newValue
+        }
     }
     // Per-error event seam: incremented on every error assignment (even when
     // the message string repeats, e.g. retryProfile → loadProfile failing
@@ -287,8 +303,10 @@ final class AccountModel {
         didCompleteSignedOutIntent()
         if outcome.localRecovery != nil {
             presentError("You’re signed out, but saved account credentials need cleanup. Retry account cleanup before signing in again.")
+            signOutGuidance = .credentials
         } else if !removedRecovery {
             presentError("You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it.")
+            if let retiredUserID { signOutGuidance = .live(retiredUserID) }
         } else if outcome.remoteLogoutFailed {
             presentError("You’re signed out on this device. The account server could not confirm sign out while offline.")
         }
@@ -459,7 +477,18 @@ final class AccountModel {
 
     private func receive(_ nextSession: AccountSession?) {
         guard let nextSession else {
+            let wasSignedOut = session == nil
+            let retainedMessage = storedErrorMessage
+            let retainedSignOutGuidance = signOutGuidance
+            let retainedDeletionPresentation = showsDeletionRecovery
             clearAccountState()
+            // A repeated signed-out snapshot still fences work and notifies
+            // consumers, but does not dismiss completed-intent guidance.
+            if wasSignedOut {
+                storedErrorMessage = retainedMessage
+                signOutGuidance = retainedSignOutGuidance
+                showsDeletionRecovery = retainedDeletionPresentation
+            }
             didChangeSession(nil)
             return
         }

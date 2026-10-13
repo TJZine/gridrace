@@ -789,6 +789,7 @@ final class DailyAccountCoordinatorTests: XCTestCase {
     func testSignOutHidesAccountDataAndKeepsFailedLiveCleanupReachable() async throws {
         let fixture = try makeLifecycleFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
+        await fixture.coordinator.account.start()
         fixture.liveStore.rejectsLoads = true
         fixture.liveStore.rejectsClears = true
         fixture.coordinator.daily.typeLetter("G")
@@ -809,9 +810,19 @@ final class DailyAccountCoordinatorTests: XCTestCase {
             "You’re signed out, but saved live recovery data could not be removed. Open Live Race to retry or discard it."
         )
 
+        for _ in 0..<2 {
+            let attempts = fixture.liveStore.clearAttempts
+            fixture.accountService.emit(nil)
+            await waitForAccountCondition { fixture.liveStore.clearAttempts > attempts }
+            XCTAssertNotNil(fixture.coordinator.account.errorMessage)
+            XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+            XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        }
+
         fixture.liveStore.rejectsLoads = false
         fixture.liveStore.rejectsClears = false
         fixture.coordinator.live.discardRecovery()
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
         XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
 
         let relaunchedService = AccountServiceMock()
@@ -836,6 +847,7 @@ final class DailyAccountCoordinatorTests: XCTestCase {
     func testDeletionClearsDailyCacheOnceAndKeepsFailedLiveCleanupReachable() async throws {
         let fixture = try makeLifecycleFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
+        await fixture.coordinator.account.start()
         fixture.liveStore.rejectsLoads = true
         fixture.liveStore.rejectsClears = true
         fixture.coordinator.daily.typeLetter("G")
@@ -857,9 +869,19 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
         XCTAssertTrue(fixture.coordinator.account.errorMessage?.contains("account was deleted") == true)
 
+        for _ in 0..<2 {
+            let attempts = fixture.liveStore.clearAttempts
+            fixture.accountService.emit(nil)
+            await waitForAccountCondition { fixture.liveStore.clearAttempts > attempts }
+            XCTAssertNotNil(fixture.coordinator.account.errorMessage)
+            XCTAssertTrue(fixture.coordinator.live.canDiscardRecovery)
+            XCTAssertEqual(fixture.coordinator.daily.game.draft, "G")
+        }
+
         fixture.liveStore.rejectsLoads = false
         fixture.liveStore.rejectsClears = false
         fixture.coordinator.live.discardRecovery()
+        XCTAssertNil(fixture.coordinator.account.errorMessage)
 
         XCTAssertEqual(fixture.accountService.deleteCount, 1)
         XCTAssertEqual(fixture.liveStore.storedState, LiveRecoveryState())
@@ -1302,6 +1324,152 @@ final class AccountModelTests: XCTestCase {
         XCTAssertEqual(service.profileUpdateCount, 2)
         XCTAssertFalse(model.needsProfileSetup)
         XCTAssertTrue(sheet.observe(isSignedIn: model.isSignedIn, profileReady: profileReady(model)))
+    }
+
+    func testCompletedLifecycleGuidanceFollowsDeliveredNilRecoveryAndDismissal() async {
+        for deletesAccount in [false, true] {
+            for cleanupSucceeds in [false, true] {
+                let service = AccountServiceMock()
+                let owner = UUID()
+                service.appleSession = session(owner)
+                service.loadedProfile = profile(userID: owner, name: "Alex", setupCompleted: true)
+                var nilNotifications = 0
+                var liveCleanupPending = !cleanupSucceeds
+                let model = AccountModel(service: service,
+                    didChangeSession: { if $0 == nil { nilNotifications += 1 } },
+                    didSignOut: { _ in cleanupSucceeds },
+                    didDeleteAccount: { _ in
+                        if !cleanupSucceeds {
+                            throw AccountLocalDeletionFailure(dailyCacheUserID: nil, liveRecoveryPending: true)
+                        }
+                    },
+                    hasPendingDeletedLiveCleanup: { _ in liveCleanupPending })
+                await model.start()
+                await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+                await waitForAccountCondition { !model.isLoadingProfile }
+                if deletesAccount { await model.deleteAccount() }
+                else { await model.signOut() }
+                let guidance = model.errorMessage
+                XCTAssertEqual(guidance == nil, cleanupSucceeds)
+
+                // Count consumer callbacks to prove each post-intent event was
+                // delivered, including identity-neutral duplicates.
+                for _ in 0..<2 {
+                    let previous = nilNotifications
+                    service.emit(nil)
+                    await waitForAccountCondition { nilNotifications == previous + 1 }
+                    XCTAssertEqual(model.errorMessage, guidance)
+                    XCTAssertNil(model.session)
+                    XCTAssertNil(model.profile)
+                }
+                if !cleanupSucceeds {
+                    let recovery = AccountAuthRecovery(action: .cleanup, storageIssue: nil)
+                    let previous = nilNotifications
+                    service.emitState(AccountAuthState(session: nil, recovery: recovery))
+                    await waitForAccountCondition { nilNotifications == previous + 1 }
+                    XCTAssertEqual(model.authRecovery, recovery)
+                    XCTAssertNotNil(model.errorMessage)
+                    if deletesAccount {
+                        XCTAssertTrue(model.errorMessage?.contains("Retry account cleanup") == true)
+                        liveCleanupPending = false
+                        XCTAssertFalse(model.errorMessage?.contains("Open Live Race") == true)
+                    }
+                    let beforeResolution = nilNotifications
+                    service.emit(nil)
+                    await waitForAccountCondition { nilNotifications == beforeResolution + 1 }
+                    XCTAssertNil(model.authRecovery)
+                    liveCleanupPending = false
+                    XCTAssertNil(model.errorMessage)
+
+                    model.clearError()
+                    let beforeDismissedEvent = nilNotifications
+                    service.emit(nil)
+                    await waitForAccountCondition { nilNotifications == beforeDismissedEvent + 1 }
+                    XCTAssertNil(model.errorMessage, "Dismissed guidance must not resurrect")
+
+                    // A new intent clears old guidance even if it settles nil.
+                    model.noncePreparationFailed()
+                    await model.restoreSession()
+                    XCTAssertNil(model.errorMessage)
+                    model.noncePreparationFailed()
+                    let replacement = UUID()
+                    service.loadedProfile = profile(userID: replacement, name: "Blair", setupCompleted: true)
+                    service.emit(session(replacement))
+                    await waitForAccountCondition { model.session?.userID == replacement }
+                    XCTAssertNil(model.errorMessage, "Replacement identity clears old guidance")
+                }
+            }
+        }
+    }
+
+    func testSignedOutCredentialGuidanceResolvesButRemoteLogoutNoticeRemains() async {
+        for credentialsNeedCleanup in [false, true] {
+            let service = AccountServiceMock()
+            let owner = UUID()
+            service.appleSession = session(owner)
+            service.loadedProfile = profile(userID: owner, name: "Alex", setupCompleted: true)
+            service.remoteLogoutFailed = !credentialsNeedCleanup
+            if credentialsNeedCleanup { service.signOutRecovery = .init(action: .cleanup, storageIssue: nil) }
+            var nilNotifications = 0
+            let model = AccountModel(service: service,
+                didChangeSession: { if $0 == nil { nilNotifications += 1 } })
+            await model.start()
+            await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+            await model.signOut()
+            let guidance = model.errorMessage
+            XCTAssertNotNil(guidance)
+            let beforePending = nilNotifications
+            service.emitState(AccountAuthState(session: nil, recovery: service.signOutRecovery))
+            await waitForAccountCondition { nilNotifications == beforePending + 1 }
+            XCTAssertEqual(model.errorMessage, guidance)
+            for _ in 0..<2 {
+                let previous = nilNotifications
+                service.emit(nil)
+                await waitForAccountCondition { nilNotifications == previous + 1 }
+                if credentialsNeedCleanup { XCTAssertNil(model.errorMessage) }
+                else { XCTAssertEqual(model.errorMessage, guidance) }
+            }
+        }
+    }
+
+    func testPendingLifecycleGuidanceClearsOnDismissalNewIntentAndReplacement() async {
+        for deletesAccount in [false, true] {
+            for action in ["dismiss", "restore", "replacement"] {
+                let service = AccountServiceMock()
+                let owner = UUID()
+                service.appleSession = session(owner)
+                service.loadedProfile = profile(userID: owner, name: "Alex", setupCompleted: true)
+                var nilNotifications = 0
+                let model = AccountModel(service: service,
+                    didChangeSession: { if $0 == nil { nilNotifications += 1 } },
+                    didSignOut: { _ in false },
+                    didDeleteAccount: { _ in
+                        throw AccountLocalDeletionFailure(dailyCacheUserID: nil, liveRecoveryPending: true)
+                    }, hasPendingDeletedLiveCleanup: { _ in true })
+                await model.start()
+                await model.signInWithApple(idToken: "token", rawNonce: "nonce")
+                if deletesAccount { await model.deleteAccount() }
+                else { await model.signOut() }
+                XCTAssertTrue(model.errorMessage?.contains("Open Live Race") == true)
+                switch action {
+                case "dismiss": model.clearError()
+                case "restore": await model.restoreSession()
+                default:
+                    let replacement = UUID()
+                    service.loadedProfile = profile(userID: replacement, name: "Blair", setupCompleted: true)
+                    service.emit(session(replacement))
+                    await waitForAccountCondition { model.session?.userID == replacement }
+                }
+                XCTAssertNil(model.errorMessage)
+                for _ in 0..<2 {
+                    let previous = nilNotifications
+                    service.emit(nil)
+                    await waitForAccountCondition { nilNotifications == previous + 1 }
+                    XCTAssertNil(model.errorMessage, "Pending cleanup must not resurrect dismissed presentation")
+                }
+                XCTAssertEqual(service.deleteCount, deletesAccount ? 1 : 0)
+            }
+        }
     }
 
     func testInitialSnapshotPrecedesImmediateRestoreAndLaterNilRemainsAuthoritative() async {
@@ -1778,6 +1946,8 @@ final class AccountServiceMock: AccountServicing {
     var loadedUserIDs: [UUID] = []
     var profileUpdateCount = 0
     var signOutCount = 0
+    var signOutRecovery: AccountAuthRecovery?
+    var remoteLogoutFailed = false
     var deleteCount = 0
     var lastProfileUpdate: (name: String, seed: String)?
 
@@ -1833,8 +2003,8 @@ final class AccountServiceMock: AccountServicing {
 
     func signOut() async -> AccountSignOutOutcome {
         signOutCount += 1
-        currentState = AccountAuthState(session: nil)
-        return AccountSignOutOutcome(localRecovery: nil, remoteLogoutFailed: false)
+        currentState = AccountAuthState(session: nil, recovery: signOutRecovery)
+        return AccountSignOutOutcome(localRecovery: signOutRecovery, remoteLogoutFailed: remoteLogoutFailed)
     }
 
     func deleteAccount() async throws -> ConfirmedAccountDeletion {
@@ -1865,6 +2035,8 @@ private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchec
     var rejectsLoads = false
     var rejectsClears = false
     var clearFailuresRemaining = 0
+    private var attemptedClears = 0
+    var clearAttempts: Int { lock.withLock { attemptedClears } }
 
     var storedState: LiveRecoveryState {
         lock.withLock { state }
@@ -1887,6 +2059,7 @@ private final class AccountLifecycleLiveStore: LiveMatchRecoveryStoring, @unchec
 
     func clear() throws {
         try lock.withLock {
+            attemptedClears += 1
             if clearFailuresRemaining > 0 {
                 clearFailuresRemaining -= 1
                 throw TestError.failed

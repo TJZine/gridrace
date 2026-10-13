@@ -146,6 +146,13 @@ durably clear live recovery, former-account Daily/account data stays hidden and 
 shows the Live row's “Resolve” action, which opens Live for retry or confirmed
 discard.
 
+Duplicate signed-out notifications retain completed sign-out/deletion guidance
+until explicit dismissal, a new account intent or replacement identity, or resolution
+of its cleanup obligation. They still invalidate obsolete profile/session work and
+notify Daily/Live consumers. Deletion guidance evaluates current Auth, Daily and
+Live cleanup obligations; resolved work is no longer advertised. Successful cleanup
+does not present a failure notice, and dismissal is not undone by another nil event.
+
 Uncertain account deletion exposes Retry account deletion and a local sign-out
 escape. A validated authentication rejection exposes Check pending account deletion
 and explains how to sign in to the same account before explicitly choosing Delete
