@@ -32,3 +32,21 @@ belong in their task records; historical plans do not reactivate automatically.
 
 This index does not resume UI implementation, accept outstanding OS
 checks, or establish hosted, physical-device or distribution readiness.
+
+## Retired plans in Git history
+
+The completed records below have been retired from the tracked documentation.
+Their full text, decisions and evidence remain in Git at
+`a71243a12d013cfb8ec3c370b1bb84bac51ec3a8`. To read one, run
+`git show a71243a12d013cfb8ec3c370b1bb84bac51ec3a8:docs/plans/FILE`, replacing
+`FILE` with a filename from this table. Historical results apply only to their
+recorded source and environment; retiring a plan does not complete outstanding
+device, provider, accessibility or release acceptance.
+
+| Filename | Reason for retirement / current owner |
+| --- | --- |
+| `2026-08-30-repository-foundation.md` | Closed instruction bootstrap; current guidance lives in AGENTS.md, the project profile and engineering entrypoint. |
+| `2026-08-30-phase-0-1-foundation.md` | Closed product/tutorial foundation; current behavior lives in the product, rules, architecture and screen contracts. |
+| `2026-08-31-accounts-daily-sync.md` | Closed local account/sync milestone; current architecture/privacy contracts and later remediation retain provider/device limits. |
+| `2026-09-05-remaining-adversarial-remediation.md` | Closed repairs and dated hosted-CI proof; retained September 4 history points here for retrieval. |
+| `2026-10-13-friends-beta-orchestrator-handoff.md` | Completed implementation kickoff; the friends-beta roadmap and implementation checkpoint own current scope, proof and remaining release decisions. |

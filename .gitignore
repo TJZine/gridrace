@@ -2,6 +2,10 @@ node_modules/
 __pycache__/
 *.py[cod]
 
+# macOS metadata and generated local review context
+.DS_Store
+.codex/cache/
+
 .env
 .env.*
 !.env.example

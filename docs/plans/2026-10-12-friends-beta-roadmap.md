@@ -379,9 +379,11 @@ spend or remote action is authorized by choosing the feature defaults.
 
 ## Historical planning dispatch and handoff
 
-The [implementation orchestrator handoff](2026-10-13-friends-beta-orchestrator-handoff.md)
-is the prepared kickoff packet with inspected role/model assignments. It is not
-an execution checkpoint and its preparation has not dispatched implementation.
+The implementation orchestrator handoff was the prepared kickoff packet with
+inspected role/model assignments. It has been retired to
+[Git history](../NOW.md#retired-plans-in-git-history) after local implementation
+completed. The implementation plan owns the execution checkpoint; the retired
+packet does not dispatch or reactivate work.
 
 Original human request is retrievable in the main chat, turn
 `01a13319-4a02-7831-92a0-2c9dffdbafa3`, user message
