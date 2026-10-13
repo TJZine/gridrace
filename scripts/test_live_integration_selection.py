@@ -162,6 +162,92 @@ check_lock() { return 0; }
             self.assertEqual((proof / "cleanup-status.txt").read_text(),
                              "cleanup_failed=0\nrun_completed=0\n")
 
+    def test_disposable_log_gate_rejects_skips_and_inspection_errors_with_cleanup(self):
+        source = DRIVER.read_text()
+
+        def function(name):
+            start = source.index(f"{name}() {{")
+            end = source.index("\n}\n", start) + 3
+            return source[start:end]
+
+        # Execute the real checking and EXIT cleanup owners. Only external
+        # runtime operations are replaced with isolated dummy fixtures.
+        method = "testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured"
+        marker = "PASS disposable Daily two-client sync and deletion"
+        for case, log, scanner_error, succeeds in [
+            ("passed-only", f"{method} passed\n{marker}\n", False, True),
+            ("passed-plus-skipped", f"{method} passed\n{method} skipped\n{marker}\n", False, False),
+            ("missing-positive", f"{method} skipped\n{marker}\n", False, False),
+            ("scanner-error", f"{method} passed\n{marker}\n", True, False),
+        ]:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "fixture.log").write_text(log)
+                script = r'''
+set -euo pipefail
+work_dir=$1
+host_simulator=owned-simulator
+run_tag=dummy-run
+receipt_name=dummy-receipt
+API_URL=http://127.0.0.1:1
+ANON_KEY=dummy-public-key
+host_pid=""; guest_pid=""; third_pid=""; failed_guess=""; cron_paused=0
+run_completed=1
+baseline='{"auth":0,"matches":0}'
+baseline_receipts='[]'
+SERVICE_ROLE_KEY=dummy-service-key
+DB_URL=dummy-db-url
+declare -a created_users=() created_matches=() proof_simulators=(owned-simulator) installed_simulators=(owned-simulator)
+xcode_flags=(-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates)
+derived_data=$work_dir
+package_cache=$work_dir
+create_user() {
+  fixture_user_id=owned-user; fixture_email=dummy@example.test; fixture_password=dummy
+  created_users+=("$fixture_user_id")
+}
+write_receipt() { :; }
+env() { cat "$work_dir/fixture.log"; }
+xcrun() {
+  printf '%s\n' "$*" >> "$work_dir/runtime-operations.txt"
+  if [[ $1 == simctl && $2 == get_app_container ]]; then printf '%s\n' "$work_dir/client-container"; fi
+}
+scan_client_credentials() { [[ $1 == "$work_dir/client-container" ]]; }
+sql_scalar() {
+  printf '%s\n' "$1" >> "$work_dir/sql-operations.txt"
+  case $1 in
+    *jsonb_build_object*) printf '%s\n' "$baseline" ;;
+    *account_deletion_receipts*) printf '%s\n' "$baseline_receipts" ;;
+    *) printf '0\n' ;;
+  esac
+}
+check_lock() { :; }
+'''
+                if scanner_error:
+                    script += r'''
+rg() {
+  if [[ $1 == -qi ]]; then
+    echo 'private scanner diagnostic' >&2
+    return 2
+  fi
+  command rg "$@"
+}
+'''
+                script += function("cleanup") + "\ntrap cleanup EXIT\n"
+                script += function("run_disposable_daily_test") + "\n"
+                script += f"run_disposable_daily_test GridRaceTests/DailySyncTests/{method} daily\n"
+                script += f"rg -q '{marker}' \"$work_dir/daily.log\"\n"
+                result = subprocess.run(["bash", "-c", script, "log-gate", directory],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0 if succeeds else 1, result.stdout + result.stderr)
+                self.assertEqual((root / "cleanup-status.txt").read_text(), "cleanup_failed=0\nrun_completed=1\n")
+                self.assertIn("delete from auth.users where id='owned-user'",
+                              (root / "sql-operations.txt").read_text())
+                self.assertIn("delete owned-simulator", (root / "runtime-operations.txt").read_text())
+                self.assertNotIn("private scanner diagnostic", result.stderr)
+                self.assertNotIn(directory, result.stderr)
+                self.assertEqual("PASS disposable daily Auth deletion verified by host" in result.stdout,
+                                 succeeds, result.stdout + result.stderr)
+
     def test_backend_entrypoint_info_and_invalid_selection_need_no_permissions(self):
         command = ["deno", "run", "--cached-only", "--config",
                    str(ROOT / "supabase/functions/deno.json"),

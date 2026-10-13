@@ -383,7 +383,7 @@ assert_sql_reveal() {
 }
 # Each destructive native proof owns a distinct newly created disposable account.
 run_disposable_daily_test() {
-  local selector=$1 slug=$2 user_id method
+  local selector=$1 slug=$2 user_id method skip_status
   create_user
   user_id=$fixture_user_id
   method=${selector##*/}
@@ -408,7 +408,16 @@ ENV
     -maximum-test-execution-time-allowance 180 -collect-test-diagnostics never \
     -only-testing:"$selector" >"$work_dir/$slug.log" 2>&1
   rg -q "$method.*passed" "$work_dir/$slug.log"
-  ! rg -qi "$method.*skipped" "$work_dir/$slug.log"
+  if rg -qi "$method.*skipped" "$work_dir/$slug.log" 2>/dev/null; then
+    echo "FAIL: disposable $slug skipped" >&2
+    return 1
+  else
+    skip_status=$?
+    if [[ $skip_status != 1 ]]; then
+      echo "FAIL: disposable $slug skip inspection unavailable" >&2
+      return 1
+    fi
+  fi
   [[ $(sql_scalar "select count(*) from auth.users where id='$user_id'") == 0 ]]
   xcrun simctl terminate "$host_simulator" com.example.GridRace >/dev/null 2>&1 || true
   check_lock
