@@ -3,6 +3,12 @@
 This page is navigation. Current checkpoints, evidence, blockers and next actions
 belong in their task records; historical plans do not reactivate automatically.
 
+- [Friends beta roadmap](plans/2026-10-12-friends-beta-roadmap.md) owns accepted
+  two-player-first product decisions and later candidates. Its
+  [reviewed implementation plan](plans/2026-10-12-friends-beta-implementation.md)
+  records completed local software, independent review and scoped evidence. External release decisions
+  remain open, and Stamped S4 retains its acceptance ownership.
+
 - [Active Stamped UI Refresh](plans/2026-10-03-stamped-ui-refresh.md) owns accepted
   presentation work and the transferred Phase 4 A9 acceptance. Use its current
   checkpoint and pending human decisions when continuing, through the
