@@ -194,7 +194,6 @@ final class GameRulesTests: XCTestCase {
     }
 
     func testExcessGuessRepeatVectorMatchesCanonicalFeedback() {
-        // Canonical vector `excess-guess-repeat`: answer `grape`, guess `apple`.
         XCTAssertEqual(
             GameRules.evaluate(answer: "grape", guess: "apple"),
             [.present, .present, .absent, .absent, .correct]

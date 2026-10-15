@@ -2,7 +2,6 @@ import Foundation
 import Security
 import Supabase
 
-/// Matches the SDK's existing Apple Keychain namespace, but makes absence a normal result.
 final class SecureAuthStorage: AuthLocalStorage, @unchecked Sendable {
     struct Operations: @unchecked Sendable {
         var read: ([String: Any]) -> (OSStatus, Data?)
@@ -60,7 +59,6 @@ final class SecureAuthStorage: AuthLocalStorage, @unchecked Sendable {
     }
 }
 
-/// Irreversible SDK storage authority. Old SDK migration removes cannot erase a later login.
 final class AuthStorageGate: AuthLocalStorage, @unchecked Sendable {
     private enum Mode { case open, logout(Data?), retired }
     private let lock = NSLock()
@@ -107,7 +105,7 @@ final class AuthStorageGate: AuthLocalStorage, @unchecked Sendable {
             case .retired: return
             case .logout:
                 guard key == sessionKey else { return }
-                mode = .retired // SDK has acquired its logout bearer before this remove.
+                mode = .retired
             case .open: break
             }
             do { try backend.remove(key: key) }
@@ -163,7 +161,7 @@ final class AuthClientLifetime: @unchecked Sendable {
             guard valid && !retired else { throw CancellationError() }
             guard generation == expected else { throw CancellationError() }
             let registration = ChannelRegistration(id: UUID(), channel: client.channel(topic), finish: finish)
-            channels[registration.id] = registration // Registered BEFORE any subscription await.
+            channels[registration.id] = registration
             return registration
         }
     }
@@ -179,7 +177,6 @@ final class AuthClientLifetime: @unchecked Sendable {
         for registration in owned { registration.finish() }
         return owned
     }
-    /// Disconnect is synchronous and precedes all storage/logout suspensions.
     func retireConsumers() -> [ChannelRegistration] {
         let owned = lock.withLock {
             valid = false
@@ -196,7 +193,7 @@ final class AuthClientLifetime: @unchecked Sendable {
     func removeChannel(_ registration: ChannelRegistration) async {
         let owns = lock.withLock { channels.removeValue(forKey: registration.id) != nil }
         guard owns else { return }
-        await registration.channel.unsubscribe() // Also cancels SDK .subscribing task.
+        await registration.channel.unsubscribe()
         await client.removeChannel(registration.channel)
     }
     func finishRetirement(_ owned: [ChannelRegistration]) async {

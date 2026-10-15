@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-/// Explicit per-build origins. An absent or malformed configuration disables links;
-/// manual room codes remain available.
 struct LiveInvitationConfiguration: Sendable {
     let origins: [URL]
     var parser: LiveInvitationParser? { try? LiveInvitationParser(allowedOrigins: origins) }
@@ -59,7 +57,6 @@ final class LiveInvitationCoordinator {
         restore()
     }
     static func applicationSupport() -> LiveInvitationCoordinator {
-        // Construction remains retryable even when protected storage is locked.
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appending(path: "GridRace", directoryHint: .isDirectory)
         return LiveInvitationCoordinator(cleanupJournal: AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: directory)),
@@ -77,7 +74,6 @@ final class LiveInvitationCoordinator {
         guard let invitation = configuration.parser?.parse(url) else { invalidLink = true; isPresented = true; return }
         invalidLink = false
         replacementApproved = false
-        // Unknown/corrupt bytes cannot be overwritten by an arriving link.
         do {
             let store = try storage()
             pending = try store.load()
@@ -95,7 +91,7 @@ final class LiveInvitationCoordinator {
             guard durable == pending else {
                 pending = durable
                 isPresented = true
-                return // Another scene changed the value; confirm against its current code.
+                return
             }
         } catch { storageFailed = true; return }
         unsaved = replacement
@@ -104,7 +100,6 @@ final class LiveInvitationCoordinator {
     }
     private func persistArrival() throws {
         guard let unsaved else { return }
-        // An unidentified old value must be cleared before claiming a new one saved.
         guard !cleanupJournal.records.contains(where: { $0.invitationClearRequired == true && $0.invitationGeneration == nil }) else {
             throw PendingLiveInvitationStoreError.unavailable
         }
@@ -142,7 +137,7 @@ final class LiveInvitationCoordinator {
                live.completedInvitationAccountID == admissionClearUser,
                live.completedInvitationGeneration == admissionClearGeneration,
                live.phase == .storageUnavailable {
-                live.retry() // Explicit storage retry uses the existing captured recovery owner.
+                live.retry()
             }
             try acknowledgeAdmission()
             if let unsaved, let pending, pending.code != unsaved.code, !replacementApproved {
@@ -153,8 +148,6 @@ final class LiveInvitationCoordinator {
             storageFailed = false
         } catch { storageFailed = true }
     }
-    /// Runs before Auth departure. If the journal cannot capture the barrier,
-    /// departure is stopped; a failed remove is durable and can be retried later.
     func prepareForAccountDeparture(_ userID: UUID) throws {
         let value = try? storage().load()
         try cleanupJournal.captureInvitation(userID, generation: value?.replacementGeneration, replacingCapturedValue: true)
@@ -177,8 +170,6 @@ final class LiveInvitationCoordinator {
         } catch { storageFailed = true }
     }
     func admitted(generation: UUID, userID: UUID? = nil) {
-        // The session publishes this captured pair only for its bound account.
-        // Obsolete UI callbacks cannot clear navigation or flag the next account.
         if let live, let userID,
            (boundUserID != userID || live.completedInvitationAccountID != userID || live.completedInvitationGeneration != generation) { return }
         admissionClearGeneration = generation; admissionClearUser = userID
@@ -190,7 +181,7 @@ final class LiveInvitationCoordinator {
                 try storage().clear(matchingGeneration: generation)
             }
             if let userID { try cleanupJournal.completeInvitation(userID) }
-            pending = try storage().load() // Successful read also proves absent/replaced generations.
+            pending = try storage().load()
             try acknowledgeAdmission()
             storageFailed = false
         } catch { storageFailed = true }
@@ -204,12 +195,9 @@ final class LiveInvitationCoordinator {
                 throw PendingLiveInvitationStoreError.unavailable
             }
         }
-        // An obsolete account's acknowledgment is simply fenced, never surfaced
-        // as a storage error belonging to the current account.
         admissionClearGeneration = nil; admissionClearUser = nil
         acknowledgmentFailed = false
     }
-    /// Restored invitations fence successor following before any Live entry.
     func bind(_ live: LiveMatchSession, userID: UUID?) {
         self.live = live
         boundUserID = userID
@@ -246,7 +234,6 @@ final class LiveInvitationCoordinator {
         } catch { storageFailed = true; return false }
         app.live.joinMatch(code: confirmation.invitation.code,
                            invitationGeneration: confirmation.invitation.replacementGeneration)
-        // A blocked/failed write remains visible and never claims admission.
         guard case .join = app.live.pendingIntent else { return false }
         isPresented = false
         return true

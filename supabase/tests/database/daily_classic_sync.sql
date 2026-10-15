@@ -232,8 +232,6 @@ select is(
   'hard mode cannot change after an accepted guess'
 );
 
--- A started incoming attempt beats a different mode only while stored progress
--- is empty. Stale revisions must leave the stored selection/board untouched.
 select is(
   public.sync_daily_progress(
     'daily-classic-2026-09-06', 7, 20702, 'daily-classic-en-US-v1', 1, true,

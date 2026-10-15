@@ -1,5 +1,3 @@
--- Run only on the controller-owned disposable pre-migration baseline.
--- Retained proof includes every fixture table and legacy receipts, before and after.
 begin;
 insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at)
 select ('d3000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,

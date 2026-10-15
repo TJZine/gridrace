@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# P4-V real two-process proof. Controller must inventory the unlinked loopback
-# stack, apply existing migrations, and own a running Edge gateway before use.
-# No reset/start/stop of the shared backend. Each run creates two disposable
-# simulators and unique Auth/match/non-answer-word fixtures; cleanup owns only those.
-# Logs and xcresults remain in the printed /tmp proof directory after cleanup.
-# Requires macOS/Xcode, iOS 26.5, cached frozen SourcePackages, Deno, npm and psql.
-# Set GRIDRACE_INTEGRATION_STACK_DIR and GRIDRACE_SOURCE_PACKAGES_CACHE; see
-# scripts/LOCAL_INTEGRATION.md for receipt admission and owned-stack setup.
-# Product 1/3/5 rounds relaunch both clients at every reveal. Cron 1/3 waits the
-# original 180-second deadlines with both clients stopped. Deletion restores the
-# surviving container at nonfinal and final boundaries. Budget roughly 20 minutes.
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 source "$repo_root/scripts/live_integration_selection.sh"
 parse_integration_selection "$@"
@@ -23,7 +12,6 @@ cd "$repo_root"
 source "$repo_root/scripts/scan_client_credentials.sh"
 stack_dir=${GRIDRACE_INTEGRATION_STACK_DIR:-$repo_root}
 [[ -f "$stack_dir/supabase/config.toml" ]] || exit 2
-# Names are not ownership evidence; the controller inventories this exact directory.
 [[ $(sed -n 's/^project_id = "\([^"]*\)"/\1/p' "$stack_dir/supabase/config.toml") != "" ]] || exit 2
 [[ ! -e "$stack_dir/supabase/.temp/project-ref" && ! -e "$stack_dir/.supabase/project-ref" ]] || {
   echo "REFUSED: linked Supabase project" >&2; exit 2;
@@ -60,7 +48,6 @@ check_lock
 if integration_has_native_scenarios; then
   [[ -d "$package_cache" ]] || { echo "UNAVAILABLE: retained SourcePackages cache" >&2; exit 2; }
 fi
-# Keep privileged environment private to this orchestrator, never exported to Xcode.
 eval "$(npx --no-install supabase --workdir "$stack_dir" status -o env 2>/dev/null)"
 export -n API_URL ANON_KEY SERVICE_ROLE_KEY DB_URL JWT_SECRET 2>/dev/null || true
 [[ $API_URL =~ ^http://(127\.0\.0\.1|localhost):([1-9][0-9]*)$ ]] || exit 2
@@ -79,7 +66,7 @@ baseline_receipts=$(sql_scalar "select coalesce(jsonb_agg(token_hash order by to
 printf '%s\n' "$baseline_receipts" > "$work_dir/baseline-receipt-hashes-private.json"
 chmod 600 "$work_dir/baseline-receipt-hashes-private.json"
 [[ $(sql_scalar "select allow_new_rematches from private.live_feature_configuration") == f ]] || { echo "REFUSED: expected controller default-off feature baseline" >&2; exit 2; }
-host_pid=""; guest_pid=""; third_pid=""; failed_guess=""; cron_paused=0; cron_job_id=""; cron_baseline_active=""; run_completed=0
+host_pid=""; guest_pid=""; third_pid=""; failed_guess=""; cron_restore_required=0; cron_job_id=""; cron_baseline_active=""; run_completed=0
 declare -a created_users=() created_matches=() proof_simulators=() installed_simulators=()
 : > "$work_dir/client-credential-scan-status.tsv"
 chmod 600 "$work_dir/client-credential-scan-status.tsv"
@@ -93,8 +80,6 @@ cleanup() {
   for pid in "$host_pid" "$guest_pid" "$third_pid"; do
     [[ -z "$pid" ]] || { kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; }
   done
-  # Failure paths must observe installed client containers before disposal too.
-  # XCTest may relocate the data container, so resolve it again after workers stop.
   for simulator in ${installed_simulators[@]+"${installed_simulators[@]}"}; do
     scan_status=1
     if scan_container=$(xcrun simctl get_app_container "$simulator" com.example.GridRace data 2>/dev/null); then
@@ -104,7 +89,6 @@ cleanup() {
     printf '%s\t%s\n' "$simulator" "$scan_status" >> "$work_dir/client-credential-scan-status.tsv"
     [[ $scan_status == 0 ]] || { echo "FAIL: owned client credential scan before disposal" >&2; cleanup_failed=1; }
   done
-  # Also capture a Create whose response/process failed before normal registration.
   for user_id in ${created_users[@]+"${created_users[@]}"}; do
     sql_scalar "delete from public.matches where id in (select match_id from public.match_members where auth_user_id='$user_id')" >/dev/null || cleanup_failed=1
   done
@@ -117,8 +101,6 @@ cleanup() {
   if [[ -n "$failed_guess" ]]; then
     sql_scalar "delete from private.words where word='$failed_guess' and not is_answer" >/dev/null || cleanup_failed=1
   fi
-  # The exclusive runtime lease admits only run-owned Auth fixture mutations.
-  # Preserve every baseline tombstone and remove only the new private hash delta.
   sql_scalar "select coalesce(jsonb_agg(token_hash order by token_hash),'[]'::jsonb)::text from private.account_deletion_receipts where token_hash not in (select jsonb_array_elements_text('$baseline_receipts'::jsonb))" > "$work_dir/owned-receipt-hashes-private.json" || cleanup_failed=1
   chmod 600 "$work_dir/owned-receipt-hashes-private.json" || cleanup_failed=1
   sql_scalar "delete from private.account_deletion_receipts where token_hash not in (select jsonb_array_elements_text('$baseline_receipts'::jsonb))" >/dev/null || cleanup_failed=1
@@ -130,7 +112,7 @@ cleanup() {
     xcrun simctl shutdown "$simulator" >/dev/null 2>&1
     xcrun simctl delete "$simulator" >/dev/null 2>&1 || cleanup_failed=1
   done
-  if [[ $cron_paused == 1 ]]; then
+  if [[ $cron_restore_required == 1 ]]; then
     sql_scalar "select cron.alter_job($cron_job_id, active:=true)" >/dev/null || cleanup_failed=1
     [[ $(sql_scalar "select active from cron.job where jobid=$cron_job_id and username=current_user") == "$cron_baseline_active" ]] || cleanup_failed=1
   fi
@@ -154,7 +136,6 @@ status=$(curl --silent --output /dev/null --write-out '%{http_code}' --request P
   --header "apikey: $ANON_KEY" --header "Authorization: Bearer $ANON_KEY" \
   --header 'Content-Type: application/json' --data '{"client_build":3}' "$API_URL/functions/v1/create-match")
 [[ $status == 400 ]] || { echo "UNAVAILABLE: controller-owned Edge gateway" >&2; exit 2; }
-# Do not replace or delete a preexisting non-answer fixture.
 if integration_has_live_scenarios; then
 for _ in {1..20}; do
   candidate=$(python3 -c 'import secrets,string; print("z"+"".join(secrets.choice(string.ascii_lowercase) for _ in range(4)))')
@@ -162,7 +143,6 @@ for _ in {1..20}; do
   [[ -n "$failed_guess" ]] && break
 done
 [[ -n "$failed_guess" ]] || { echo "UNAVAILABLE: unique non-answer fixture" >&2; exit 2; }
-# Record a digest for controller cleanup inventory without storing the guess word.
 printf 'non_answer_word_sha256\t%s\n' "$(printf '%s' "$failed_guess" | shasum -a 256 | awk '{print $1}')" >> "$work_dir/owned-fixtures.tsv"
 fi
 run_tag=$(uuidgen)
@@ -185,7 +165,6 @@ xcodebuild -project ios/GridRace.xcodeproj -scheme GridRace "${xcode_flags[@]}" 
   -clonedSourcePackagesDirPath "$package_cache" -destination "platform=iOS Simulator,id=$host_simulator" \
   -derivedDataPath "$derived_data" build-for-testing >"$work_dir/build-for-testing.log" 2>&1
 check_lock
-# Install the host app before receipt delivery; XCTest uses this same container.
 app_path="$derived_data/Build/Products/Debug-iphonesimulator/GridRace.app"
 for simulator in "${proof_simulators[@]}"; do
   xcrun simctl install "$simulator" "$app_path"
@@ -247,7 +226,6 @@ run_client() {
     xcrun simctl spawn "$simulator" launchctl unsetenv GRIDRACE_LIVE_WAIT_FOR_SELECTION
     xcrun simctl spawn "$simulator" launchctl unsetenv GRIDRACE_SELECTION_COORDINATION_ID
   fi
-  # These launchd environments belong exclusively to newly created simulators.
   local name value client_status client_pid test_guess=${11:-$failed_guess} user_id
   if [[ $email == "$host_email" ]]; then user_id=$host_id
   elif [[ $email == "$guest_email" ]]; then user_id=$guest_id
@@ -300,7 +278,6 @@ ENV
     echo "FAIL: real client proof absent or skipped" >&2
     client_status=1
   fi
-  # XCTest's host application must also be stopped before the no-client Cron wait.
   xcrun simctl terminate "$simulator" com.example.GridRace >/dev/null 2>&1
   check_lock || client_status=1
   set -e
@@ -338,8 +315,6 @@ start_pair() {
   create_user; host_id=$fixture_user_id; host_email=$fixture_email; host_password=$fixture_password
   create_user; guest_id=$fixture_user_id; guest_email=$fixture_email; guest_password=$fixture_password
   match_id=""; join_code=""; pair_coordination_id=$(uuidgen)
-  # Cold guest Xcode startup is outside the host's roster wait. The admitted
-  # guest blocks before feature work until the host's real public code arrives.
   run_client "$guest_simulator" "$guest_role" "$scenario" "$guest_email" "$guest_password" \
     "$work_dir/$(integration_client_log_basename "$scenario" "$count" "$pair_sequence" "$pair_phase" 1 "$guest_role" guest)" "" "" "$count" 1 & guest_pid=$!
   guest_ready=0
@@ -381,7 +356,6 @@ assert_sql_reveal() {
   [[ $(sql_scalar "select count(*) from public.rounds where match_id='$match_id' and state='revealed'") == "$target" ]]
   [[ $(sql_scalar "select count(distinct answer) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='$match_id'") == "$target" ]]
 }
-# Each destructive native proof owns a distinct newly created disposable account.
 run_disposable_daily_test() {
   local selector=$1 slug=$2 user_id method skip_status
   create_user
@@ -426,6 +400,42 @@ ENV
   done
   echo "PASS disposable $slug Auth deletion verified by host"
 }
+run_selection_change_between_canonical_reads() {
+  local predecessor=$1 successor=$2
+  selection_coordination_id=$(uuidgen)
+  run_client "$third_simulator" friends-select friends "$host_email" "$host_password" \
+    "$work_dir/friends-3-selection-third.log" "" "$successor" 3 3 & third_pid=$!
+  third_ready=0
+  for _ in {1..1800}; do
+    third_container=$(xcrun simctl get_app_container "$third_simulator" com.example.GridRace data)
+    selection_root="$third_container/Library/Application Support/GridRaceIntegration/Coordination/$selection_coordination_id"
+    [[ ! -f "$selection_root/ready" ]] || { third_ready=1; break; }
+    sleep 0.1
+  done
+  [[ $third_ready == 1 ]] || { echo 'FAIL: admitted third native readiness absent' >&2; exit 1; }
+  host_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
+  barrier_root="$host_container/Library/Application Support/GridRaceIntegration"
+  rm -f "$barrier_root/selection-read-barrier" "$barrier_root/selection-read-release"
+  run_client "$host_simulator" friends-race friends "$host_email" "$host_password" \
+    "$work_dir/friends-3-selection-race-host.log" "" "$predecessor" 3 3 & host_pid=$!
+  barrier_ready=0
+  for _ in {1..900}; do
+    current_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
+    barrier_root="$current_container/Library/Application Support/GridRaceIntegration"
+    [[ ! -f "$barrier_root/selection-read-barrier" ]] || { barrier_ready=1; break; }
+    sleep 0.1
+  done
+  [[ $barrier_ready == 1 ]] || { echo 'FAIL: real predecessor read barrier absent' >&2; exit 1; }
+  third_container=$(xcrun simctl get_app_container "$third_simulator" com.example.GridRace data)
+  touch "$third_container/Library/Application Support/GridRaceIntegration/Coordination/$selection_coordination_id/select-now"
+  wait "$third_pid"; third_pid=""
+  selection_coordination_id=""
+  current_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
+  touch "$current_container/Library/Application Support/GridRaceIntegration/selection-read-release"
+  wait "$host_pid"; host_pid=""
+  rg -q 'INJECTION third-account selection between real predecessor and successor reads' "$work_dir/friends-3-selection-race-host.log"
+  rg -q 'PASS live client stale pointer passive epoch unchanged then explicit pinned Resume' "$work_dir/friends-3-selection-race-host.log"
+}
 if integration_selected deletion-receipt; then
 run_disposable_daily_test \
   GridRaceTests/AccountAuthLifecycleTests/testLocalCommittedDeletionReceiptAfterLostResponseAndIssuedRefreshWhenConfigured \
@@ -448,8 +458,6 @@ for count in 1 3 5; do
   done
   launch_round resume resume product "$count" "$count"
 done
-# Controlled privileged fixture knowledge becomes a test input only. Neither
-# authenticated client reads secrets or gets a privileged credential.
 if integration_selected mixed-3; then
 start_pair mixed 3
 for target in 1 2 3; do
@@ -468,8 +476,6 @@ for target in 1 2 3; do
 done
 launch_round resume resume mixed 3 3
 fi
-# Each test process exits at playing; only SQL observations occur until Cron reveals.
-# No timestamp mutation, snapshot request or manual finalize is used during the wait.
 for count in 1 3; do
   integration_selected "cron-$count" || continue
   start_pair cron "$count"
@@ -483,8 +489,6 @@ for count in 1 3; do
     echo "PASS original deadline/Cron with both clients stopped count $count round $target"
   done
 done
-# Delete a stopped guest through the existing privileged deletion preparation, then
-# remove only that owned Auth identity. Real API deletion/concurrency uses B below.
 for count in 1 3; do
   integration_selected "deletion-$count" || continue
   start_pair deletion "$count"
@@ -503,8 +507,6 @@ if integration_selected product-1 || integration_selected product-3 || integrati
 rg -q 'INJECTION dropped real Realtime signal' "$work_dir"/product-*-host.log
 rg -q 'INJECTION duplicated and reordered real Realtime signals' "$work_dir"/product-*-host.log
 fi
-# Each friends unit uses independent native Auth/Edge/Realtime sessions in two
-# owned containers. Count 3 adds a third process signed into the host account.
 for count in 1 3 5; do
   if ! integration_selected "friends-$count"; then
     [[ $count == 3 ]] && integration_selected friends-3-race || continue
@@ -534,8 +536,6 @@ for count in 1 3 5; do
   [[ $(sql_scalar "select concat(status,'|',round_count) from public.matches where id='$successor'") == "lobby|$count" ]]
   [[ $(sql_scalar "select count(*) from private.rematch_successors where match_id='$successor' and predecessor_match_id='$predecessor'") == 1 ]]
   [[ $(sql_scalar "select count(*) from private.round_secrets s join public.rounds r on r.id=s.round_id where r.match_id='$successor'") == 0 ]]
-  # Keep original server deadlines. Accepted allocation must remain recoverable
-  # after its five-minute opportunity ends with both app processes stopped.
   if [[ $count == 3 ]] && integration_selected friends-3; then
     wait_sql "select clock_timestamp()>=deadline from private.rematch_contexts where predecessor_match_id='$predecessor'" t 330
     echo 'PASS original rematch opportunity expiry with accepted clients stopped'
@@ -544,43 +544,7 @@ for count in 1 3 5; do
   launch_round friends-recover friends-recover friends "$count" "$count"
   sql_scalar "update private.live_feature_configuration set allow_new_rematches=true" >/dev/null
   if [[ $count == 3 ]]; then
-    # Native predecessor read pauses before returning its accepted projection.
-    # The third same-account process changes selection before the successor read.
-    # Admit the third process before pausing a real read; cold XCTest startup
-    # is not part of the deliberate between-read barrier.
-    selection_coordination_id=$(uuidgen)
-    run_client "$third_simulator" friends-select friends "$host_email" "$host_password" \
-      "$work_dir/friends-3-selection-third.log" "" "$successor" 3 3 & third_pid=$!
-    third_ready=0
-    for _ in {1..1800}; do
-      third_container=$(xcrun simctl get_app_container "$third_simulator" com.example.GridRace data)
-      selection_root="$third_container/Library/Application Support/GridRaceIntegration/Coordination/$selection_coordination_id"
-      [[ ! -f "$selection_root/ready" ]] || { third_ready=1; break; }
-      sleep 0.1
-    done
-    [[ $third_ready == 1 ]] || { echo 'FAIL: admitted third native readiness absent' >&2; exit 1; }
-    host_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
-    barrier_root="$host_container/Library/Application Support/GridRaceIntegration"
-    rm -f "$barrier_root/selection-read-barrier" "$barrier_root/selection-read-release"
-    run_client "$host_simulator" friends-race friends "$host_email" "$host_password" \
-      "$work_dir/friends-3-selection-race-host.log" "" "$predecessor" 3 3 & host_pid=$!
-    barrier_ready=0
-    for _ in {1..900}; do
-      current_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
-      barrier_root="$current_container/Library/Application Support/GridRaceIntegration"
-      [[ ! -f "$barrier_root/selection-read-barrier" ]] || { barrier_ready=1; break; }
-      sleep 0.1
-    done
-    [[ $barrier_ready == 1 ]] || { echo 'FAIL: real predecessor read barrier absent' >&2; exit 1; }
-    third_container=$(xcrun simctl get_app_container "$third_simulator" com.example.GridRace data)
-    touch "$third_container/Library/Application Support/GridRaceIntegration/Coordination/$selection_coordination_id/select-now"
-    wait "$third_pid"; third_pid=""
-    selection_coordination_id=""
-    current_container=$(xcrun simctl get_app_container "$host_simulator" com.example.GridRace data)
-    touch "$current_container/Library/Application Support/GridRaceIntegration/selection-read-release"
-    wait "$host_pid"; host_pid=""
-    rg -q 'INJECTION third-account selection between real predecessor and successor reads' "$work_dir/friends-3-selection-race-host.log"
-    rg -q 'PASS live client stale pointer passive epoch unchanged then explicit pinned Resume' "$work_dir/friends-3-selection-race-host.log"
+    run_selection_change_between_canonical_reads "$predecessor" "$successor"
   fi
   match_id=$successor
   pair_phase=successor
@@ -628,8 +592,7 @@ if integration_selected snapshot-1; then
   cron_baseline_active=$(sql_scalar "select active from cron.job where jobid=$cron_job_id and username=current_user")
   [[ $cron_baseline_active == t ]] || { echo 'REFUSED: finalizer baseline inactive' >&2; exit 1; }
   printf 'job_id=%s\nowner=current_postgres_role\nbaseline_active=%s\n' "$cron_job_id" "$cron_baseline_active" > "$work_dir/cron-owned-baseline.txt"
-  # Arm restoration before dispatch: pause may commit even if its reply is lost.
-  cron_paused=1
+  cron_restore_required=1
   sql_scalar "select cron.alter_job($cron_job_id, active:=false)" >/dev/null
   [[ $(sql_scalar "select active from cron.job where jobid=$cron_job_id and username=current_user") == f ]] || exit 1
   start_pair cron 1
@@ -639,7 +602,7 @@ if integration_selected snapshot-1; then
   assert_sql_reveal 1 1
   sql_scalar "select cron.alter_job($cron_job_id, active:=true)" >/dev/null
   [[ $(sql_scalar "select active from cron.job where jobid=$cron_job_id and username=current_user") == "$cron_baseline_active" ]] || exit 1
-  cron_paused=0
+  cron_restore_required=0
   echo 'PASS original deadline canonical native snapshot-triggered finalization with Cron paused'
 fi
 if integration_selected friends-signal; then

@@ -186,15 +186,10 @@ def eligibility(record: dict) -> str:
 
 
 RELATIONSHIP_TAGS = {"form-of", "alt-of"}
-# Record-level outcomes that exclude a form_of/alt_of TARGET from supporting
-# a new spelling on its own. Only the two vocabulary-policy exclusions count;
-# any other outcome (eligible, nonlexical POS, misspelling-only, or no pinned
-# record at all) leaves the target non-excluded.
 EXCLUDED_TARGET_OUTCOMES = {"abbreviation_initialism", "proper_name"}
 
 
 def is_relationship_sense(sense: dict) -> bool:
-    """True when a sense is (at least partly) a form_of/alt_of pointer."""
     tags = set(sense.get("tags", []) or [])
     if tags & RELATIONSHIP_TAGS:
         return True
@@ -202,12 +197,6 @@ def is_relationship_sense(sense: dict) -> bool:
 
 
 def build_target_exclusion(records: list[tuple[str, int, dict]]) -> set[str]:
-    """Exact titles whose English records are all abbreviation/proper-only.
-
-    Keyed on the exact pre-normalization title; each record is classified by
-    ``eligibility()`` before case normalization. Titles with no pinned
-    English record are absent from the returned set (not excluded).
-    """
     by_word: dict[str, list[dict]] = defaultdict(list)
     for _, _, record in records:
         if record.get("lang_code") != "en":
@@ -221,18 +210,6 @@ def build_target_exclusion(records: list[tuple[str, int, dict]]) -> set[str]:
 
 
 def build_target_support(pool: list[tuple[str, int, dict]]) -> set[str]:
-    """Exact titles with at least one eligible record carrying an ordinary sense.
-
-    Only a valid (non-misspelling) NON-relationship sense on a record with
-    ``eligibility(record) == "eligible"`` confers support: a title whose
-    ordinary senses all sit on proper-name-only, abbreviation/initialism-only,
-    nonlexical-POS, misspelling-only, or otherwise ineligible records has no
-    eligible ordinary lexical sense of its own, so it cannot lend support.
-    A title whose senses are all form_of/alt_of pointers likewise never
-    supports (this also closes any depth-2 absence leak through pointer
-    chains). Callers subtract the excluded set so support and exclusion stay
-    disjoint; titles with no English records anywhere are in neither.
-    """
     support: set[str] = set()
     for _, _, record in pool:
         if record.get("lang_code") != "en":
@@ -252,16 +229,8 @@ def build_target_support(pool: list[tuple[str, int, dict]]) -> set[str]:
 
 
 def sense_qualifies(
-    sense: dict, excluded_targets: set[str], supported_targets: set[str]
+    sense: dict, supported_targets: set[str]
 ) -> bool:
-    """True for ordinary senses and relationship senses at supported targets.
-
-    Fail-closed: a form_of/alt_of sense qualifies ONLY if at least one listed
-    target is affirmatively supported. Unclassified, missing, excluded-only,
-    or otherwise unresolvable targets support nothing, and a
-    relationship-tagged sense listing no explicit alt_of/form_of target at
-    all fails closed (it cannot be assessed, so it qualifies nothing).
-    """
     if not is_relationship_sense(sense):
         return True
     targets = sense_targets(sense)
@@ -271,13 +240,12 @@ def sense_qualifies(
 
 
 def first_qualifying_sense(
-    record: dict, excluded_targets: set[str], supported_targets: set[str]
+    record: dict, supported_targets: set[str]
 ) -> int | None:
-    """Index (into the record's own senses list) of the first qualifying sense."""
     for index, sense in enumerate(record.get("senses", [])):
         if "misspelling" in (sense.get("tags") or []):
             continue
-        if sense_qualifies(sense, excluded_targets, supported_targets):
+        if sense_qualifies(sense, supported_targets):
             return index
     return None
 
@@ -307,7 +275,6 @@ def explicit_template_tokens(record: dict) -> set[str]:
 
 
 def head_template_matches(record: dict, value: str) -> list[tuple[str, str]]:
-    """Sorted (template name, top-level arg key) pairs carrying value exactly."""
     pairs = set()
     for template in record.get("head_templates", []):
         args = template.get("args", {})
@@ -335,7 +302,6 @@ def head_template_matches(record: dict, value: str) -> list[tuple[str, str]]:
 
 
 def head_templates_for_value(record: dict, value: str) -> list[str]:
-    """Names of head templates with a captured argument exactly equal to value."""
     return sorted({name for name, _ in head_template_matches(record, value)})
 
 
@@ -355,12 +321,6 @@ ANY_HEADING = re.compile(r"(?m)^(={2,6})\s*[^=\n]+\s*\1\s*$")
 
 
 def altsection_evidence(body: str) -> dict[str, str]:
-    """Five-letter literals in Alternative-forms subsections (section-local).
-
-    Maps each literal to its matched subsection heading text (``Alternative
-    forms`` or ``Alternative spellings`` as written); on collision the
-    lexicographically smallest heading wins so the mapping is deterministic.
-    """
     section = english_section(body)
     if not section:
         return {}
@@ -380,7 +340,6 @@ def altsection_evidence(body: str) -> dict[str, str]:
 
 
 def altsection_tokens(body: str) -> set[str]:
-    """Five-letter literals inside Alternative-forms subsections (section-local)."""
     return set(altsection_evidence(body))
 
 
@@ -423,9 +382,49 @@ def load_revision_index(path: Path) -> dict[str, dict]:
     return index
 
 
+def require_candidate_target_coverage(
+    records: list[tuple[str, int, dict]], target_titles: set[str]
+) -> tuple[set[str], list[str], list[str]]:
+    main_english_titles = {
+        record.get("word", "") for _, _, record in records
+        if record.get("lang_code") == "en"
+    }
+    candidate_needed_targets: set[str] = set()
+    for _, _, record in records:
+        if eligibility(record) != "eligible":
+            continue
+        head = record.get("word", "") or ""
+        has_five_letter_head = WORD.fullmatch(head) is not None
+        has_five_letter_form = any(
+            WORD.fullmatch(form.get("form", "") or "") is not None
+            for form in record.get("forms", []) or []
+        )
+        if not (has_five_letter_head or has_five_letter_form):
+            continue
+        for sense in record.get("senses", []):
+            if "misspelling" in (sense.get("tags") or []):
+                continue
+            candidate_needed_targets.update(sense_targets(sense))
+    absent_needed = sorted(
+        target for target in candidate_needed_targets
+        if target not in main_english_titles
+    )
+    uncovered_needed = [
+        target for target in absent_needed if target not in target_titles
+    ]
+    if uncovered_needed:
+        sample = ", ".join(uncovered_needed[:5])
+        raise ValueError(
+            f"target coverage incomplete: {len(uncovered_needed)} absent "
+            "relationship targets needed by candidate five-letter "
+            "standalone/form records are missing from the targeted-coverage "
+            f"title lists (e.g. {sample}); refusing to treat absence as "
+            "non-evidence (STOP condition)"
+        )
+    return candidate_needed_targets, absent_needed, uncovered_needed
+
+
 def run(args: argparse.Namespace) -> dict:
-    # Verify the exact consumed revision-index bytes before reading the other
-    # corpus inputs, doing relationship analysis, or mutating any output.
     index = load_revision_index(Path(args.revision_index))
 
     baseline_raw = input_identity.verified_bytes(Path(args.baseline), BASELINE_SHA256, "frozen baseline")
@@ -467,54 +466,10 @@ def run(args: argparse.Namespace) -> dict:
     for raw in coverage_bytes.values():
         target_titles.update(json.loads(raw))
 
-    # Aggregate coverage invariant (fail-closed, no word-specific exceptions):
-    # every relationship target that is absent from the pinned 99-chunk JSONL
-    # but needed by a candidate five-letter standalone/form record must have
-    # been attempted by the bounded targeted-coverage extraction (present in
-    # its title lists). A needed absent target with no coverage attempt means
-    # the support classification above cannot see its records, so the run
-    # refuses rather than treating the absence as non-evidence silently.
-    main_english_titles = {
-        record.get("word", "") for _, _, record in records
-        if record.get("lang_code") == "en"
-    }
-    candidate_needed_targets: set[str] = set()
-    for _, _, record in records:
-        if eligibility(record) != "eligible":
-            continue
-        head = record.get("word", "") or ""
-        has_five_letter_head = WORD.fullmatch(head) is not None
-        has_five_letter_form = any(
-            WORD.fullmatch(form.get("form", "") or "") is not None
-            for form in record.get("forms", []) or []
-        )
-        if not (has_five_letter_head or has_five_letter_form):
-            continue
-        for sense in record.get("senses", []):
-            if "misspelling" in (sense.get("tags") or []):
-                continue
-            candidate_needed_targets.update(sense_targets(sense))
-    absent_needed = sorted(
-        target for target in candidate_needed_targets
-        if target not in main_english_titles
+    candidate_needed_targets, absent_needed, uncovered_needed = (
+        require_candidate_target_coverage(records, target_titles)
     )
-    uncovered_needed = [
-        target for target in absent_needed if target not in target_titles
-    ]
-    if uncovered_needed:
-        sample = ", ".join(uncovered_needed[:5])
-        raise ValueError(
-            f"target coverage incomplete: {len(uncovered_needed)} absent "
-            "relationship targets needed by candidate five-letter "
-            "standalone/form records are missing from the targeted-coverage "
-            f"title lists (e.g. {sample}); refusing to treat absence as "
-            "non-evidence (STOP condition)"
-        )
 
-    # Relationship-level eligibility: exact-title target exclusion/support
-    # over the pinned JSONL plus the bounded targeted-coverage extraction,
-    # plus a record lookup by chunk locator for parent checks and pointer
-    # postings (main-chunk records only; coverage records classify targets).
     target_excluded = build_target_exclusion(target_pool)
     target_supported = build_target_support(target_pool) - target_excluded
     referenced_targets: set[str] = set()
@@ -540,7 +495,6 @@ def run(args: argparse.Namespace) -> dict:
     for postings in pointer_index.values():
         postings.sort()
 
-    # Pass 1: reciprocal map (own-page word lower -> exact parent targets).
     reciprocal: dict[str, set[str]] = defaultdict(set)
     for _, _, record in records:
         if record.get("lang_code") != "en":
@@ -567,7 +521,6 @@ def run(args: argparse.Namespace) -> dict:
             alt_cache[title] = altsection_evidence(body_for(title))
         return alt_cache[title]
 
-    # Pass 2: standalone winners + explicit-form evidences (one SQLite SELECT pass).
     standalone: dict[str, dict] = {}
     evidences: dict[str, list[tuple]] = defaultdict(list)
     sem_excluded = 0
@@ -579,7 +532,7 @@ def run(args: argparse.Namespace) -> dict:
         pos = record.get("pos", "unknown")
         if WORD.fullmatch(head or ""):
             norm = head.lower()
-            sense_index = first_qualifying_sense(record, target_excluded, target_supported)
+            sense_index = first_qualifying_sense(record, target_supported)
             if sense_index is None:
                 dropped_standalone_records += 1
             else:
@@ -676,7 +629,7 @@ def run(args: argparse.Namespace) -> dict:
             continue
         sponsored = [
             item for item in sorted(set(evidences[norm]))
-            if first_qualifying_sense(rec_by_loc[(item[6], item[7])], target_excluded, target_supported) is not None
+            if first_qualifying_sense(rec_by_loc[(item[6], item[7])], target_supported) is not None
         ]
         if not sponsored:
             dropped_explicit_norms += 1
@@ -712,7 +665,7 @@ def run(args: argparse.Namespace) -> dict:
             row["head_arg"] = key
         elif rule == "explicit_altsection":
             row["alt_section"] = detail
-            row["sense_index"] = first_qualifying_sense(parent_record, target_excluded, target_supported)
+            row["sense_index"] = first_qualifying_sense(parent_record, target_supported)
         elif rule == "explicit_reciprocal":
             postings = [p for p in pointer_index.get(norm, []) if p[3] == parent]
             child_chunk, child_lineno, child_sense, _ = postings[0]
@@ -753,8 +706,6 @@ def run(args: argparse.Namespace) -> dict:
             "https://dumps.wikimedia.org/enwiktionary/20260901/"
             "enwiktionary-20260901-pages-articles-multistream.xml.bz2"
         ),
-        # Preserved resource metadata records the source declaration, not an
-        # extraction execution receipt. Version 2 attests retained inputs separately.
         "wiktionaryDumpSha256": DUMP_SHA256,
         "wiktextractCommit": WIKTEXTRACT_COMMIT,
         "wikitextprocessorCommit": WIKITEXTPROCESSOR_COMMIT,

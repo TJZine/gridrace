@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// Nonsecret intent, outside Accounts/<UUID>. It grants no server authority.
 struct AccountCleanupRecord: Codable, Equatable, Sendable {
     enum Daily: String, Codable, Sendable { case awaitingDeletion, required }
     let userID: UUID
@@ -66,8 +65,6 @@ final class AccountCleanupJournal {
     func reload() throws {
         do {
             let disk = try storage.load()
-            // A failed write retains captured intent in memory. Merge it only after
-            // a successful read, never overwrite a journal we could not inspect.
             var merged = Dictionary(uniqueKeysWithValues: disk.map { ($0.userID, $0) })
             for record in records {
                 if var existing = merged[record.userID] {
@@ -117,13 +114,11 @@ final class AccountCleanupJournal {
             records.removeAll { $0.daily == nil && !$0.live && $0.invitationClearRequired != true }
         }
         do { try persist() }
-        catch { records = original; throw error } // Removal proof may safely be retried.
+        catch { records = original; throw error }
     }
     func captureInvitation(_ userID: UUID, generation: UUID?, replacingCapturedValue: Bool = false) throws {
         if !loaded { try reload() }
         if let index = records.firstIndex(where: { $0.userID == userID }) {
-            // Retry preserves the captured generation. A new explicit departure
-            // captures the current value, including navigation saved during old cleanup.
             if records[index].invitationClearRequired != true || replacingCapturedValue {
                 records[index].invitationClearRequired = true
                 records[index].invitationGeneration = generation

@@ -1,5 +1,3 @@
--- A started local Daily attempt owns its mode over an empty cloud board.
--- Forward replacement preserves terminal precedence, identity, locks and ACLs.
 
 create or replace function public.sync_daily_progress(
   p_puzzle_id text,
@@ -82,8 +80,6 @@ begin
     return jsonb_build_object('status', 'conflict', 'progress', to_jsonb(v_progress));
   end if;
 
-  -- Hard Mode is attempt configuration. An unstarted stored board yields to
-  -- the incoming selection/started attempt, but only at the expected revision.
   if v_progress.hard_mode_enabled <> p_hard_mode_enabled then
     if p_expected_revision is not null and p_expected_revision <> v_progress.revision then
       return jsonb_build_object('status', 'conflict', 'progress', to_jsonb(v_progress));

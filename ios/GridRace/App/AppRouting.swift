@@ -106,13 +106,6 @@ struct DailyAppView: View {
             .tint(Color.ink)
             .environment(\.highContrastFeedback, app.daily.settings.highContrastEnabled)
         }
-        .onChange(of: path) { _, routes in
-            // Older value-based Account links use the same sheet route.
-            if routes.last == .account {
-                path.removeLast()
-                presentAccount()
-            }
-        }
         .onChange(of: app.account.isSignedIn) { _, _ in updateAccountSheet() }
         .onChange(of: app.account.needsProfileSetup) { _, _ in updateAccountSheet() }
         .onChange(of: app.account.isWorking) { _, _ in updateAccountSheet() }
@@ -176,8 +169,6 @@ struct DailyAppView: View {
     }
 }
 
-/// Dismiss only a sign-in begun while this sheet was open. Profile setup can
-/// finish after authentication; an already signed-in expired session stays open.
 struct AccountSheetState {
     private var wasSignedIn: Bool
     private var awaitsProfile = false

@@ -51,8 +51,6 @@ function request(deletion = false): Request {
   );
 }
 
-// Exercise production environment selection and the actual pinned SDK. The fetch
-// replacement prevents network access; restore both globals even on an assertion failure.
 async function withRuntime(
   respond: (url: string, init?: RequestInit) => Response | Promise<Response>,
   action: () => Promise<void>,

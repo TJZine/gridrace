@@ -35,7 +35,6 @@ class Database:
                      "-v", "VERBOSITY=sqlstate", "--host", url.hostname,
                      "--port", str(url.port), "--username", unquote(url.username or ""),
                      "--dbname", "postgres"]
-        # Do not inherit service/pg connection overrides or pass secrets in argv.
         self.env = {"PATH": os.environ.get("PATH", ""),
                     "PGPASSWORD": unquote(url.password or ""), "PGCONNECT_TIMEOUT": "5"}
 
@@ -48,7 +47,6 @@ class Database:
         result = subprocess.run(self.args, env=self.env, input=statement,
                                 capture_output=True, text=True, timeout=15)
         if result.returncode:
-            # Receipt digests and server diagnostics are credential-derived data.
             raise RuntimeError("control SQL failed (diagnostics suppressed)")
         return result.stdout.strip()
 
@@ -95,7 +93,6 @@ def run_pair(db, prefix, tokens, expect_deadlock, separate=False):
             write(child, "set statement_timeout='12s'; set deadlock_timeout='100ms'; "
                   "set role service_role; "
                   f"select public.complete_account_deletion('{token}') #>> '{{data,status}}';\n\\q")
-        # Every call must be blocked inside completion, not merely scheduled.
         name_list = ",".join(f"'{name}'" for name in names)
         wait_for(db, f"""select count(*) from pg_stat_activity
             where application_name in ({name_list}) and wait_event_type='Lock';""", 2)
@@ -128,7 +125,6 @@ def run_pair(db, prefix, tokens, expect_deadlock, separate=False):
         print(f"PASS {'separate operations' if separate else 'rotated tokens'}: "
               f"{completed} completed, {deadlocks} deadlock; observed lock barrier")
     finally:
-        # Closing these sessions rolls back/releases run-owned locks on failures.
         for child in calls:
             stop(child)
         stop(holder)
@@ -213,5 +209,4 @@ if __name__ == "__main__":
     except RuntimeError as error:
         raise SystemExit(f"FAIL receipt race: {error}")
     except (subprocess.TimeoutExpired, OSError, ValueError):
-        # Never print raw subprocess output/URL, which can carry fixture digests.
         raise SystemExit("FAIL receipt race (diagnostics suppressed; check lease/tools/barrier)")

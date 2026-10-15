@@ -26,7 +26,6 @@ final class SupabaseAccountService: AccountServicing {
     private struct RetirementMarker: Codable { let version: Int; let userID: UUID? }
     private(set) var retiredCleanupUserID: UUID?
     private var retirement: Retirement?
-    // Only deletion owns this captured credential. It is never a consumer lease.
     private struct DeletionAuthorization: Codable, Equatable {
         let operationID: UUID
         let bearer: String
@@ -37,11 +36,7 @@ final class SupabaseAccountService: AccountServicing {
         let userID: UUID
         let bearer: String?
         var confirmed: Bool
-        // Optional preserves reads of the original v1 secure record. Only a typed
-        // missing-auth response to its bearer may set this, never device time/401.
         var reauthenticationRequired: Bool? = nil
-        // A missing receipt is only an observation. An older accepted request may
-        // still commit; retain every captured predecessor until account confirmation.
         var predecessors: [DeletionAuthorization]? = nil
     }
     private struct DeletionRecords: Codable {
@@ -207,7 +202,6 @@ final class SupabaseAccountService: AccountServicing {
         try Task.checkCancellation()
         try lifetime.bindIdentity(session.user.id)
         guard let saved = try persisted(lifetime), sameSession(saved, session), !saved.isExpired else {
-            // An older result cannot clear a newer, already validated active session.
             if phase == .active, let verified, let saved = try persisted(lifetime), sameSession(saved, verified) {
                 return Self.accountSession(verified)
             }
@@ -235,7 +229,6 @@ final class SupabaseAccountService: AccountServicing {
                 if phase == .active { blockForRestore(lifetime, issue: nil) }
                 return
             }
-            // Event payloads may be queued before newer storage/commit. Storage owns meaning.
             if !saved.isExpired { _ = try commit(saved, from: lifetime) }
         } catch is CancellationError {
         } catch {
@@ -280,16 +273,12 @@ final class SupabaseAccountService: AccountServicing {
                     selectedDeletionUserID = savedIdentity.flatMap { deletionRecords[$0]?.userID }
                         ?? decoded.sorted { $0.userID.uuidString < $1.userID.uuidString }.first?.userID
                     guard let record = pendingDeletion else { throw AccountServiceError.invalidResponse }
-                    // Cold pending authorization stays fenced even when expired. The server
-                    // checks the exact-token receipt before Auth; it never gains a new lease.
                     let storedUserID = try storedUserID()
                     if storedUserID == nil || storedUserID == record.userID {
                         recovery = AccountAuthRecovery(action: deletionNeedsReauthentication ? .deletionReauthentication : .deletion, storageIssue: nil)
                         publish()
                         return nil
                     }
-                    // A different later account owns its credentials and may restore.
-                    // The old captured operation remains independently retryable.
                 }
                 if let marker = try backend.retrieve(key: markerKey) {
                     if marker != Data([1]) {
@@ -311,7 +300,6 @@ final class SupabaseAccountService: AccountServicing {
             _ = makeLifetime(phase: .restoring)
         }
         guard let lifetime = current else { return nil }
-        // Complete old channel removal before this same client can gain a new lease.
         while let pending = teardown {
             let id = teardownID
             await pending.value
@@ -321,7 +309,6 @@ final class SupabaseAccountService: AccountServicing {
         lifetime.storage.resetIssue()
         guard let stored = lifetime.client.auth.currentSession else {
             if let issue = lifetime.storage.issue { blockForRestore(lifetime, issue: issue); throw issue }
-            // SDK decoders also swallow malformed/migration-failed bytes. Absence is explicit.
             if try [sessionKey, "supabase.session"].contains(where: { try backend.retrieve(key: $0) != nil }) {
                 let issue = AuthStorageIssue(operation: .read, status: -26275)
                 blockForRestore(lifetime, issue: issue)
@@ -342,7 +329,6 @@ final class SupabaseAccountService: AccountServicing {
             let session = try await lifetime.client.auth.session
             return try commit(session, from: lifetime)
         } catch {
-            // Offline existing restore keeps credentials and this blocked lifetime for retry.
             if current === lifetime, phase != .active { blockForRestore(lifetime, issue: lifetime.storage.issue) }
             throw error
         }
@@ -435,11 +421,10 @@ final class SupabaseAccountService: AccountServicing {
         guard current === lifetime else {
             return AccountSignOutOutcome(localRecovery: nil, remoteLogoutFailed: false, retiredUserID: snapshot?.user.id)
         }
-        // Nothing fallible precedes consumer/event/socket/scheduler fences.
         phase = .retiring
         verified = nil
         logoutSnapshot = nil
-        cancelScheduler() // Does not pretend UIKit became inactive.
+        cancelScheduler()
         let channels = lifetime.retireConsumers()
         observation?.cancel()
         lifetime.storage.beginLogout(snapshot: snapshot)
@@ -461,7 +446,6 @@ final class SupabaseAccountService: AccountServicing {
     private func finishRetirement(_ lifetime: AuthClientLifetime, snapshot: Session?,
                                   channels: [AuthClientLifetime.ChannelRegistration],
                                   markerIssues: [AuthStorageIssue]) async -> AccountSignOutOutcome {
-        // A held logout must not leave an SDK subscribe/reconnect task running.
         await teardown?.value
         teardown = nil
         teardownID = nil
@@ -533,15 +517,11 @@ final class SupabaseAccountService: AccountServicing {
             record.predecessors = (previous.predecessors ?? [])
                 + [DeletionAuthorization(operationID: previous.operationID, bearer: bearer)]
         }
-        // Consumer fencing happens before any journal/file operation, including
-        // failure. A secure write failure can be escaped by local sign out.
         let replacingRejectedOperation = deletionRecords[userID]?.reauthenticationRequired == true
         blockForRestore(lease.lifetime, issue: nil)
         recovery = AccountAuthRecovery(action: .deletion, storageIssue: nil)
         publish()
         if !replacingRejectedOperation { deletionRecords[userID] = record }
-        // Atomic Keychain replacement precedes ownership transfer. If it fails,
-        // retain the original authoritative rejection and require fresh proof.
         try saveDeletion(record)
         deletionRecords[userID] = record
     }
@@ -584,8 +564,6 @@ final class SupabaseAccountService: AccountServicing {
         request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(DeleteRequest(clientBuild: clientBuild))
-        // The SDK Functions adapter rewrites Authorization with currentSession.
-        // This operation deliberately bypasses that adapter, not Auth refresh.
         let (bytes, response) = try await network().data(for: request)
         guard let response = response as? HTTPURLResponse else { throw AccountServiceError.invalidResponse }
         if response.statusCode == 401, response.url == request.url,
@@ -618,8 +596,6 @@ final class SupabaseAccountService: AccountServicing {
                 } catch { if uncertainError == nil { uncertainError = error } }
             }
             if !confirmed {
-                // Any uncertain reply remains uncertain. Typed absence never proves
-                // cancellation of an older accepted request or retires its bearer.
                 if let uncertainError { throw uncertainError }
                 var rejected = record
                 rejected.reauthenticationRequired = true
@@ -640,7 +616,6 @@ final class SupabaseAccountService: AccountServicing {
         do { try saveDeletion(confirmed) }
         catch { secureIssue = storageIssue(error, operation: .store) }
         var localRecovery: AccountAuthRecovery?
-        // A late A confirmation cannot retire B, even if the service reused itself.
         if let lifetime, current === lifetime, logoutSnapshot?.user.id == record.userID {
             localRecovery = await retire(lifetime, snapshot: logoutSnapshot).localRecovery
         } else if current == nil {
@@ -652,9 +627,6 @@ final class SupabaseAccountService: AccountServicing {
                 }
             } catch { localRecovery = AccountAuthRecovery(action: .cleanup, storageIssue: storageIssue(error, operation: .read)) }
         }
-        // Retain confirmation AND captured ancestry until caller acknowledges
-        // durable local intent. Confirmation never dispatches another server call.
-        // On storage failure, the in-memory confirmation still forbids remote retry.
         if let secureIssue { localRecovery = AccountAuthRecovery(action: .deletion, storageIssue: secureIssue) }
         recovery = localRecovery
         publish()
@@ -684,7 +656,6 @@ final class SupabaseAccountService: AccountServicing {
     func retrySignedOutCleanup() async -> AccountAuthState {
         guard current == nil else { return projectedState }
         var issues = cleanupCredentials()
-        // Only explicit recovery may clear the marker after every credential is proven absent.
         if issues.isEmpty {
             do { try backend.remove(key: markerKey); retiredCleanupUserID = nil }
             catch { issues.append(storageIssue(error, operation: .remove)) }
@@ -718,7 +689,6 @@ final class SupabaseAccountService: AccountServicing {
     private func cancelScheduler() { schedulerID = nil; scheduler?.cancel(); scheduler = nil }
     private func startScheduler() {
         guard appActive, phase == .active else { return }
-        // Ordinary refresh does not repeatedly restart the tick interval.
         guard schedulerID == nil else { return }
         let id = UUID()
         schedulerID = id

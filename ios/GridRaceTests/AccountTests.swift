@@ -33,11 +33,9 @@ final class PlayerProfileTests: XCTestCase {
     }
 
     func testDisplayNameNormalizationBoundaryLengthsAndBlankAndUnicode() {
-        // Empty and blank-only inputs normalize to nothing.
         XCTAssertNil(PlayerProfile.normalizedDisplayName(""))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("   "))
         XCTAssertNil(PlayerProfile.normalizedDisplayName(" \t\n "))
-        // Length boundaries: 1 rejects, 2 accepts, 16 accepts, 17 rejects.
         XCTAssertNil(PlayerProfile.normalizedDisplayName("A"))
         XCTAssertEqual(PlayerProfile.normalizedDisplayName("Al"), "Al")
         XCTAssertEqual(
@@ -45,7 +43,6 @@ final class PlayerProfileTests: XCTestCase {
             "abcdefghijklmnop"
         )
         XCTAssertNil(PlayerProfile.normalizedDisplayName("abcdefghijklmnopq"))
-        // Non-ASCII letters are rejected even at valid lengths.
         XCTAssertNil(PlayerProfile.normalizedDisplayName("Stöne"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("Renée"))
         XCTAssertNil(PlayerProfile.normalizedDisplayName("Alex😀"))
@@ -98,8 +95,6 @@ final class PlayerProfileTests: XCTestCase {
 @MainActor
 final class PlayerAvatarPaletteTests: XCTestCase {
     func testSeedToSymbolMappingIsStable() {
-        // Snapshot of the frozen mapping: order and hash must not change,
-        // or persisted seeds would resolve to different symbols.
         XCTAssertEqual(
             PlayerAvatarView.avatarSymbols,
             [
@@ -167,8 +162,6 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         let service = AccountServiceMock()
         let restored = AccountSession(userID: UUID(), expiresAt: .distantFuture)
         service.restoration = {
-            // The real service publishes its commit before returning it. Its
-            // subscription also buffers an initial nil before this command.
             service.emit(restored)
             return restored
         }
@@ -179,8 +172,6 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         let next = AccountSession(userID: UUID(), expiresAt: .distantFuture)
         service.emit(next)
         await waitForAccountCondition { coordinator.account.session == next }
-        // Observing the later identity proves the preceding buffered values were
-        // consumed; checking only start()'s return would miss the transient guest.
         XCTAssertEqual(coordinator.account.session, next)
         XCTAssertEqual(coordinator.daily.game.progress.puzzleDay, Int(fixture.current.timeIntervalSince1970 / 86_400))
         XCTAssertEqual(try fixture.guestBytes(), before)
@@ -246,7 +237,6 @@ final class DailyAccountCoordinatorTests: XCTestCase {
                 XCTAssertEqual(try fixture.guestBytes(), before)
                 XCTAssertFalse(guest.isPersistenceActive)
                 if failure {
-                    // Current storage-error restoration can publish cleanup recovery before throwing.
                     service.emitState(AccountAuthState(session: nil, recovery: .init(action: .cleanup, storageIssue: nil)))
                     await waitForAccountCondition { coordinator.account.authRecovery?.action == .cleanup }
                     XCTAssertEqual(try fixture.guestBytes(), before)
@@ -319,7 +309,7 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
         await waitForAccountCondition { coordinator.account.authRecovery?.action == .restore }
         XCTAssertEqual(try fixture.guestBytes(), before)
-        await coordinator.account.signOut() // Mock returns no retired UUID, matching unbound restoration.
+        await coordinator.account.signOut()
         XCTAssertEqual(service.signOutCount, 1)
         XCTAssertTrue(coordinator.daily.isPersistenceActive)
         XCTAssertEqual(coordinator.daily.puzzle.day, 20_697)
@@ -1054,7 +1044,6 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         coordinator.sessionChanged(to: a)
         await assertInitialSync(coordinator, remote: remotes[a]!)
         coordinator.importGuestHistory()
-        // Replace the account before the scheduled staging task can run.
         coordinator.sessionChanged(to: b)
         await assertInitialSync(coordinator, remote: remotes[b]!)
         let storeA = AccountDailyClassicStore(rootDirectory: fixture.root, userID: a)
@@ -1104,7 +1093,6 @@ final class DailyAccountCoordinatorTests: XCTestCase {
         XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
         XCTAssertTrue(coordinator.canImportGuestHistory)
         coordinator.retrySync()
-        // This retry must not bypass the still-unresolved import choice.
         try await Task.sleep(for: .milliseconds(30))
         XCTAssertFalse(coordinator.conflicts.isEmpty)
         XCTAssertNil(try store.loadSyncMetadata().guestImportDecision)
@@ -1313,7 +1301,7 @@ final class AccountModelTests: XCTestCase {
         await model.retryProfile()
         XCTAssertEqual(model.profile, incomplete)
         XCTAssertFalse(sheet.observe(isSignedIn: model.isSignedIn, profileReady: profileReady(model)))
-        await model.saveProfile() // No successful response is configured.
+        await model.saveProfile()
         XCTAssertEqual(model.profile, incomplete)
         XCTAssertTrue(model.needsProfileSetup)
         XCTAssertNotNil(model.errorMessage)
@@ -1352,8 +1340,6 @@ final class AccountModelTests: XCTestCase {
                 let guidance = model.errorMessage
                 XCTAssertEqual(guidance == nil, cleanupSucceeds)
 
-                // Count consumer callbacks to prove each post-intent event was
-                // delivered, including identity-neutral duplicates.
                 for _ in 0..<2 {
                     let previous = nilNotifications
                     service.emit(nil)
@@ -1387,7 +1373,6 @@ final class AccountModelTests: XCTestCase {
                     await waitForAccountCondition { nilNotifications == beforeDismissedEvent + 1 }
                     XCTAssertNil(model.errorMessage, "Dismissed guidance must not resurrect")
 
-                    // A new intent clears old guidance even if it settles nil.
                     model.noncePreparationFailed()
                     await model.restoreSession()
                     XCTAssertNil(model.errorMessage)
@@ -1822,7 +1807,6 @@ final class AccountModelTests: XCTestCase {
         }
     }
 
-    /// Hosted accessibility hierarchy and screenshot evidence; OS VoiceOver is a separate gate.
     func testProfileFailedAccountRendersReachableLifecycleControls() async throws {
         let service = AccountServiceMock()
         service.restoredSession = session(UUID())
@@ -1925,7 +1909,6 @@ private final class GuestStartupFixture {
 }
 
 @MainActor
-// Shared with DailySyncTests for faithful coordinator cold-restoration coverage.
 final class AccountServiceMock: AccountServicing {
     private var currentState = AccountAuthState(session: nil)
     private var continuation: AsyncStream<AccountAuthState>.Continuation?
@@ -2273,8 +2256,6 @@ private func waitForAccountCondition(
 
 @MainActor
 private func accountAccessibilityIdentifier(_ object: NSObject) -> String? {
-    // SwiftUI's synthesized AX nodes can expose the public getter without
-    // declaring Objective-C protocol conformance on the proxy class.
     guard object.responds(to: #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)) else { return nil }
     return object.value(forKey: "accessibilityIdentifier") as? String
 }
@@ -2502,7 +2483,7 @@ extension DailyAccountCoordinatorTests {
                 XCTAssertFalse(coordinator.live.hasPendingAccountCleanup(for: user))
             }
             if dailyFailed {
-                await coordinator.account.retryDeletedDailyData() // Still fails; resolved Live must not be advertised.
+                await coordinator.account.retryDeletedDailyData()
                 XCTAssertTrue(coordinator.account.errorMessage?.contains("Retry Daily cleanup") == true)
                 XCTAssertFalse(coordinator.account.errorMessage?.contains("Open Live Race") == true)
             }

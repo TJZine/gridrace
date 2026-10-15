@@ -191,7 +191,6 @@ final class DailySyncTests: XCTestCase {
             let remote = TestDailyRemote(userID: userID, progress: progressDTO(other, userID: userID))
             try fixture.store.save(selected)
             let engine = fixture.engine(remote: remote)
-            // Pending metadata may be absent: durable accepted rows still derive upload work.
             let status = try await engine.synchronize()
             XCTAssertEqual(status, .synced(fixture.syncDate))
             XCTAssertEqual(try fixture.store.loadProgress(), selected)
@@ -502,8 +501,6 @@ final class DailySyncTests: XCTestCase {
         defer { fixture.remove() }
         let engine = fixture.engine(remote: TestDailyRemote(userID: userID))
 
-        // This synchronous call compiles only while engine reconciliation and
-        // DailyClassicModel writes share MainActor ownership.
         XCTAssertEqual(try engine.status(), .idle)
     }
 
@@ -836,8 +833,6 @@ final class DailySyncTests: XCTestCase {
             let configuration = admission.configuration
             let email = admission.email
             let password = admission.password
-            // Independent devices do not share credential storage. Using the default
-            // Keychain service here lets the second sign-in retire the first client's keys.
             let credentialNamespace = "GridRaceDailyIntegration.\(UUID().uuidString)"
             let firstService = SupabaseAccountService(configuration: configuration,
                 storage: SecureAuthStorage(service: credentialNamespace + ".first"))
@@ -910,8 +905,6 @@ final class DailySyncTests: XCTestCase {
                 accepted.acceptedGuesses
             )
 
-            // Date disagreement: the first device still owns D while the second owns D+1.
-            // Targeted reads must upload/resume D and leave the later row intact.
             let future = progress(day: day + 1, words: ["civic"])
             stage = "save-second-future"
             print("DAILY stage=\(stage)")
@@ -943,7 +936,6 @@ final class DailySyncTests: XCTestCase {
             print("DAILY stage=\(stage)")
             let laterCloud = try await firstRemote.pull(puzzleID: future.puzzleID)
             XCTAssertEqual(laterCloud.progress?.guesses.map(\.domain), future.acceptedGuesses)
-            // Completion restoration below continues to observe D on the second device.
             stage = "restore-second-selected-before-completion"
             print("DAILY stage=\(stage)")
             try second.store.save(accepted)
@@ -1021,7 +1013,6 @@ final class DailySyncTests: XCTestCase {
         }
     }
 
-    /// Never includes localized text, userInfo payloads, file paths or account identifiers.
     private static func safeFilesystemDiagnostic(_ error: any Error) -> String {
         func domainName(_ domain: String) -> String {
             switch domain {
@@ -1040,7 +1031,6 @@ final class DailySyncTests: XCTestCase {
         return diagnostic
     }
 
-    // MARK: - U-01 remediation regressions (GR-01, GR-02, GR-04)
 
     func testMismatchedModeEmptyLocalYieldsToNonEmptyCloud() throws {
         let local = progress(words: [], draft: "AB", hardMode: false)
@@ -1335,10 +1325,6 @@ final class DailySyncTests: XCTestCase {
 
         let syncTask = Task { try await engine.synchronize() }
         guard await Self.waitForPushSuspension(remote) else { return }
-        // Force deletion at the exact point where the old check-then-write code
-        // would have performed three writes (history, progress snapshot,
-        // metadata) for this response. Every one of them now runs inside the
-        // lifecycle lock, so each must throw instead of recreating state.
         fixture.lifecycle.invalidate()
         try fixture.store.deleteAccountCache()
         let completedUpload = DailyImportedResultUploadDTO(result(words: ["civic", "stone"]))
@@ -1408,7 +1394,6 @@ final class DailySyncTests: XCTestCase {
         XCTAssertEqual(liveStoredCount, 1)
     }
 
-    // MARK: - U-07 remediation regression (GR-09)
 
     func testImportedResultsPaginationReturns1001ResultsExactlyOnceInStableOrder() async throws {
         let total = 1_001
@@ -1665,7 +1650,6 @@ final class DailySyncTests: XCTestCase {
             let oldChoice = try XCTUnwrap(coordinator.firstConflictID)
             let guestBefore = try guest.loadProgress()
             clock = date(day: day + 2, seconds: 100)
-            // Exercise the same owner method called by the actual scenePhase path.
             coordinator.foregrounded()
             let nextPuzzle = try DailyPuzzleSchedule.puzzle(at: clock, in: pack)
             XCTAssertEqual(coordinator.daily.puzzle, nextPuzzle)
@@ -2060,10 +2044,6 @@ private actor TestDailyRemote: DailySyncRemote {
     }
 }
 
-/// Controllable transport double for U-01 suspension races. Each mutating call
-/// parks on a checked continuation until the test resumes it, so concurrent
-/// writes, cancellation, or lifecycle invalidation land deterministically
-/// while the request is in flight.
 private actor GateRemote: DailySyncRemote {
     private let userID: UUID
     private let serverDate = Date(timeIntervalSince1970: 1_788_220_700)
@@ -2196,8 +2176,6 @@ private actor GateRemote: DailySyncRemote {
     }
 }
 
-/// In-memory page server for the GR-09 pagination proof. After the first page it
-/// inserts an older row, reproducing the drift that offset pagination permits.
 private actor PaginatedResultsStore {
     private var rows: [DailyImportedResultDTO]
     private var recorded: [(cursor: DailyImportedResultsCursor?, limit: Int)] = []

@@ -61,17 +61,12 @@ private struct GuessDistributionView: View {
     let failedCount: Int
     let todayFailed: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// Failed games have their own outlined row, separate from solved-six.
     var todayGuessCount: Int? = nil
     @ScaledMetric(relativeTo: .subheadline) private var rowLabelWidth: CGFloat = 16
     @ScaledMetric(relativeTo: .caption) private var barHeight: CGFloat = 24
     private var maximum: Int { max(1, failedCount, distribution.values.max() ?? 0) }
 
     private func barWidth(count: Int, in total: CGFloat) -> CGFloat {
-        // Zero-count rows render no fill (a 32pt minimum here would paint a
-        // misleading indigo bar for zero). Positive counts keep the readable
-        // 32pt minimum; the count label sits beside the bar in ink-on-card,
-        // so AX5/Bold sizes cannot clip it.
         guard total > 0, count > 0 else { return 0 }
         return min(total, max(32, total * CGFloat(count) / CGFloat(maximum)))
     }
@@ -104,9 +99,6 @@ private struct GuessDistributionView: View {
                             }
                         }
                         .frame(height: barHeight)
-                        // Count sits beside the bar in ink-on-card (never clipped
-                        // white-on-fill), so AX5/Bold sizes cannot clip it or push
-                        // it outside its contrasting fill.
                         Text("\(count)")
                             .font(StampType.caption.bold().monospacedDigit())
                             .foregroundStyle(Color.ink)

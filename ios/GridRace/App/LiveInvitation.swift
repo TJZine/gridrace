@@ -1,10 +1,5 @@
 import Foundation
 
-/// The non-secret navigation value carried by an external live invitation.
-///
-/// A value created by `LiveInvitationParser` has an unassigned generation and is not
-/// persisted until `PendingLiveInvitationStore.save(_:)` assigns a generation.
-/// The value contains no account, consent, roster, bearer or request identity.
 struct PendingLiveInvitation: Codable, Equatable, Hashable, Sendable {
     static let currentFormat = 1
     static let unassignedGeneration = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
@@ -37,7 +32,6 @@ enum LiveInvitationParserError: Error, Equatable, Sendable {
     case invalidConfiguredOrigin
 }
 
-/// Parses only the exact, configured HTTPS invitation shape.
 struct LiveInvitationParser: Sendable {
     private let allowedOrigins: Set<String>
 
@@ -54,8 +48,6 @@ struct LiveInvitationParser: Sendable {
         self.allowedOrigins = normalized
     }
 
-    /// Returns an unassigned-generation navigation value. Persistence and replacement
-    /// policy belong to `PendingLiveInvitationStore`, not URL ingress.
     func parse(_ url: URL) -> PendingLiveInvitation? {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme?.lowercased() == "https",
@@ -142,8 +134,6 @@ enum PendingLiveInvitationStoreSaveResult: Equatable, Sendable {
     case replaced(PendingLiveInvitation)
 }
 
-/// Storage injection keeps the navigation store deterministic and testable.
-/// The production implementation below supplies atomic, protected file I/O.
 protocol PendingLiveInvitationPersistence: Sendable {
     func read() throws -> Data?
     func write(_ data: Data) throws
@@ -175,10 +165,6 @@ struct ProtectedPendingLiveInvitationFile: PendingLiveInvitationPersistence, Sen
     }
 }
 
-/// Account-independent protected storage for the one pending invitation.
-///
-/// All operations share a process lock so a matching-generation clear cannot
-/// race a replacement made through another store instance in this process.
 final class PendingLiveInvitationStore: @unchecked Sendable {
     private static let processLock = NSLock()
     private let persistence: any PendingLiveInvitationPersistence
@@ -207,10 +193,6 @@ final class PendingLiveInvitationStore: @unchecked Sendable {
         try withProcessLock { try loadUnlocked() }
     }
 
-    /// Persists a new invitation before returning its navigation value.
-    /// Same canonical code is a no-op; a different invitation is an explicit
-    /// replacement with a fresh generation. The code is the bounded invitation
-    /// identity even when more than one configured origin is available.
     @discardableResult
     func save(_ invitation: PendingLiveInvitation) throws -> PendingLiveInvitationStoreSaveResult {
         try withProcessLock {
@@ -238,8 +220,6 @@ final class PendingLiveInvitationStore: @unchecked Sendable {
         }
     }
 
-    /// Explicitly discards the current navigation value. A remove failure
-    /// leaves the saved bytes untouched and remains actionable to the caller.
     func clear() throws {
         try withProcessLock {
             do { try persistence.remove() }
@@ -247,8 +227,6 @@ final class PendingLiveInvitationStore: @unchecked Sendable {
         }
     }
 
-    /// Clears only the generation that initiated the operation. A later
-    /// replacement is retained when an older response arrives late.
     @discardableResult
     func clear(matchingGeneration generation: UUID) throws -> Bool {
         try withProcessLock {

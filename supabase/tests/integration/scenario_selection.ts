@@ -1,4 +1,3 @@
-// Bounded backend proof units; each action owns its own setup and fixtures.
 const scenarioIDs: Record<string, string> = {
   "gateway authentication and create retry": "auth-create",
   "RLS secrecy and realtime refresh signal": "rls-realtime",

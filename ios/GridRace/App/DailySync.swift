@@ -224,7 +224,6 @@ enum DailySyncConflictOrigin: Equatable, Sendable {
     case guestImport
 }
 
-/// Values always retain storage roles; presentation never changes the consent basis.
 enum DailySyncConflict: Error, Equatable, Sendable {
     case progress(
         puzzleID: String,
@@ -258,7 +257,6 @@ enum DailySyncConflictDisplayOptions: Equatable, Sendable {
     case completedResult(puzzleID: String, device: DailyCompletedResult, syncedAccount: DailyCompletedResult)
 }
 
-/// A preview binds consent to the account side, regardless of presentation order.
 struct DailySyncChoice: Equatable, Sendable, Identifiable {
     let id: UUID
     let conflict: DailySyncConflict
@@ -389,7 +387,6 @@ enum DailySyncReconciler {
         guard let accountLocal else { return incoming }
         guard let incoming else { return accountLocal }
         guard sameIdentity(accountLocal, incoming) else {
-            // There is one active-progress slot. UTC puzzle day deterministically wins.
             return accountLocal.puzzleDay >= incoming.puzzleDay ? accountLocal : incoming
         }
         if accountLocal.completion != nil, incoming.completion == nil { return accountLocal }
@@ -434,7 +431,6 @@ enum DailySyncReconciler {
         return lhs.puzzleID < rhs.puzzleID
     }
 
-    /// Immutable puzzle identity. Hard Mode is attempt configuration and is excluded.
     static func sameIdentity(_ lhs: DailyClassicProgress, _ rhs: DailyClassicProgress) -> Bool {
         lhs.puzzleID == rhs.puzzleID
             && lhs.puzzleNumber == rhs.puzzleNumber
@@ -443,7 +439,6 @@ enum DailySyncReconciler {
             && lhs.scheduleVersion == rhs.scheduleVersion
     }
 
-    /// Immutable puzzle identity. Hard Mode is attempt configuration and is excluded.
     static func sameIdentity(
         _ progress: DailyClassicProgress,
         _ result: DailyCompletedResult
@@ -568,13 +563,9 @@ protocol DailySyncRemote: Sendable {
 }
 
 extension DailySyncRemote {
-    /// Latest progress discovery is used only when no selected durable slot exists.
     func pull() async throws -> DailyCloudSnapshot { try await pull(puzzleID: nil) }
 }
 
-/// Synchronous invalidation token for an account sync lifecycle. The coordinator
-/// invalidates the token before deleting the UUID-scoped cache so late
-/// engine writes suspended in transport observe invalidity without any hang.
 final class DailySyncLifecycle: @unchecked Sendable {
     private let lock = NSLock()
     private var invalidatedFlag = false
@@ -591,11 +582,6 @@ final class DailySyncLifecycle: @unchecked Sendable {
         return invalidatedFlag
     }
 
-    /// Runs a synchronous filesystem mutation while holding the lifecycle
-    /// lock, making the validity check atomic with the write: `invalidate()`
-    /// either completes fully before the mutation runs or the mutation throws
-    /// `CancellationError` instead of running. The lock is never held across
-    /// an await; callers check `Task` cancellation separately.
     func performThrowingIfValid(_ work: () throws -> Void) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -660,8 +646,6 @@ final class DailySyncEngine {
         try lifecycle.performThrowingIfValid { try store.save(metadata) }
     }
 
-    /// Copies guest data into the account cache without modifying the guest store.
-    /// Call `synchronize()` after the player confirms the import.
     func stageGuestImport(from guestStore: any DailyClassicStoring) throws -> DailySyncStatus {
         try Task.checkCancellation()
         var guestHistory = try guestStore.loadHistory()
@@ -751,8 +735,6 @@ final class DailySyncEngine {
             interruptedChoices.removeValue(forKey: preview.id)
             return .applied
         } catch {
-            // Retain the successfully written part as the retry basis. A later
-            // accepted edit still invalidates it and requires fresh consent.
             interruptedChoices[preview.id] = try? DailySyncChoice(id: preview.id,
                 conflict: preview.conflict, accountProgress: store.loadProgress(),
                 accountResult: store.loadHistory().result(for: puzzleID))
@@ -760,7 +742,6 @@ final class DailySyncEngine {
         }
     }
 
-    /// Only immutable completions may supersede an accepted unsaved attempt.
     func authoritativeCompletion(for progress: DailyClassicProgress) async throws -> DailyCompletedResult? {
         let cloud = try await remote.pull(puzzleID: progress.puzzleID)
         try Task.checkCancellation()
@@ -857,8 +838,6 @@ final class DailySyncEngine {
     func synchronize() async throws -> DailySyncStatus {
         do {
             try Task.checkCancellation()
-            // The activated model's durable slot owns selection. A different device's
-            // latest day must not evict its accepted rows before upload.
             let selectedPuzzleID = try store.loadProgress()?.puzzleID
             let pulled = try await remote.pull(puzzleID: selectedPuzzleID)
             try Task.checkCancellation()
@@ -869,7 +848,6 @@ final class DailySyncEngine {
             let localProgressBefore = try store.loadProgress()
             let cloud = DailyCloudSnapshot(
                 progress: pulled.progress.flatMap {
-                    // Selection may have changed while pull was suspended.
                     if let localProgressBefore, localProgressBefore.puzzleID != $0.puzzleID {
                         return nil
                     }
@@ -897,11 +875,6 @@ final class DailySyncEngine {
                 return .conflict(reconciliation.conflicts)
             }
 
-            // Derive upload work from durable reconciled state so valid local
-            // progress/results converge even when pending metadata was never written.
-            // Explicitly ignored puzzle IDs are never reuploaded. Exact cloud matches
-            // skip uploads and local writes unless an explicit pending marker requires
-            // an idempotent confirmation write.
             let cloudResultsByID = Dictionary(
                 uniqueKeysWithValues: cloud.importedResults.map { ($0.puzzleID, $0) }
             )
@@ -947,8 +920,6 @@ final class DailySyncEngine {
                 try handleResultOutcomeFresh(outcome, uploaded: uploaded, conflicts: &conflicts)
             }
 
-            // The derivation snapshot is uploaded; the handler re-reads current
-            // state and drops the response when newer local work arrived first.
             if needsProgressPass,
                let upload = reconciliation.progress,
                upload.completion == nil {
@@ -970,11 +941,6 @@ final class DailySyncEngine {
                 return .conflict(conflicts)
             }
 
-            // Converge metadata in one fresh write: drop stale markers, clear
-            // exact matches, stamp success. The snapshot is re-read here with
-            // no await before the save, so newer pending work cannot be clobbered.
-            // The save itself runs inside the lifecycle lock (see
-            // performThrowingIfValid), so invalidation cannot land mid-write.
             try Task.checkCancellation()
             var finalMetadata = try store.loadSyncMetadata()
             let currentHistory = try store.loadHistory()

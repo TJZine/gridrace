@@ -140,8 +140,6 @@ final class DailyAccountCoordinator {
         guard account.session == nil,
               currentUserID == nil, activationUserID == nil, daily === guestDaily else { return }
         startupState = .settled
-        // The completed Auth intent owns fallback; an obsolete restore does not.
-        // Existing stream/captured-user callbacks retain Live cleanup ownership.
         if !guestDaily.isPersistenceActive {
             guestDaily.activatePersistence()
             guestDaily.refreshForCurrentDay()
@@ -159,7 +157,6 @@ final class DailyAccountCoordinator {
             if currentUserID != nil || activationUserID != nil {
                 activateGuest()
             } else {
-                // Daily may already be guest while live recovery cleanup is pending.
                 changeLiveAccount(to: nil)
             }
             return
@@ -278,8 +275,6 @@ final class DailyAccountCoordinator {
                 await self.synchronize(using: engine, userID: userID)
             } catch is CancellationError {
             } catch {
-                // Staging can save history/progress before metadata fails.
-                // Adopt only durable writes; dirty accepted play still owns retry.
                 self.reloadAccountDaily()
                 self.syncStatus = .failed(.invalidData)
             }
@@ -380,8 +375,6 @@ final class DailyAccountCoordinator {
     }
 
     private func synchronize(using engine: DailySyncEngine, userID: UUID) async {
-        // An import conflict needs an explicit choice; a generic retry cannot
-        // turn successful synchronization of the account attempt into consent.
         if let pendingGuestImport, pendingGuestImport.userID == userID,
            pendingGuestImport.engine === engine, !conflicts.isEmpty {
             syncStatus = .conflict(conflicts)

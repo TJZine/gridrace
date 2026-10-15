@@ -77,8 +77,6 @@ struct LiveRematchView: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityFocused($noticeFocused)
-            // Focus owns speech once per meaningful state/action change. Clock ticks
-            // do not create announcements or locally close a server offer.
             .onChange(of: presentation) { _, _ in noticeFocused = true }
             .onAppear { noticeFocused = true }
         }

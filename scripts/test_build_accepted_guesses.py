@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Regression checks for corpus input and cross-evidence boundaries."""
 
 from __future__ import annotations
 
@@ -42,6 +41,32 @@ def load_script(name: str):
 
 CHECK = load_script("check_word_pack")
 PARENT = load_script("parent_revision_pass")
+
+
+class CandidateTargetCoverageTests(unittest.TestCase):
+    def test_missing_relationship_coverage_rejects_candidate_heads_and_forms(self) -> None:
+        for word, forms in [("apple", []), ("longer", [{"form": "apple"}])]:
+            with self.subTest(word=word):
+                record = {"word": word, "lang_code": "en", "pos": "noun", "forms": forms,
+                          "senses": [{"form_of": [{"word": "orchard"}]}]}
+                with self.assertRaisesRegex(ValueError, "target coverage incomplete: 1.*"):
+                    BUILD.require_candidate_target_coverage([("candidate", 1, record)], set())
+
+    def test_main_records_and_target_coverage_admit_relationships_without_unrelated_requirements(self) -> None:
+        records = [
+            ("candidate", 1, {"word": "apple", "lang_code": "en", "pos": "noun",
+                              "senses": [{"form_of": [{"word": "roots"}, {"word": "orchard"}]}]}),
+            ("candidate", 2, {"word": "roots", "lang_code": "en", "pos": "noun",
+                              "senses": [{"glosses": ["ordinary noun"]}]}),
+            ("candidate", 3, {"word": "longer", "lang_code": "en", "pos": "noun",
+                              "senses": [{"form_of": [{"word": "unneeded"}]}]}),
+            ("candidate", 4, {"word": "names", "lang_code": "en", "pos": "name",
+                              "senses": [{"form_of": [{"word": "unneeded"}]}]}),
+        ]
+        self.assertEqual(
+            BUILD.require_candidate_target_coverage(records, {"orchard"}),
+            ({"roots", "orchard"}, ["orchard"], []),
+        )
 
 
 class RevisionIndexBoundaryTests(unittest.TestCase):
@@ -142,8 +167,6 @@ class RetainedInputBoundaryTests(unittest.TestCase):
         "real retained-input controls require GRIDRACE_CORPUS_INPUT_INTEGRATION=1 and preserved corpus",
     )
     def test_actual_consumed_input_failures_leave_all_outputs_unchanged(self) -> None:
-        # Real retained inputs, copied into owned storage. The SQLite fixture
-        # preserves every consumed row while excluding irrelevant cache pages.
         attestation = BUILD.input_identity.load_attestation(BUILD.PACKS)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -235,15 +258,10 @@ class RetainedInputBoundaryTests(unittest.TestCase):
             database.rename(root / "database-held.sqlite")
             fail("SQLite file missing", "SQLite")
             (root / "database-held.sqlite").rename(database)
-            # An unused row is outside the membership input contract.
             with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute("INSERT INTO pages VALUES(1,'unrelated','unused')")
-            # Restoration earns a full successful transform, rather than a
-            # validator-only pass. All three deterministic outputs match.
             BUILD.run(args)
             self.assertEqual({path: path.read_bytes() for path in outputs}, outputs)
-            # Exercise the actual checker CLI and builder subprocess against
-            # relocated verified inputs, including the consumed SQLite projection.
             command = [sys.executable, "-B", str(ROOT / "scripts/check_word_pack.py")]
             for key in BUILD.pinned_defaults():
                 command.extend(("--" + key.replace("_", "-"), getattr(args, key)))
@@ -430,8 +448,6 @@ class ParentEvidenceTests(unittest.TestCase):
         schema_row["revision_status"] = "dump_parent"
         with self.assertRaisesRegex(ValueError, "must carry page/revision/timestamp"):
             CHECK.check_provenance_row(schema_row, 0)
-        # Empty dump values normalize to null, as in the builder. The full
-        # provenance schema separately rejects nulls for dump_parent rows.
         null_row = dict(row, revision_id=None)
         found["parent"]["revisionId"] = ""
         CHECK.validate_parent_revisions([null_row], found, [])

@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import GridRace
 
-// A host-created receipt is evidence of fixture provenance, never server authority.
-// The harness creates a fresh Auth user, records its returned UUID, and copies this
-// nonsecret receipt into its disposable app container. Credentials alone do not admit.
 struct LocalIntegrationAdmission {
     enum Purpose: String, Codable { case daily, live }
     struct Receipt: Codable {
@@ -43,35 +40,32 @@ struct LocalIntegrationAdmission {
         let prefix = purpose == .daily ? "GRIDRACE_LOCAL_SYNC" : "GRIDRACE_LIVE"
         guard let email = environment[prefix + "_EMAIL"], !email.isEmpty,
               let password = environment[prefix + "_PASSWORD"], !password.isEmpty
-        else { throw receiptRefusal("credentials-missing") }
+        else { throw receiptRefusal(.credentialsMissing) }
         guard let runID = environment["GRIDRACE_FIXTURE_RUN_ID"].flatMap(UUID.init(uuidString:))
-        else { throw receiptRefusal("run-id-invalid") }
-        // Resolve from the running test host's own sandbox. Xcode may relocate an
-        // app's physical container during install; temporary files are expendable.
-        // A fixed run-bound basename cannot select an arbitrary host file.
+        else { throw receiptRefusal(.runIDInvalid) }
         let filename = "fixture-\(runID.uuidString).json"
         guard environment["GRIDRACE_FIXTURE_RECEIPT"] == filename
-        else { throw receiptRefusal("receipt-name-invalid") }
+        else { throw receiptRefusal(.receiptNameInvalid) }
         guard let support = receiptDirectory ?? FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("GridRaceIntegration", isDirectory: true)
-        else { throw receiptRefusal("receipt-directory-unavailable") }
+        else { throw receiptRefusal(.receiptDirectoryUnavailable) }
         let path = support.appendingPathComponent(filename).path
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: path)
-        else { throw receiptRefusal("receipt-attributes-unavailable") }
+        else { throw receiptRefusal(.receiptAttributesUnavailable) }
         guard attributes[.type] as? FileAttributeType == .typeRegular
-        else { throw receiptRefusal("receipt-not-regular") }
+        else { throw receiptRefusal(.receiptNotRegular) }
         guard let size = attributes[.size] as? NSNumber, size.intValue <= 4096
-        else { throw receiptRefusal("receipt-size-invalid") }
+        else { throw receiptRefusal(.receiptSizeInvalid) }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path))
-        else { throw receiptRefusal("receipt-read-unavailable") }
+        else { throw receiptRefusal(.receiptReadUnavailable) }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
         guard let receipt = try? decoder.decode(Receipt.self, from: data),
               receipt.version == 1, receipt.runID == runID, receipt.endpoint == endpoint,
               receipt.unlinked, receipt.purpose == purpose, receipt.email == email,
               receipt.createdAt <= now, now.timeIntervalSince(receipt.createdAt) < 6 * 60 * 60
-        else { throw receiptRefusal("receipt-content-invalid") }
+        else { throw receiptRefusal(.receiptContentInvalid) }
         if purpose == .live {
             guard ["host", "guest", "resume", "survivor", "advance-host", "advance-guest",
                    "solve-host", "solve-guest", "friends-both", "friends-recover", "friends-select", "friends-stale", "friends-resume", "friends-race", "friends-offer", "friends-cancel", "friends-decline", "friends-close-disabled", "friends-signal-host", "friends-signal-guest", "invitation-root"].contains(environment["GRIDRACE_LIVE_ROLE"] ?? ""),
@@ -85,9 +79,20 @@ struct LocalIntegrationAdmission {
         return Self(receipt: receipt, configuration: configuration, email: email, password: password)
     }
 
-    private static func receiptRefusal(_ reason: String) -> Refusal {
-        // Fixed reasons only: never print credentials, identifiers, paths or data.
-        print("GRIDRACE_INTEGRATION_ADMISSION_REFUSED \(reason)")
+    private enum ReceiptRefusalReason: String {
+        case credentialsMissing = "credentials-missing"
+        case runIDInvalid = "run-id-invalid"
+        case receiptNameInvalid = "receipt-name-invalid"
+        case receiptDirectoryUnavailable = "receipt-directory-unavailable"
+        case receiptAttributesUnavailable = "receipt-attributes-unavailable"
+        case receiptNotRegular = "receipt-not-regular"
+        case receiptSizeInvalid = "receipt-size-invalid"
+        case receiptReadUnavailable = "receipt-read-unavailable"
+        case receiptContentInvalid = "receipt-content-invalid"
+    }
+
+    private static func receiptRefusal(_ reason: ReceiptRefusalReason) -> Refusal {
+        print("GRIDRACE_INTEGRATION_ADMISSION_REFUSED \(reason.rawValue)")
         return .invalidReceipt
     }
 

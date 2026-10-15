@@ -22,7 +22,6 @@ test('actual landing DOM writes only a validated code and safe local reopen', as
   const elements = Object.fromEntries(['room-code','status','reopen','install'].map(id => [id, { hidden:true }]));
   globalThis.window = { location: { href:'https://invite.test/join/ABC234' } };
   globalThis.document = { getElementById:id => elements[id] };
-  // Exercise actual module with empty shipped configuration: no guessed host/install URL.
   await import('../landing.mjs');
   assert.equal(elements['room-code'].hidden,true);
   assert.match(elements.status.textContent,/not supported/);

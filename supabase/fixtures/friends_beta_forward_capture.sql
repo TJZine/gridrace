@@ -1,4 +1,3 @@
--- Capture only synthetic retained fixtures in the controller-owned disposable database.
 select jsonb_build_object('matches',(select jsonb_agg(to_jsonb(t) order by id) from public.matches t),
  'members',(select jsonb_agg(to_jsonb(t) order by id) from public.match_members t),
  'rounds',(select jsonb_agg(to_jsonb(t) order by id) from public.rounds t),

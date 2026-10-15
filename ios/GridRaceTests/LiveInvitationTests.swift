@@ -79,8 +79,6 @@ final class PendingLiveInvitationStoreTests: XCTestCase {
         XCTAssertTrue(try relaunched.clear(matchingGeneration: savedSecond.replacementGeneration))
         XCTAssertNil(try relaunched.load())
 
-        // Fresh UUID generations cannot be reused after clear, including when
-        // a new store instance models process relaunch.
         let third = PendingLiveInvitation(origin: savedFirst.origin, code: "G2H3J4")
         guard case .saved(let savedThird) = try relaunched.save(third) else {
             return XCTFail("A new invitation must be saved after dismissal")

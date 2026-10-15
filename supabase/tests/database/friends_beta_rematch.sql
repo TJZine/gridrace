@@ -5,7 +5,6 @@ select no_plan();
 insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at)
 select ('f3000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'00000000-0000-0000-0000-000000000000',
  'authenticated','authenticated','friends-'||n||'@example.test','unused',now(),now(),now() from generate_series(1,4)n;
--- Obsolete new-create callers receive an update gate without allocation or quota.
 create temporary table legacy_gate_counts as select count(*) as matches from public.matches;
 select is(public.create_match('f3000000-0000-0000-0000-000000000001', 1, null, extensions.gen_random_uuid(), 1::smallint)#>>'{error,code}','client_update_required','new build1 Create requires update');
 select is(public.create_match('f3000000-0000-0000-0000-000000000001',2,null,extensions.gen_random_uuid(),3::smallint)#>>'{error,code}','client_update_required','new build2 Create requires update');
@@ -96,7 +95,6 @@ begin
  perform public.start_match(a,3,m,1::smallint);
  select id into r from public.rounds where match_id=m;
  update public.rounds set starts_at=now()-interval '4 minutes',ends_at=now()-interval '1 minute' where id=r;
- -- Exercise v3 read's finalization branch, rather than only a precompleted snapshot.
  perform public.match_snapshot(a,3,m);
  return m;
 end $$;
@@ -122,7 +120,6 @@ begin
  return next is(jsonb_array_length(public.match_snapshot(a,3,m)#>'{data,rematch,consenting_member_ids}'),1,'closed consent not inherited');
  return next is(public.rematch_command(a,3,extensions.gen_random_uuid(),m,2,'decline',epoch_a)#>>'{data,state}','closed','decline closes');
  return next is(public.rematch_command(a,3,extensions.gen_random_uuid(),m,3,'offer',epoch_a)#>>'{data,state}','offered','third fresh generation');
- -- Passive stale pointer recovery does not invalidate consent; explicit pinned Join does.
  other:=(public.create_match(c,3,null,extensions.gen_random_uuid(),1::smallint)#>>'{data,match_id}')::uuid;
  return next is(public.join_match(b,3,(select join_code from public.matches where id=other),null,extensions.gen_random_uuid(),m)#>>'{error,code}','match_not_joinable','pinned mismatch never admits');
  return next is(public.match_snapshot(a,3,m)#>>'{data,rematch,state}','offered','failed selection keeps consent');
@@ -141,7 +138,6 @@ begin
  epoch_b:=(public.match_snapshot(b,3,m)#>>'{data,selection,epoch}')::bigint;
  return next is(public.rematch_command(b,3,extensions.gen_random_uuid(),m,4,'offer',epoch_b)#>>'{data,state}','offered','fresh offer selects old predecessor');
  epoch_a:=(public.match_snapshot(a,3,m)#>>'{data,selection,epoch}')::bigint;
- -- Pool error leaves existing consent exactly intact and is receipted.
  create temporary table friends_active_words as select word from private.words where is_active;
  update private.words set is_active=false where is_answer;
  req:=extensions.gen_random_uuid();response:=public.rematch_command(a,3,req,m,4,'accept',epoch_a);
@@ -167,7 +163,6 @@ begin
  return next is((select count(*) from private.round_secrets x join public.rounds y on y.id=x.round_id where y.match_id=s),0::bigint,'failed Start no secret');
  update private.words set is_active=true where word in(select word from friends_active_words);
  update private.live_feature_configuration set allow_new_rematches=true;
- -- Deadline equality closes permanently; repeated reads advance no revision.
  other:=pg_temp.completed_pair();
  delete from private.rematch_contexts where predecessor_match_id=other;
  delete from public.match_rematch_signals where predecessor_match_id=other;
@@ -177,7 +172,6 @@ begin
  return next is(snap#>>'{data,rematch,state}','expired','original completion window expires');
  return next is(public.rematch_command(a,3,extensions.gen_random_uuid(),other,1,'offer',(snap#>>'{data,selection,epoch}')::bigint)#>>'{error,code}','rematch_expired','expired offer denied');
  return next is(public.match_snapshot(a,3,other)#>>'{data,rematch,revision}',snap#>>'{data,rematch,revision}','stable expired reads no revision');
- -- Rollback closes unaccepted offer, while cancel/receipts remain available.
  other:=pg_temp.completed_pair();epoch_a:=(public.match_snapshot(a,3,other)#>>'{data,selection,epoch}')::bigint;
  req:=extensions.gen_random_uuid();response:=public.rematch_command(a,3,req,other,1,'offer',epoch_a);
  update private.live_feature_configuration set allow_new_rematches=false;
@@ -191,11 +185,10 @@ begin
  return next is(public.rematch_command(a,3,extensions.gen_random_uuid(),other,1,'offer',epoch_a)#>>'{error,code}','answer_pool_unavailable','first offer pool failure');
  return next is(public.match_snapshot(a,3,other)#>>'{data,rematch,state}','eligible','first offer failure no consent');
  update private.words set is_active=true where word in(select word from friends_active_words);
- perform private.normalize_rematch(other,(select deadline-interval '1 microsecond' from private.rematch_contexts where predecessor_match_id=other));
+ perform private.normalize_rematch_with_locked_participation(other,(select deadline-interval '1 microsecond' from private.rematch_contexts where predecessor_match_id=other));
  return next is((select state from private.rematch_contexts where predecessor_match_id=other),'eligible','one microsecond before deadline eligible');
- perform private.normalize_rematch(other,(select deadline from private.rematch_contexts where predecessor_match_id=other));
+ perform private.normalize_rematch_with_locked_participation(other,(select deadline from private.rematch_contexts where predecessor_match_id=other));
  return next is((select state from private.rematch_contexts where predecessor_match_id=other),'expired','exact deadline equality expired');
- -- Guest deletion cannot open private successor's empty seat; original acceptance survives.
  perform public.delete_account(b,3);
  return next is(public.match_snapshot(a,3,m)#>>'{data,rematch,successor_available}','false','guest deletion leaves accepted unavailable');
  return next is(public.join_match(c,3,(select join_code from public.matches where id=s),null,extensions.gen_random_uuid(),null)#>>'{error,code}','match_not_joinable','private empty seat not replaceable');

@@ -97,6 +97,22 @@ Deno.test("preserves malformed and empty JSON rejection", async () => {
   assertEquals(await status(""), 400);
 });
 
+Deno.test("rejects oversized streams when cancellation fails", async () => {
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(2049));
+    },
+    cancel() {
+      cancelled = true;
+      throw new Error("cancellation failed");
+    },
+  });
+
+  assertEquals(await status(stream), 400);
+  assertEquals(cancelled, true);
+});
+
 Deno.test("maps multi-round configuration and deletion errors safely", async () => {
   for (
     const [code, status, message] of [

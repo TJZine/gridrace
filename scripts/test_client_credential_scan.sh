@@ -33,7 +33,6 @@ rm "$work_dir/container/.hidden/data"
 printf '%s\n' "$db_url" > "$work_dir/container/ignored"
 check_scan failure
 rm "$work_dir/container/ignored"
-# A substring that would match the service key as a regex must remain clean.
 printf 'fixture-service-key-l\n' > "$work_dir/container/data"
 check_scan clean
 
@@ -46,7 +45,6 @@ SCANNER
 chmod +x "$work_dir/scanner/rg"
 original_path=$PATH
 PATH="$work_dir/scanner:$PATH" check_scan failure
-# No rg executable; the shell's diagnostic must also remain private.
 rm "$work_dir/scanner/rg"
 PATH="$work_dir/scanner" check_scan failure
 PATH=$original_path

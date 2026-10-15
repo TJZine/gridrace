@@ -364,6 +364,32 @@ containers/volumes are removed and the original inventory is unchanged. Captures
 include synthetic answers and receipts: share only sanitized summaries, not raw
 JSON or startup logs. Passing this procedure proves local forward preservation
 and clean creation; it does not establish hosted or independent-native-client
-acceptance. Ordinary discovery should run the eight standalone pgTAP suites and
-940 assertions, with no `friends_beta_forward_*.sql` entries. No new test suite is
-needed for a fixture relocation.
+acceptance. At the friends-beta migration, ordinary discovery runs eight standalone
+pgTAP suites and 940 assertions. The later private-contract migration adds eighteen
+assertions in a ninth suite. Staged forward fixtures stay outside test discovery.
+
+## Private-contract forward preservation
+
+For `202610140001_rematch_and_deletion_contracts.sql`, use the same exclusive,
+disposable, unlinked loopback ownership and private-log precautions above, with
+baseline `202610130001`. Copy the current migration, tests and fixture inputs into
+the owned stack and record their hashes. Require an empty baseline and one active
+owned finalizer before creating fixtures. Pause that exact job for the preservation
+sequence and restore its prior active state even if a command fails.
+
+Run these files with `psql -X -v ON_ERROR_STOP=1` against that owned database, in
+this order: `sql_contracts_forward_before.sql`, then
+`sql_contracts_forward_capture.sql`; apply `supabase migration up --local` to the
+owned workdir; then run `sql_contracts_forward_after.sql`. These files are under
+`supabase/fixtures/`. Unlike the older capture script, this capture stores its
+baseline in a private fixture table. The after script compares full rows and
+metadata, including helper OIDs and ACLs, replays original requests, compares
+again, and only then probes canonical recovery and member-keyed consent
+invalidation. Its probes roll back. No timestamps or revisions are excluded from
+comparison; only the sanctioned column and helper names are normalized.
+
+Require every command to succeed before discarding the synthetic fixtures with a
+clean local reset. Then run the current database tests and lint, the deletion
+receipt race, and the friends-beta concurrency fixture. Keep the latter two
+serialized on the owned database. The focused `friends-3-race` native scenario
+adds independent Auth/Edge/DB/Realtime/client evidence after those checks.

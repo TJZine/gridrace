@@ -15,8 +15,6 @@ begin
     return private.error_response('internal_error');
   end if;
 
-  -- Discover the operation without locking a token: rotated tokens must acquire
-  -- the same operation lock before either holds a row needed by group completion.
   select deletion_id into v_deletion_id
   from private.account_deletion_receipts
   where token_hash = p_token_hash;
@@ -25,13 +23,10 @@ begin
     return private.error_response('request_conflict');
   end if;
 
-  -- Seed 2 separates completion from account (1) and Daily puzzle (0) locks.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_deletion_id::text, 2)
   );
 
-  -- The unlocked lookup grants no authority. Revalidate after waiting, including
-  -- the immutable operation identity, before applying the existing preconditions.
   select * into v_receipt
   from private.account_deletion_receipts
   where token_hash = p_token_hash
@@ -55,5 +50,5 @@ begin
 end;
 $$;
 
--- CREATE OR REPLACE retains the existing service-only ACL and invoker boundary.
+-- CREATE OR REPLACE retains the existing service-only ACL.
 commit;

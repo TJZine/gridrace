@@ -94,7 +94,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
         XCTAssertNil(cold.visiblePending)
         XCTAssertTrue(cold.cleanupBlocked)
         cold.receive(url("DEF567"))
-        cold.replace() // Navigation only while cleanup is blocked.
+        cold.replace()
         XCTAssertEqual(cold.pending?.code, "DEF567")
         XCTAssertNil(cold.visiblePending)
         file.rejectRemove = false
@@ -176,7 +176,6 @@ final class FriendsBetaCompositionTests: XCTestCase {
             XCTAssertEqual(try store.load().matchID, snapshot.match.id)
             XCTAssertEqual(cold.pending?.code, newerArrival ? "DEF567" : nil)
             XCTAssertFalse(cold.storageFailed)
-            // A late old-account acknowledgment cannot flag or mutate the next account.
             let other = UUID(); bindLiveAccount(restored, transport: nextTransport(other))
             cold.admitted(generation: generation, userID: user)
             XCTAssertFalse(cold.storageFailed)
@@ -367,10 +366,10 @@ final class FriendsBetaCompositionTests: XCTestCase {
         invitations.receive(url())
         for accessibility in [false, true] {
             try await capture(LiveInvitationView(invitations: invitations, app: nil, resolveRace: {}, joined: {}),
-                              name: "invitation-startup", accessibility: accessibility, expectedButtons: ["Keep invitation", "Discard invitation"])
+                              name: "invitation-startup", accessibility: accessibility, actions: .hostedViewport(expectedButtons: ["Keep invitation", "Discard invitation"]))
             invitations.receive(url("DEF567"))
             try await capture(LiveInvitationView(invitations: invitations, app: nil, resolveRace: {}, joined: {}),
-                              name: "invitation-replacement", accessibility: accessibility, expectedButtons: ["Keep current", "Replace invitation"])
+                              name: "invitation-replacement", accessibility: accessibility, actions: .hostedViewport(expectedButtons: ["Keep current", "Replace invitation"]))
             invitations.keepCurrent()
             for name in ["eligible", "offered", "incoming", "closed", "expired", "unavailable", "accepted", "accepted_unavailable"] {
                 let original = try FriendsBetaFixtures.snapshot(name == "incoming" ? "offered" : name)
@@ -388,7 +387,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
                 let buttons = session.availableRematchActions.map { LiveRematchPresentation.title($0, state: snapshot.rematch!.state) }
                 if name == "incoming" { XCTAssertEqual(buttons, ["Accept rematch", "Decline"]) }
                 try await capture(ScrollView { LiveRematchView(session: session, snapshot: snapshot).padding(16) }
-                    .background(Color.page), name: "rematch-\(name)", accessibility: accessibility, expectedButtons: buttons)
+                    .background(Color.page), name: "rematch-\(name)", accessibility: accessibility, actions: .hostedViewport(expectedButtons: buttons))
                 session.leaveToHome()
             }
             let root = FileManager.default.temporaryDirectory.appending(path: "I4-render-\(UUID())")
@@ -403,17 +402,17 @@ final class FriendsBetaCompositionTests: XCTestCase {
             await app.start()
             try await capture(LiveInvitationView(invitations: invitations, app: app, resolveRace: {}, joined: {}),
                               name: "invitation-signed-out", accessibility: accessibility,
-                              expectedButtons: ["Open Account", "Keep invitation", "Discard invitation"])
+                              actions: .hostedViewport(expectedButtons: ["Open Account", "Keep invitation", "Discard invitation"]))
             account.loadedProfile = profile(user); account.emit(AccountSession(userID: user, expiresAt: .distantFuture))
             for _ in 0..<100 where app.account.profile == nil { try await Task.sleep(for: .milliseconds(10)) }
             try await capture(LiveInvitationView(invitations: invitations, app: app, resolveRace: {}, joined: {}),
                               name: "invitation-confirm-current-account", accessibility: accessibility,
-                              expectedButtons: ["Join ABC234", "Keep invitation", "Discard invitation"])
+                              actions: .hostedViewport(expectedButtons: ["Join ABC234", "Keep invitation", "Discard invitation"]))
             app.live.createMatch()
             for _ in 0..<100 where app.live.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
             try await capture(LiveInvitationView(invitations: invitations, app: app, resolveRace: {}, joined: {}),
                               name: "invitation-unresolved-race", accessibility: accessibility,
-                              expectedButtons: ["Resolve saved race", "Keep invitation", "Discard invitation"])
+                              actions: .hostedViewport(expectedButtons: ["Resolve saved race", "Keep invitation", "Discard invitation"]))
             app.live.leaveToHome()
             let predecessor = try FriendsBetaFixtures.snapshot("accepted_selected_elsewhere")
             let successor = try FriendsBetaFixtures.snapshot("successor_lobby")
@@ -426,7 +425,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
             XCTAssertEqual(session.resumeConfirmationTarget?.match.id, successor.match.id)
             try await capture(NavigationStack { LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility,
                                                                 accountName: "Player") }, name: "resume-actual-successor", accessibility: accessibility,
-                                   expectedButtons: ["Switch race and resume", "Cancel"])
+                                   actions: .hostedViewport(expectedButtons: ["Switch race and resume", "Cancel"]))
             session.leaveToHome()
         }
     }
@@ -435,8 +434,6 @@ final class FriendsBetaCompositionTests: XCTestCase {
             for name in ["eligible", "offered", "incoming", "closed", "expired", "unavailable", "3-round-3-reveal", "5-round-5-reveal"] {
                 let original: LiveMatchSnapshot
                 if name.contains("round-") {
-                    // Exercise current server-shaped consent projections with the
-                    // realistic boards and complete 3/5-round result history.
                     var data = try Phase4LiveFixtures.object(name)
                     var rematch = try XCTUnwrap(data["rematch"] as? [String: Any])
                     rematch["is_eligible"] = true
@@ -470,7 +467,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
                 try await capture(NavigationStack {
                     LiveMatchFlowView(session: session, hapticsEnabled: false, highContrast: accessibility, accountName: "Player")
                 }, name: "completed-flow-\(name)", accessibility: accessibility,
-                    expectedButtons: actions + history + ["Home"])
+                    actions: .hostedViewport(expectedButtons: actions + history + ["Home"]))
                 session.leaveToHome()
             }
         }
@@ -487,7 +484,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
         app.invitations = invitations
         for accessibility in [false, true] {
             try await capture(DailyAppView(app: app, invitations: invitations), name: "root-invitation-banner",
-                              accessibility: accessibility, expectedButtons: ["Open invitation ABC234"], screenLevel: true)
+                              accessibility: accessibility, actions: .safeScreen(expectedButtons: ["Open invitation ABC234"]))
         }
     }
     func testMalformedInvitationCleanupJournalFailsClosedAndPreservesBytes() throws {
@@ -505,10 +502,40 @@ final class FriendsBetaCompositionTests: XCTestCase {
         XCTAssertThrowsError(try journal.reload())
         XCTAssertEqual(try Data(contentsOf: file.url), original)
     }
-    private func capture<V: View>(_ view: V, name: String, accessibility: Bool, expectedButtons: [String] = [], screenLevel: Bool = false) async throws {
+    private enum CaptureActions {
+        case hostedViewport(expectedButtons: [String])
+        case safeScreen(expectedButtons: [String])
+
+        var expectedButtons: [String] {
+            switch self {
+            case .hostedViewport(let expectedButtons), .safeScreen(let expectedButtons):
+                return expectedButtons
+            }
+        }
+
+        @MainActor
+        func viewport(in hosted: GameplayContainmentHost) -> CGRect {
+            switch self {
+            case .hostedViewport:
+                return hosted.viewport
+            case .safeScreen:
+                return hosted.window.convert(hosted.window.bounds.inset(by: hosted.window.safeAreaInsets), to: nil)
+            }
+        }
+
+        func includes(label: String) -> Bool {
+            switch self {
+            case .hostedViewport:
+                return true
+            case .safeScreen(let expectedButtons):
+                return expectedButtons.contains(label)
+            }
+        }
+    }
+
+    private func capture<V: View>(_ view: V, name: String, accessibility: Bool,
+                                 actions: CaptureActions = .hostedViewport(expectedButtons: [])) async throws {
         try await GameplayContainmentHost.withHost(view, landscape: false, accessibility: accessibility) { hosted in
-            // Existing native hosting harness establishes/restores OS orientation and
-            // accessibility automation. Captures remain rendering evidence, not a VoiceOver interaction pass.
             hosted.window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
             try await hosted.settle()
             let renderer = UIGraphicsImageRenderer(bounds: hosted.window.bounds)
@@ -516,18 +543,13 @@ final class FriendsBetaCompositionTests: XCTestCase {
             let attachment = XCTAttachment(image: image)
             attachment.name = "I4-\(name)-\(accessibility ? "AX5" : "compact")"
             attachment.lifetime = .keepAlways; add(attachment)
-            // The root banner sits above the navigation bar. Gameplay's viewport
-            // intentionally removes that region; root actions use the actual safe screen.
-            let viewport = screenLevel ? hosted.window.convert(hosted.window.bounds.inset(by: hosted.window.safeAreaInsets), to: nil)
-                : hosted.viewport
+            let viewport = actions.viewport(in: hosted)
             var reached = Set<String>()
             @MainActor func observe() {
                 let elements = hosted.elements()
                 XCTAssertFalse(elements.isEmpty, "Actual native accessibility tree must render")
                 for element in elements where element.button && element.frame.intersects(viewport) {
-                    // Root scope owns the invitation banner. Existing native toolbar
-                    // AX-frame/hit-region acceptance stays with S4; don't widen this gate.
-                    if screenLevel && !expectedButtons.contains(element.label) { continue }
+                    if !actions.includes(label: element.label) { continue }
                     XCTAssertGreaterThanOrEqual(element.frame.height, 43, "\(name): \(element.label)")
                     let visible = element.clips.reduce(element.frame.intersection(viewport)) { $0.intersection($1) }
                     if visible.height >= min(43, element.frame.height), visible.width >= min(43, element.frame.width) {
@@ -570,7 +592,7 @@ final class FriendsBetaCompositionTests: XCTestCase {
                 let bottom = renderer.image { _ in hosted.window.drawHierarchy(in: hosted.window.bounds, afterScreenUpdates: true) }
                 let attachment = XCTAttachment(image: bottom); attachment.name = "I4-\(name)-bottom"; attachment.lifetime = .keepAlways; add(attachment)
             }
-            for button in expectedButtons {
+            for button in actions.expectedButtons {
                 XCTAssertTrue(reached.contains(button), "\(name): \(button) must be scroll-reachable")
             }
         }

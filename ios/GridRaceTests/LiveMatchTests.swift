@@ -380,7 +380,6 @@ final class LiveMatchServiceTests: XCTestCase {
         }
         totals["players"] = standings; data["standings"] = totals
         XCTAssertNoThrow(try SupabaseLiveMatchService.decodeSnapshot(Self.synchronizedRematchClock(String(decoding: Phase4LiveFixtures.envelope(data), as: UTF8.self))))
-        // Actual Cron fixture completes after its scheduled deadline without imposing delivery ordering.
         XCTAssertNoThrow(try Phase4LiveFixtures.snapshot("ordinary-cron-nonfinal"))
     }
 
@@ -427,8 +426,6 @@ final class LiveMatchServiceTests: XCTestCase {
         assertInvalid(String(decoding: try Phase4LiveFixtures.envelope(data), as: UTF8.self), file: file, line: line)
     }
 
-    // When a clock vector changes gameplay completion, carry the dependent
-    // current rematch projection along so the case still isolates gameplay timing.
     private static func synchronizedRematchClock(_ json: String) throws -> Data {
         var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         var data = try XCTUnwrap(envelope["data"] as? [String: Any])
@@ -493,7 +490,6 @@ final class LiveMatchServiceTests: XCTestCase {
     {"data":{"accepted":true,"sequence":6,"feedback":[0,0,0,0,0],"player_state":"failed","accepted_guess_count":6,"solve_duration_ms":null,"efficiency_points":null,"server_time":"2026-08-30T12:00:09Z","round_end_time":"2026-08-30T12:03:03Z"}}
     """#
 
-    // Historical gameplay boards/timestamps with synthesized current v3 selection/admission/rematch projections.
     private static let lobbySnapshot = #"""
     {"data":{"match":{"id":"efcb6cfe-dd34-4244-862a-22591c2b2f7f","mode":"classic_live_v1","status":"lobby","join_code":"CV5QKT","expires_at":"2026-09-26T20:40:45.124772+00:00","round_count":1,"current_round":1,"creator_member_id":"b298a1bb-329b-472e-9c06-c65d7b569afd","minimum_client_build":3,"revision":1,"started_at":null,"completed_at":null,"terminal_reason":null,"admission":"code"},"round":{"state":"pending","answer":null,"number":1,"ends_at":null,"players":[],"starts_at":null,"completed_at":null},"members":[{"id":"b298a1bb-329b-472e-9c06-c65d7b569afd","seat":1,"is_self":true,"is_deleted":false,"avatar_seed":"851066e6-271b-4344-be12-d13c99fdbfac","display_name":"Player b93ff4"}],"version":3,"server_time":"2026-09-26T19:40:45.169589+00:00","revealed_rounds":[],"standings":null,"selection":{"epoch":1,"is_selected":true},"rematch":null}}
     """#
@@ -513,9 +509,6 @@ private actor InvocationRecorder {
     func append(function: String, body: Data) { values.append(.init(function: function, body: body)) }
 }
 
-// Gameplay captured by P4-B on 2026-10-02, projected into current v3 fixture data.
-// Selection/admission and disabled rematch projections are synthesized, not new gateway observations.
-// Inline fixtures reuse the existing test target without a second resource registration.
 enum Phase4LiveFixtures {
     static func object(_ label: String) throws -> [String: Any] {
         let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(json[label]).utf8)) as? [String: Any])
@@ -600,8 +593,6 @@ enum Phase4LiveFixtures {
     ]
 }
 
-// Shared backend/client contract. Kept outside app resources: these fixtures are
-// source-bound test evidence and contain no production answers or credentials.
 enum FriendsBetaFixtures {
     static func object() throws -> [String: Any] {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

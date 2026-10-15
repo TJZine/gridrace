@@ -300,20 +300,17 @@ final class DailyClassicTests: XCTestCase {
         }
 
         var history = DailyClassicHistory()
-        // Structurally valid shape with a number from another schedule day.
         XCTAssertFalse(history.record(candidate(
             puzzleID: firstID, puzzleNumber: 2, puzzleDay: epochDay,
             wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
             completedAt: date(day: epochDay, seconds: 100)
         )))
-        // Puzzle id names a different day than the puzzle day.
         XCTAssertFalse(history.record(candidate(
             puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay + 1))",
             puzzleNumber: 1, puzzleDay: epochDay,
             wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,
             completedAt: date(day: epochDay, seconds: 100)
         )))
-        // Legacy word-pack id and non-v1 schedule version.
         XCTAssertFalse(history.record(candidate(
             puzzleID: firstID, puzzleNumber: 1, puzzleDay: epochDay,
             wordPackID: "daily-classic-v1", scheduleVersion: 1,
@@ -324,7 +321,6 @@ final class DailyClassicTests: XCTestCase {
             wordPackID: "daily-classic-en-US-v1", scheduleVersion: 2,
             completedAt: date(day: epochDay, seconds: 100)
         )))
-        // Days outside the published 725-answer schedule.
         XCTAssertFalse(history.record(candidate(
             puzzleID: "daily-classic-\(DailyPuzzleSchedule.dateIdentifier(for: epochDay - 1))",
             puzzleNumber: 0, puzzleDay: epochDay - 1,
@@ -339,7 +335,6 @@ final class DailyClassicTests: XCTestCase {
         )))
         XCTAssertTrue(history.completedResults.isEmpty)
 
-        // Schedule boundaries are accepted: #1 on the epoch day, #725 last.
         XCTAssertTrue(history.record(candidate(
             puzzleID: firstID, puzzleNumber: 1, puzzleDay: epochDay,
             wordPackID: "daily-classic-en-US-v1", scheduleVersion: 1,

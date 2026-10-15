@@ -265,7 +265,6 @@ final class LiveMatchViewTests: XCTestCase {
                     add(attachment)
                 }
                 attach()
-                // Only vertical scrolls: the board and keyboard own horizontal AX scrolling.
                 let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
                 for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height + 1 {
                     scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
@@ -727,8 +726,6 @@ private struct PresentationService: LiveMatchServicing {
                      clientBuild: Int) async throws -> LiveGuessReceipt { throw LiveMatchServiceError.server(.requestConflict) }
 }
 
-/// Deterministic in-process command/snapshot transport for faithful native screens.
-/// Delays are cancellable so each fixture releases every session task.
 private actor RenderService: LiveMatchServicing {
     let value: LiveMatchSnapshot
     var snapshotError: LiveMatchServiceError?

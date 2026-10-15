@@ -1,8 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// The native Create selection belongs to this action, independent of Join and
-/// of the session's immutable saved request.
 struct LiveCreateControls: View {
     @Bindable var live: LiveMatchSession
     let isSignedIn: Bool
@@ -63,7 +61,6 @@ enum LiveMatchPresentation {
         var seal = false
         var usesClaret = false
     }
-    /// A value projection keeps presentation independent of session mutation and tasks.
     struct State {
         var phase: LiveMatchSessionPhase = .inactive
         var snapshot: LiveMatchSnapshot?
@@ -123,7 +120,6 @@ enum LiveMatchPresentation {
         }
     }
 
-    /// The single state-to-copy/action mapping. It never calculates gameplay results.
     static func map(_ state: State) -> Presentation {
         let message = state.retainedError ?? errorMessage(state.error)
         let retry = Control(action: .retry, enabled: state.canRetry)
@@ -653,7 +649,6 @@ struct LiveMatchFlowView: View {
     }
 }
 
-/// The controls are projected by the mapper; destructive intents return to the flow's native dialog.
 struct LiveControlNotice: View {
     let notice: LiveMatchPresentation.Notice
     let perform: (LiveMatchPresentation.Action) -> Void

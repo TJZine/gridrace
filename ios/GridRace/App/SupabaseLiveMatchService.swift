@@ -393,7 +393,6 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
                         || board.last?.guess.lowercased() == round.answer?.lowercased()
                 else { throw LiveMatchServiceError.invalidResponse }
                 if let duration = player.solveDurationMilliseconds, let last = board.last {
-                    // SQL floors microseconds. Date uses Double, so allow only its sub-ms precision error.
                     let milliseconds = last.submittedAt.timeIntervalSince(startsAt) * 1_000
                     guard milliseconds >= Double(duration) - 0.002,
                           milliseconds < Double(duration) + 1.002
@@ -403,8 +402,6 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
             guard !revealed || round.players.allSatisfy({ $0.state.isTerminal }) else {
                 throw LiveMatchServiceError.invalidResponse
             }
-            // A deletion can forfeit during countdown; transaction time can also precede
-            // a later lock-wait guess. Completion need not follow start or the last row.
             if let completed = round.completedAt, completed < startsAt {
                 guard round.players.allSatisfy({ $0.state == .forfeited && $0.acceptedGuessCount == 0 }) else {
                     throw LiveMatchServiceError.invalidResponse
@@ -441,7 +438,6 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
             let results = history.flatMap(\.players).filter { $0.memberID == player.memberID }
             let solved = results.filter { $0.state == .solved }
             let durations = solved.compactMap(\.solveDurationMilliseconds)
-            // SUM is floored once by SQL; summing the displayed floors loses up to N-1 ms.
             let floorSum = durations.reduce(Int64(0)) { $0 + Int64($1) }
             guard player.roundsSolved == solved.count,
                   player.efficiencyPoints == results.reduce(0, { $0 + ($1.efficiencyPoints ?? 0) }),
@@ -450,7 +446,6 @@ actor SupabaseLiveMatchService: LiveMatchServicing {
                   Int64(player.totalSolveDurationMilliseconds) <= floorSum + Int64(max(0, solved.count - 1))
             else { throw LiveMatchServiceError.invalidResponse }
         }
-        // Placements are SQL truth, including microsecond differences hidden by displayed ms.
     }
 
     private static func validPlayerResult(

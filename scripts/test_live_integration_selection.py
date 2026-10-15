@@ -1,4 +1,3 @@
-"""Hermetic selector/admission controls; never starts the integration runtime."""
 import os
 from pathlib import Path
 import subprocess
@@ -37,7 +36,6 @@ class SelectionTests(unittest.TestCase):
                         invocations.append(("friends", count, pair, phase, target, f"advance-{process}", process))
                 for role in ["friends-both", "friends-recover", "friends-resume"]:
                     invocations.append(("friends", count, pair, "predecessor", count, role, process))
-        # The flag-off closure uses a second one-round pair in the same run.
         for process in ["host", "guest"]:
             invocations.append(("friends", 1, 4, "predecessor", 1, process, process))
         paths = []
@@ -88,7 +86,7 @@ class SelectionTests(unittest.TestCase):
                 prefix = r"""
 set -euo pipefail
 work_dir=$1
-host_pid=''; guest_pid=''; third_pid=''; failed_guess=''; cron_paused=0
+host_pid=''; guest_pid=''; third_pid=''; failed_guess=''; cron_restore_required=0
 run_completed=$2
 baseline='{"auth":0,"matches":0}'
 baseline_receipts='[]'
@@ -120,7 +118,7 @@ check_lock() { return 0; }
             prefix = r"""
 set -euo pipefail
 work_dir=$1
-host_pid=''; guest_pid=''; third_pid=''; failed_guess=''; cron_paused=0
+host_pid=''; guest_pid=''; third_pid=''; failed_guess=''; cron_restore_required=0
 cron_job_id=''; cron_baseline_active=''; run_completed=0
 baseline='{"auth":0,"matches":0}'
 baseline_receipts='[]'
@@ -170,8 +168,6 @@ check_lock() { return 0; }
             end = source.index("\n}\n", start) + 3
             return source[start:end]
 
-        # Execute the real checking and EXIT cleanup owners. Only external
-        # runtime operations are replaced with isolated dummy fixtures.
         method = "testLocalSupabaseTwoClientSyncAndDeletionWhenConfigured"
         marker = "PASS disposable Daily two-client sync and deletion"
         for case, log, scanner_error, succeeds in [
@@ -191,7 +187,7 @@ run_tag=dummy-run
 receipt_name=dummy-receipt
 API_URL=http://127.0.0.1:1
 ANON_KEY=dummy-public-key
-host_pid=""; guest_pid=""; third_pid=""; failed_guess=""; cron_paused=0
+host_pid=""; guest_pid=""; third_pid=""; failed_guess=""; cron_restore_required=0
 run_completed=1
 baseline='{"auth":0,"matches":0}'
 baseline_receipts='[]'

@@ -199,7 +199,7 @@ async function readBoundedText(
         try {
           await reader.cancel();
         } catch {
-          // The size violation owns the stable client response even if cancellation fails.
+          return null;
         }
         return null;
       }

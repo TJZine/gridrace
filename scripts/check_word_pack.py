@@ -254,7 +254,6 @@ def validate_daily(pack: dict[str, object]) -> tuple[int, int]:
 
 
 def load_development_seed_words() -> tuple[list[str], int]:
-    """Load and validate the development pack for seed generation."""
     pack, _ = load(PACKS / "development-en-US-v1.json")
     validate_development(pack)
     format_version = pack["formatVersion"]
@@ -404,7 +403,7 @@ def check_provenance_row(row: object, index: int) -> None:
             and row["pointer_target"] is None,
             f"{label} explicit_altsection row must leave non-altsection evidence fields null",
         )
-    else:  # explicit_reciprocal
+    else:
         require(
             isinstance(parent, str) and bool(parent) and page == parent,
             f"{label} explicit_reciprocal row page must equal its parent",
@@ -465,7 +464,6 @@ def load_provenance_manifest() -> dict[str, object]:
 def validate_chain(
     pack: dict[str, object], pack_raw: bytes
 ) -> tuple[list[str], bytes]:
-    """Assert the full checked-in evidence chain; return pass lines and prov bytes."""
     baseline, baseline_raw = load_baseline()
     baseline_set = set(baseline)
     baseline_line = (
@@ -690,7 +688,6 @@ def validate_one(
 
 
 def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> None:
-    """Compare cross-evidence tuples; a matching file checksum is insufficient."""
     require(
         all(isinstance(title, str) and title for title in missing)
         and len(missing) == len(set(missing)),
@@ -707,8 +704,6 @@ def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> N
         for field, sidecar_field in (
             ("page_id", "pageId"), ("revision_id", "revisionId"), ("timestamp", "timestamp")
         ):
-            # The builder represents empty/missing dump fields as null. The
-            # provenance schema validates which statuses can carry nulls.
             require(
                 row[field] == (parent.get(sidecar_field) or None),
                 f"dump_parent page {page!r} {field} contradicts parent-revisions sidecar",
@@ -716,12 +711,6 @@ def validate_parent_revisions(rows: list[dict], found: dict, missing: list) -> N
 
 
 def builder_intermediate_paths(args: argparse.Namespace | None = None) -> dict[str, Path]:
-    """Resolve selected inputs over the maintenance transform's defaults.
-
-    Paths come from ``build_accepted_guesses.pinned_defaults()`` so the gate
-    stays in sync by construction. Import, syntax, and resolution failures
-    raise ValueError and are gate errors, never skips.
-    """
     try:
         spec = importlib.util.spec_from_file_location(
             "gridrace_builder_defaults_probe", str(SCRIPTS / "build_accepted_guesses.py")
@@ -729,7 +718,7 @@ def builder_intermediate_paths(args: argparse.Namespace | None = None) -> dict[s
         if spec is None or spec.loader is None:
             raise ValueError("cannot locate loader for scripts/build_accepted_guesses.py")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        spec.loader.exec_module(module)
         defaults = module.pinned_defaults()
     except Exception as error:
         raise ValueError(
@@ -744,7 +733,6 @@ def builder_intermediate_paths(args: argparse.Namespace | None = None) -> dict[s
 
 
 def probe_intermediates(args: argparse.Namespace) -> int:
-    """Report which pinned intermediates exist; informational only, exit 0."""
     try:
         paths = builder_intermediate_paths(args)
     except ValueError as error:
@@ -762,11 +750,6 @@ def run_source_gate(
     prov_manifest_raw: bytes,
     args: argparse.Namespace | None = None,
 ) -> None:
-    """Regenerate pack+provenance+manifest from pinned intermediates and compare bytes.
-
-    Fail-closed: every failure mode raises. Missing intermediates report
-    UNAVAILABLE instead of passing.
-    """
     paths = builder_intermediate_paths(args)
     absent = [key for key, path in paths.items() if not path.exists()]
     if absent:
@@ -845,8 +828,6 @@ def main() -> int:
         action="store_true",
         help="report which pinned intermediates exist; informational only",
     )
-    # Resolve builder-owned defaults only for source operations. The portable
-    # gate neither imports the builder nor inspects external input paths.
     for flag in ("--wiktionary-json", "--database", "--revision-index", "--target-json"):
         parser.add_argument(flag, help="source input path (default: builder's pinned path)")
     args = parser.parse_args()
@@ -862,7 +843,6 @@ def main() -> int:
             DAILY_ID, validate_daily
         )
         chain_lines, prov_raw = validate_chain(daily_pack, daily_raw)
-        # A source-input failure must precede even checker-owned manifest writes.
         if not args.checked_in_only:
             run_source_gate(
                 daily_raw,

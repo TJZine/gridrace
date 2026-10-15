@@ -42,9 +42,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
         let failedGuess = try XCTUnwrap(environment["GRIDRACE_LIVE_FAILED_GUESS"])
         let count = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_COUNT"] ?? ""))
         let target = try XCTUnwrap(Int(environment["GRIDRACE_LIVE_ROUND_NUMBER"] ?? ""))
-        // The host app restores its own account while XCTest runs. Keep this
-        // simulated device's real Keychain credentials separate from the app,
-        // with the same namespace on every process relaunch of this fixture.
         let credentialNamespace = "GridRaceLiveIntegration.\(admission.receipt.runID.uuidString).\(admission.receipt.userID.uuidString)"
         let support = try XCTUnwrap(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
         let invitationRoot = support.appending(path: "GridRaceIntegration/invitation-\(admission.receipt.runID)")
@@ -57,7 +54,7 @@ final class LiveMatchIntegrationTests: XCTestCase {
         if scenario == "friends", role == "guest" {
             invitations.receive(try XCTUnwrap(URL(string: "https://invite.test/join/\(environment["GRIDRACE_LIVE_JOIN_CODE"] ?? "")")))
             let pending = try XCTUnwrap(invitations.pending)
-            invitations = invitationOwner() // Cold navigation restore before authentication.
+            invitations = invitationOwner()
             XCTAssertEqual(invitations.pending, pending)
             XCTAssertNil(LiveMatchSession().savedMatchID)
             print("PASS live client signed-out invitation protected navigation restore")
@@ -167,7 +164,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
                 return
             }
             XCTAssertTrue(["advance-host", "advance-guest", "solve-host", "solve-guest"].contains(role))
-            // A delayed old receipt may finish after the creator's next Start.
             XCTAssertTrue([target - 1, target].contains(session.snapshot?.round.number ?? 0))
             XCTAssertEqual(session.snapshot?.revealedRounds.count, target - 1)
             XCTAssertTrue(session.pendingIntent == nil)
@@ -225,7 +221,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
             }
             let revealed = try XCTUnwrap(session.snapshot)
             if role == "host" || role == "advance-host" || role == "solve-host" {
-                // Real duplicate and stale requests retain the original target.
                 async let first = service.startMatch(id: matchID, roundNumber: target)
                 async let second = service.startMatch(id: matchID, roundNumber: target)
                 _ = try await (first, second)
@@ -236,8 +231,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
         }
         session.leaveToHome()
         if scenario == "product" {
-            // Recreate an accepted response lost at process death, using only this
-            // client's real original request and its existing protected recovery file.
             let pending = try await service.acceptedIntent(matchID: matchID)
             let store = try LiveMatchRecoveryStore.applicationSupport(userID: signedIn.userID)
             try store.save(LiveRecoveryState(matchID: matchID, pendingIntent: pending))
@@ -367,13 +360,11 @@ final class LiveMatchIntegrationTests: XCTestCase {
         app.invitations = restoredRootOwner
         XCTAssertEqual(restoredRootOwner.pending, replacement, "Old clear preserves newer navigation")
         XCTAssertNil(app.live.completedInvitationGeneration)
-        restoredRootOwner.discard() // Explicitly dismiss the newer navigation, not a Join.
+        restoredRootOwner.discard()
         app.live.resumeSavedMatch()
         try await eventually("root confirmed original race reaches play") { app.live.snapshot?.round.state == .playing }
         restoredRootOwner.receive(try XCTUnwrap(URL(string: origin + replacementCode)))
         let nextNavigation = try XCTUnwrap(restoredRootOwner.pending)
-        // Retire the real service lifetime and observe its state stream before
-        // another identity signs in. Explicit root Sign Out later clears navigation.
         var alternateEnvironment = environment
         alternateEnvironment["GRIDRACE_LIVE_EMAIL"] = try XCTUnwrap(environment["GRIDRACE_ALTERNATE_EMAIL"])
         alternateEnvironment["GRIDRACE_LIVE_PASSWORD"] = try XCTUnwrap(environment["GRIDRACE_ALTERNATE_PASSWORD"])
@@ -426,7 +417,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
                     action: action, expectedParticipationEpoch: snapshot.selection.epoch, clientBuild: 3)
                 do { _ = try await service.rematch(command) }
                 catch LiveMatchServiceError.unavailable { _ = try await service.rematch(command) }
-                // Keep these real revisions distinct; no gameplay command occurs.
                 try await Task.sleep(for: .milliseconds(250))
             }
             print("PASS live client real rematch-only offer cancel fresh offer cancel")
@@ -456,8 +446,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             state = await observation.state()
         }
-        // No session or polling timer has been opened. Removing the production
-        // rematch subscriptions makes the signal assertion time out before this read.
         print("PASS live client real native rematch-only Realtime delivery before canonical polling")
         let canonical = try await service.snapshot(matchID: predecessor)
         XCTAssertEqual(canonical.revision, initial.revision, "Gameplay stream cannot supply these signals")
@@ -471,10 +459,9 @@ final class LiveMatchIntegrationTests: XCTestCase {
         _ role: String, session: LiveMatchSession, service: MeasuredLiveMatchService,
         store: LiveMatchRecoveryStore, predecessor: UUID, count: Int
     ) async throws {
-        // Account binding already restores and starts recovery. Restarting it here
-        // would cancel the controlled predecessor read before the third client acts.
-        if role != "friends-race" { session.resumeSavedMatch() }
-        try await eventually("friends canonical recovery", timeout: role == "friends-race" ? 130 : 60) {
+        let preservesInFlightSelectionBarrier = role == "friends-race"
+        if !preservesInFlightSelectionBarrier { session.resumeSavedMatch() }
+        try await eventually("friends canonical recovery", timeout: preservesInFlightSelectionBarrier ? 130 : 60) {
             if session.canRetry && session.pendingIntent != nil { session.retry() }
             return session.snapshot != nil && session.pendingIntent == nil
         }
@@ -506,8 +493,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
             XCTAssertEqual(session.snapshot?.members.count, 2)
             XCTAssertEqual(session.snapshot?.round.state, .pending)
             let command = try await service.originalRematchCommand()
-            // The reply was accepted by real Edge/DB. Recreate death before saving
-            // admission, then the next independent process replays the exact command.
             try store.save(LiveRecoveryState(matchID: predecessor,
                 pendingIntent: .rematch(command: command, sourceMatchID: predecessor, navigationGeneration: UUID())))
             session.leaveToHome()
@@ -539,9 +524,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
                     try await Task.sleep(for: .milliseconds(50))
                 }
                 let expectedTarget = try await service.selectionRaceTarget()
-                // The predecessor is published before the awaited successor read.
-                // Wait for its consumption; a removed guard takes the wrong-pointer
-                // branch and must fail the assertion below, never this wait.
                 try await eventually("second canonical read consumed", timeout: 20) {
                     (session.resumeConfirmationTarget?.match.id == expectedTarget.id
                         && session.resumeConfirmationTarget?.selection.epoch == expectedTarget.epoch)
@@ -667,8 +649,6 @@ final class LiveMatchIntegrationTests: XCTestCase {
     }
 }
 
-/// The root may construct several account-bound transports. Record actual Join
-/// attempts across their wrappers without changing any production transport.
 private actor IntegrationJoinTrace {
     private var attempts: [LiveJoinCommand] = []
     func record(_ command: LiveJoinCommand) { attempts.append(command) }
@@ -896,7 +876,6 @@ private actor MeasuredLiveMatchService: LiveMatchServicing {
     }
 }
 
-// Faults apply to real Realtime signals; authoritative snapshots are untouched.
 private actor RematchRealtimeObservation {
     private var isReady = false
     private var raw = 0, dropped = 0, reordered = 0, deliveredCount = 0

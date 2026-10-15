@@ -260,7 +260,6 @@ final class AccountAuthLifecycleTests: XCTestCase {
         let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertTrue(query?.contains { $0.name == "id" && $0.value?.lowercased() == "eq.\(signedIn.userID.uuidString.lowercased())" } == true)
 
-        // A fresh production owner restores the same SDK session and reloads the server profile.
         let restoredService = service(http, storage: storage, host: host)
         let restored = AccountModel(service: restoredService)
         await restored.start()
@@ -392,7 +391,7 @@ final class AccountAuthLifecycleTests: XCTestCase {
         let next = UUID()
         await http.setUser(next)
         await http.release("refresh")
-        _ = try await login(service) // Still foreground: no second UIKit event is required.
+        _ = try await login(service)
         try await wait { await http.count("refresh") >= 2 }
         XCTAssertEqual(try service.activeBinding().userID, next)
         XCTAssertNil(old.lifetime.client.auth.currentSession)
@@ -641,7 +640,7 @@ extension AccountAuthLifecycleTests {
         try await wait { await sleeper.count() == 1 }
         let refreshCount1 = await http.count("refresh")
         XCTAssertEqual(refreshCount1, 0)
-        clock.advance(3500) // SDK's integer tick policy includes the <=3-tick window.
+        clock.advance(3500)
         await http.failRefreshWithoutRetry(true)
         await sleeper.release()
         try await wait {
@@ -735,7 +734,7 @@ extension AccountAuthLifecycleTests {
         let restoration = Task { try await service.restoreSession() }
         await Task.yield()
         let saved = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: service.sessionKey)))
-        service.receive(.tokenRefreshed, session: saved, from: old.lifetime) // Simulated queued SDK payload.
+        service.receive(.tokenRefreshed, session: saved, from: old.lifetime)
         XCTAssertThrowsError(try service.activeBinding(), "Neither explicit restore nor event can bypass the owned drain")
         XCTAssertThrowsError(try old.check())
         await removal.release()
@@ -758,7 +757,7 @@ extension AccountAuthLifecycleTests {
         let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
         let original = try await login(service), binding = try service.activeBinding()
         let older = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: service.sessionKey)))
-        service.receive(.initialSession, session: nil, from: binding.lifetime) // Explicit simulated late initial tuple.
+        service.receive(.initialSession, session: nil, from: binding.lifetime)
         XCTAssertEqual(try service.activeBinding().userID, original.userID)
         let refreshed = try await service.refreshSession()
         let renewedBytes = try XCTUnwrap(storage.retrieve(key: service.sessionKey))
@@ -863,7 +862,7 @@ extension AccountAuthLifecycleTests {
             XCTAssertNotNil(try storage.retrieve(key: service.sessionKey))
             XCTAssertEqual(model.authRecovery?.action, .deletion)
             XCTAssertTrue(model.errorMessage?.contains("deletion needs attention") == true)
-            await model.retryAuthRecovery() // A second invalid response stays uncertain.
+            await model.retryAuthRecovery()
             XCTAssertTrue(deleted.isEmpty)
             let cold = self.service(http, storage: storage, host: host)
             let coldModel = AccountModel(service: cold, didDeleteAccount: { deleted.append($0) })
@@ -872,7 +871,7 @@ extension AccountAuthLifecycleTests {
             XCTAssertNil(coldModel.session)
             XCTAssertThrowsError(try cold.activeBinding())
             XCTAssertEqual(coldModel.authRecovery?.action, .deletion)
-            await coldModel.retryAuthRecovery() // Invalid confirmation survives cold restoration.
+            await coldModel.retryAuthRecovery()
             XCTAssertTrue(deleted.isEmpty)
             let retained = try XCTUnwrap(storage.retrieve(key: cold.deletionKey))
             let retainedObject = try JSONSerialization.jsonObject(with: retained)
@@ -1119,7 +1118,6 @@ extension AccountAuthLifecycleTests {
         let confirmed = try await deleting.value
         XCTAssertEqual(confirmed.localRecovery?.action, .deletion)
         storage.recover()
-        // In-memory confirmation retires securely without another remote request.
         _ = try await first.deleteAccount()
         let count = await http.count("delete-account")
         XCTAssertEqual(count, 1)
@@ -1169,7 +1167,7 @@ extension AccountAuthLifecycleTests {
         let first = service(http, storage: storage, host: host)
         let original = try await login(first)
         let sdkSession = try XCTUnwrap(try first.activeBinding().lifetime.client.auth.currentSession)
-        await http.loseNextDeletionResponse() // Synthetic no-delivery uncertainty, no receipt.
+        await http.loseNextDeletionResponse()
         do { _ = try await first.deleteAccount(); XCTFail("Expected uncertainty") } catch {}
         let expired = Session(accessToken: sdkSession.accessToken, tokenType: sdkSession.tokenType,
             expiresIn: sdkSession.expiresIn, expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970,
@@ -1253,7 +1251,7 @@ extension AccountAuthLifecycleTests {
         let cold = service(http, storage: storage, host: host)
         let restored = try await cold.restoreSession()
         XCTAssertNil(restored)
-        _ = try await cold.deleteAccount() // Success receipt is authoritative before Auth expiry.
+        _ = try await cold.deleteAccount()
         let headers = await http.deletionAuthorizations()
         XCTAssertEqual(headers.count, 2)
         XCTAssertTrue(headers[0] == headers[1])
@@ -1343,9 +1341,9 @@ extension AccountAuthLifecycleTests {
         XCTAssertNil(try storage.retrieve(key: cold.deletionKey))
         let headers = await http.deletionAuthorizations()
         XCTAssertEqual(headers.count, 4)
-        XCTAssertTrue(headers[0] != headers[1]) // B's own authorization.
-        XCTAssertTrue(headers[0] == headers[2]) // Original A receipt lookup.
-        XCTAssertTrue(headers[0] != headers[3]) // Explicit fresh same-A operation.
+        XCTAssertTrue(headers[0] != headers[1])
+        XCTAssertTrue(headers[0] == headers[2])
+        XCTAssertTrue(headers[0] != headers[3])
     }
 
     func testHeldADeletionNeverSuppliesBConfirmationOrLosesEitherSecureRecord() async throws {
@@ -1398,8 +1396,6 @@ extension AccountAuthLifecycleTests {
         let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
         let first = service(http, storage: storage, host: host)
         let original = try await login(first)
-        // Synthetic accepted-but-not-yet-committed predecessor. The controller's
-        // independent real backend lock race establishes that server premise.
         await http.loseNextDeletionResponse()
         do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Expected lost response") } catch {}
         await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
@@ -1408,8 +1404,6 @@ extension AccountAuthLifecycleTests {
         await http.setUser(original.userID)
         _ = try await login(first)
         try first.prepareAccountDeletion(userID: original.userID)
-        // The old accepted request now commits; the successor has no receipt and
-        // its Auth identity is already deleted, so only the predecessor can recover.
         do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Successor should lack Auth") } catch {}
         let later = UUID()
         await http.setUser(later)
@@ -1451,7 +1445,7 @@ extension AccountAuthLifecycleTests {
         await model.deleteAccount()
         XCTAssertEqual(model.authRecovery?.action, .deletionReauthentication)
         await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
-        await model.retryAuthRecovery() // The predecessor committed after rejection.
+        await model.retryAuthRecovery()
         XCTAssertEqual(cleaned, [user.userID])
         let signIns = await http.count("token")
         XCTAssertEqual(signIns, 1)
@@ -1474,7 +1468,7 @@ extension AccountAuthLifecycleTests {
         _ = try await second.value
         let count = await http.count("delete-account")
         XCTAssertEqual(count, 1)
-        _ = try await service.deleteAccount() // Confirmed local retry performs no network mutation.
+        _ = try await service.deleteAccount()
         let after = await http.count("delete-account")
         XCTAssertEqual(after, 1)
         storage.fail(.remove, key: service.deletionKey)
@@ -1484,8 +1478,6 @@ extension AccountAuthLifecycleTests {
     }
 }
 
-/// Real local upstream responses, with only response delivery under test control.
-/// Neither credentials nor headers enter diagnostic output or ordinary files.
 private actor DeletionReceiptProxy {
     private let upstream = URLSession(configuration: .ephemeral)
     private var refreshContinuation: CheckedContinuation<Void, Never>?
@@ -1581,8 +1573,6 @@ extension AccountAuthLifecycleTests {
         let proxy = DeletionReceiptProxy()
         DeletionReceiptProtocol.install(origin: admission.configuration.projectURL.absoluteString, proxy: proxy)
         defer { DeletionReceiptProtocol.uninstall() }
-        // Memory here deliberately isolates this admitted disposable user's secrets
-        // from the simulator's persistent Keychain. Production uses SecureAuthStorage.
         let service = SupabaseAccountService(configuration: admission.configuration, storage: AuthMemoryStorage(), network: {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [DeletionReceiptProtocol.self]
@@ -1591,8 +1581,6 @@ extension AccountAuthLifecycleTests {
         let user = try await service.signInForLocalTesting(email: admission.email, password: admission.password)
         do { try admission.validateIdentity(user.userID) }
         catch { _ = await service.signOut(); throw error }
-        // Auth may mint identical JWT claims within one second. Require a truly
-        // distinct already-issued credential for this receipt-identity proof.
         try await Task.sleep(for: .seconds(1.1))
         let refresh = Task { try await service.refreshSession() }
         do {

@@ -4,8 +4,6 @@ import UIKit
 import XCTest
 @testable import GridRace
 
-/// Exercises the composition and recovery actions consumed directly by AppRootView.
-/// Platform interaction/VoiceOver acceptance remains separate from this boundary.
 @MainActor
 final class AppStartupTests: XCTestCase {
     func testBundleFailureStopsBeforeStorageAndOffersOnlyRetry() throws {
@@ -120,7 +118,6 @@ final class AppStartupTests: XCTestCase {
             XCTAssertEqual(try fixture.store.loadHistory(), DailyClassicHistory())
             try assertFreshProgress(startup, fixture: fixture)
             XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.root.path))
-            // A stale reset intent after recovery cannot clear subsequently saved data.
             try fixture.store.save(DailyClassicHistory())
             let recovered = try fixture.snapshot()
             startup.perform(.resetGuest)
@@ -291,8 +288,6 @@ final class AppStartupTests: XCTestCase {
 
                             let scrolls = descendants(of: hosted.host.view).compactMap { $0 as? UIScrollView }
                             let verticalScrolls = scrolls.filter { $0.contentSize.height > $0.bounds.height + 1 }
-                            // Each frame starts at the top; the previous frame's sweep
-                            // must not contaminate initial screenshots or content coordinates.
                             for scroll in verticalScrolls {
                                 scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x,
                                                               y: -scroll.adjustedContentInset.top), animated: false)
@@ -304,9 +299,6 @@ final class AppStartupTests: XCTestCase {
                                 XCTAssertFalse(verticalScrolls.isEmpty,
                                                "\(caseID): AX5 constrained recovery must provide a usable vertical scroll path")
                             }
-                            // A complete AX label can survive a visually clipped Text. Measure
-                            // the rendered required elements in scroll-content coordinates and
-                            // prove that the full description is covered without vertical gaps.
                             if let scroll = verticalScrolls.first {
                                 let minimum = -scroll.adjustedContentInset.top
                                 let maximum = max(minimum,

@@ -65,7 +65,6 @@ final class LiveMatchSession {
     private(set) var selectedRevealNumber: Int?
     private var isForeground = true
     private var isOpen = false
-    // A durable pointer is resumable, but is not necessarily the current Join target.
     private var isRecoverySelected = false
     private var trailingRefresh = false
     private var failureCount = 0
@@ -109,7 +108,6 @@ final class LiveMatchSession {
         return snapshot.serverTime.addingTimeInterval(max(0, uptime() - snapshotUptime))
     }
 
-    /// Eligibility for a new Start. Retrying a captured target uses `canRetry` instead.
     var canStart: Bool {
         guard canBeginCommand, phase == .ready, isOpen, isForeground,
               recovery.pendingIntent == nil, pendingStart == nil,
@@ -228,8 +226,6 @@ final class LiveMatchSession {
             } catch { failed = true }
         }
         guard !failed else { phase = .storageUnavailable; return }
-        // A captured old-account obligation can be retried while a later account
-        // remains active. Only an actual pending transition may replace its runtime.
         guard hasRequestedAccountChange else {
             if phase == .storageUnavailable, let previousPhase = phaseBeforeCapturedCleanup { phase = previousPhase }
             else if accountID == nil { phase = .inactive }
@@ -267,14 +263,10 @@ final class LiveMatchSession {
     private func transitionAccount(to userID: UUID?) -> LiveAccountChangeOutcome {
         if let cleanupJournal, cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty {
             if hasRequestedAccountChange, requestedAccountID == userID {
-                // Repeated Auth notifications retain the captured transition and
-                // retry its local cleanup; they never reload the old intent.
                 retryCapturedCleanup()
                 return hasRequestedAccountChange || cleanupJournal.isUnavailable || !cleanupJournal.liveUsers.isEmpty
                     ? .recoveryCleanupPending : .completed
             }
-            // No saved command can dispatch before captured cleanup is resolved,
-            // even if Auth later returns to the same UUID.
             resetRuntime()
             requestedAccountID = userID
             hasRequestedAccountChange = true
@@ -288,9 +280,6 @@ final class LiveMatchSession {
             }
             if service == nil {
                 if phase == .storageUnavailable {
-                    // Auth can revert a failed switch without authorizing a storage
-                    // retry. Bind only this account; retain its failure until explicit
-                    // retry/discard, including when the replacement lease is invalid.
                     _ = installRequestedTransport(for: userID)
                     phase = .storageUnavailable
                 } else {
@@ -373,8 +362,6 @@ final class LiveMatchSession {
         startCommand { [weak self] in await self?.recoverPendingIntent() }
     }
 
-    /// Called only after the presentation owner obtains explicit Join confirmation.
-    /// A URL's generation is returned on durable success so replacement URLs survive.
     func joinMatch(code: String, invitationGeneration: UUID? = nil) {
         guard canBeginCommand, recovery.pendingIntent == nil, pendingStart == nil,
               invitationGeneration == nil || recovery.completedInvitationGeneration == nil else { return }
@@ -386,7 +373,6 @@ final class LiveMatchSession {
             && (resumeConfirmationTarget != nil || snapshot?.selection.isSelected == false)
     }
 
-    /// Passive Resume reads first. A stale pointer requires this separate confirmation.
     func confirmResumeSavedMatch() {
         guard canBeginCommand, requiresResumeConfirmation, let snapshot else { return }
         let target = resumeConfirmationTarget ?? snapshot
@@ -546,9 +532,6 @@ final class LiveMatchSession {
         guard canRetry else { return }
         lastError = nil
         if serviceNeedsUpdate {
-            // Keep the mismatch fence raised throughout this user-requested attempt.
-            // Receipt replay cannot enable ordinary commands or automatic retries;
-            // only a current canonical response proves the service was corrected.
             isExplicitServiceRetry = true
             if pendingStart != nil {
                 performStart()
@@ -624,8 +607,6 @@ final class LiveMatchSession {
         recoveryTimer = nil
     }
 
-    /// Invalidate post-match follow when the composition owner presents a newer
-    /// invitation/navigation target, even if this result remains underneath it.
     func invitationNavigationChanged() {
         navigationGeneration = UUID()
         resumeConfirmationTarget = nil
@@ -661,7 +642,6 @@ final class LiveMatchSession {
         presentationGeneration += 1
         cancelMatchTasks()
         isOpen = true
-        // While Join is unresolved, Resume opens its eventual result, not the old pointer.
         if case .join(_, _, let navigation, _) = recovery.pendingIntent {
             navigationGeneration = navigation
             isRecoverySelected = false
@@ -848,8 +828,6 @@ final class LiveMatchSession {
                     open(matchID: matchID)
                     if isOpen, isForeground { acceptSnapshot(admitted) }
                 } else {
-                    // The admitted room remains resumable, but an older Join
-                    // response cannot take over a newer invitation or Home.
                     isRecoverySelected = false
                     phase = .inactive
                 }
@@ -873,8 +851,6 @@ final class LiveMatchSession {
                         open(matchID: successorID)
                         if isForeground { acceptSnapshot(successor) }
                     } else {
-                        // Settle the original receipt without replacing its source
-                        // pointer. A failed save retains the exact pending command.
                         try saveResolvedMatch(source)
                         if isForeground, presentation == presentationGeneration {
                             acceptSnapshot(predecessor)
@@ -983,9 +959,6 @@ final class LiveMatchSession {
         }
     }
 
-    /// The second canonical read owns the successor's current selection. Keep an
-    /// account-scoped high-water mark so delayed responses cannot undo a newer
-    /// selection observed on either room, including across Home and Resume.
     private func canFollowSuccessor(_ successor: LiveMatchSnapshot, from predecessor: LiveMatchSnapshot) -> Bool {
         viewerSelectionEpoch = max(viewerSelectionEpoch, max(predecessor.selection.epoch, successor.selection.epoch))
         return recovery.successorFollowAllowed && predecessor.rematch?.selectedElsewhere == false
@@ -998,8 +971,6 @@ final class LiveMatchSession {
         resumeConfirmationTarget = successor
     }
 
-    /// The three server revisions advance independently; a delayed gameplay
-    /// projection must still deliver newer consent or viewer selection state.
     private func acceptSnapshot(_ received: LiveMatchSnapshot) {
         let old = acceptedSnapshot?.match.id == received.match.id ? acceptedSnapshot : nil
         if snapshot == nil, let old, received.revision < old.revision,
@@ -1101,7 +1072,6 @@ final class LiveMatchSession {
             phase = .unavailable
             scheduleRetry(recoverPending: true)
         case .server(.rateLimited), .server(.requestConflict):
-            // This decision belongs to the original durable intent, even after round advance.
             lastError = mapped
             phase = .unavailable
         case .server(.notAuthenticated):
@@ -1246,10 +1216,6 @@ final class LiveMatchSession {
         completedInvitationGeneration = recovery.completedInvitationGeneration
     }
 
-    /// The caller captures the completion's account before navigation/journal awaits.
-    /// True means the matching marker was durably removed, or this generation is
-    /// already absent/replaced. False requires retrying the existing storage/account
-    /// recovery first; a failed save never publishes an acknowledgment.
     @discardableResult
     func acknowledgeInvitationClear(matchingGeneration invitation: UUID, forAccount expectedAccountID: UUID) -> Bool {
         guard accountID == expectedAccountID, store != nil, !hasRequestedAccountChange,

@@ -362,7 +362,6 @@ final class LiveMatchSessionTests: XCTestCase {
     private func assertDelayedSuccessRespectsHome(
         isCreate: Bool, hasSavedPointer: Bool = false
     ) async throws {
-        // Cover Home, Resume during the command, and Home again after that Resume.
         for navigation in 0...2 {
             let matchID = UUID()
             let requestID = UUID()
@@ -583,7 +582,6 @@ final class LiveMatchSessionTests: XCTestCase {
         XCTAssertEqual(realtime.subscriptionCount, 0)
         XCTAssertEqual(snapshots.value, 0)
 
-        // A retry whose acknowledgement still cannot be saved must latch again.
         session.retry()
         await eventually { !session.isCommandInFlight }
         XCTAssertEqual(session.phase, .storageUnavailable)
@@ -742,7 +740,6 @@ final class LiveMatchSessionTests: XCTestCase {
             await eventually { session.snapshot != nil && !session.isCommandInFlight }
             realtime.send(.signal)
             await eventually { snapshots.value == 2 }
-            // Coalesce another signal before storage fails; it must not fetch afterward.
             realtime.send(.signal)
             await Task.yield()
             store.rejectsWrites = true
@@ -2246,7 +2243,6 @@ final class LiveMatchSessionTests: XCTestCase {
                 XCTAssertEqual(session.savedMatchID, current.match.id)
                 XCTAssertNil(session.pendingIntent)
 
-                // A completed old task must not strand the next explicit recovery either.
                 session.resumeSavedMatch()
                 await eventually { await script.callCount == resumeCount + 2 }
                 await eventually { session.snapshot == current && session.phase == .ready }
@@ -2280,7 +2276,6 @@ final class LiveMatchSessionTests: XCTestCase {
         session.resumeSavedMatch()
         await eventually { calls.value == 3 }
 
-        // Finish obsolete work while the current presentation still owns a suspended fetch.
         await script.releaseFirst()
         await eventually { oldReturned.value == 1 }
         await Task.yield()
@@ -2489,8 +2484,6 @@ final class LiveMatchSessionTests: XCTestCase {
             }
             object["members"] = members
             var value = try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(object))
-            // Exercise defensive session policy directly for deletion, which wire validation
-            // rejects in a lobby. Canonical deletion fixtures above cover started rooms.
             if variant == "deleted" {
                 value = LiveMatchSnapshot(serverTime: value.serverTime, match: value.match,
                     members: value.members.map {
@@ -2508,7 +2501,6 @@ final class LiveMatchSessionTests: XCTestCase {
         guestMembers[0]["is_self"] = false
         guestMembers[1]["is_self"] = true
         guestReveal["members"] = guestMembers
-        // The former self board is private before reveal only; both are visible here.
         cases.append((try SupabaseLiveMatchService.decodeSnapshot(Phase4LiveFixtures.envelope(guestReveal)), false))
         for (snapshot, allowed) in cases {
             let starts = LockedValues<Int>()
@@ -2541,7 +2533,6 @@ final class LiveMatchSessionTests: XCTestCase {
             session.leaveToHome()
             XCTAssertFalse(session.canStart)
         }
-        // A later-round Start uses round state, even after the old lobby expiry.
         let reveal = try Phase4LiveFixtures.snapshot("3-round-1-reveal")
         let late = LiveMatchSnapshot(serverTime: reveal.match.expiresAt.addingTimeInterval(100),
             match: reveal.match, members: reveal.members, round: reveal.round,
@@ -3205,7 +3196,6 @@ extension LiveMatchSessionTests {
     }
 }
 
-/// Keeps account binding explicit in each test; no test-only session binding mode.
 @MainActor
 func makeLiveSessionFixture(
     service: any LiveMatchServicing,
@@ -3324,7 +3314,7 @@ extension LiveMatchSessionTests {
     func testPassiveStalePointerResumeRequiresPinnedJoinConfirmationAndNeverSelectsOnForeground() async throws {
         var stale = try FriendsBetaFixtures.snapshot("eligible")
         stale.selection = .init(epoch: 10, isSelected: false)
-        stale.rematch = nil // read-only active-room test needs no offer refresh loop
+        stale.rematch = nil
         let value = stale
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: value.match.id))
         let joins = LockedValues<LiveJoinCommand>()
@@ -3722,7 +3712,7 @@ extension LiveMatchSessionTests {
         store.rejectsWrites = true
         session.leaveToHome()
         XCTAssertEqual(session.phase, .storageUnavailable)
-        store.rejectsWrites = false // Recovery remains explicitly blocked after transient storage trouble.
+        store.rejectsWrites = false
         await gate.open()
         await eventually { !session.isCommandInFlight }
         XCTAssertEqual(session.phase, .storageUnavailable)
@@ -3885,7 +3875,7 @@ extension LiveMatchSessionTests {
         bindLiveAccount(first, transport: firstTransport(account))
         first.joinMatch(code: "ABC234", invitationGeneration: invitation)
         await eventually { !first.isCommandInFlight && first.savedMatchID == admitted.match.id }
-        let committed = firstStore.storedState // Root never observes or clears the invitation.
+        let committed = firstStore.storedState
         XCTAssertEqual(committed.completedInvitationGeneration, invitation)
         XCTAssertNil(committed.pendingIntent)
         let restoredStore = MemoryLiveRecoveryStore(committed)
@@ -3942,7 +3932,7 @@ extension LiveMatchSessionTests {
         XCTAssertEqual(session.completedInvitationGeneration, invitation)
         XCTAssertEqual(try Data(contentsOf: file), bytes)
         controlled.rejectsWrites = false
-        session.retry() // Existing storage recovery reloads the retained account envelope.
+        session.retry()
         XCTAssertEqual(session.completedInvitationGeneration, invitation)
         XCTAssertTrue(session.acknowledgeInvitationClear(matchingGeneration: invitation, forAccount: account))
         XCTAssertNil(try disk.load().completedInvitationGeneration)
@@ -3988,7 +3978,6 @@ extension LiveMatchSessionTests {
     }
 }
 
-/// Fault-inject only the write operation while retaining real protected-file bytes.
 private final class InvitationAcknowledgmentStore: LiveMatchRecoveryStoring, @unchecked Sendable {
     private let disk: LiveMatchRecoveryStore
     var rejectsWrites = false
@@ -4048,7 +4037,7 @@ extension LiveMatchSessionTests {
             bindLiveAccount(session, transport: transport(UUID()))
             await eventually { waiting.value == 1 }
             XCTAssertEqual(session.savedMatchID, predecessor.match.id)
-            await gate.open() // Another device selected elsewhere after the predecessor read.
+            await gate.open()
             await eventually { session.resumeConfirmationTarget?.selection.epoch == unselected.selection.epoch }
             XCTAssertEqual(session.savedMatchID, predecessor.match.id)
             XCTAssertEqual(store.storedState.matchID, predecessor.match.id)
@@ -4110,7 +4099,7 @@ extension LiveMatchSessionTests {
         let (session, transport) = makeSession(service: LiveServiceMock(snapshot: { id in
             if id == predecessor.match.id { return predecessor }
             if commands.values.count == 1 { waiting.increment(); await gate.wait(); return unselected }
-            return canonical // Epoch5 claims selected, but this account already observed epoch6.
+            return canonical
         }, rematchCommand: { value in
             commands.append(value)
             return .init(predecessorMatchID: value.predecessorMatchID, generation: value.generation,
@@ -4155,7 +4144,7 @@ extension LiveMatchSessionTests {
         realtime.send(.signal)
         await eventually { reads.value == 2 }; await gates[1].open()
         realtime.send(.signal)
-        await eventually { reads.value == 3 } // The older candidate was processed before this read.
+        await eventually { reads.value == 3 }
         XCTAssertEqual(session.savedMatchID, predecessor.match.id)
         XCTAssertEqual(session.resumeConfirmationTarget?.selection.epoch, 6, "A stale candidate cannot erase the newer confirmation projection")
         XCTAssertTrue(session.requiresResumeConfirmation)

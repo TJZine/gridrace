@@ -12,7 +12,6 @@ import {
 
 type Json = Record<string, unknown>;
 
-// Parse before environment admission, client construction or fixture work.
 const selection = parseBackendSelection(Deno.args);
 if (selection.action !== "run") {
   if (selection.action === "help") {
@@ -1544,7 +1543,6 @@ try {
               .status === 200,
             "guest solves and finalizes",
           );
-          // Exact synthetic timing fixtures retain actual gateway boards. Both display 1ms.
           await sql(
             `update public.player_rounds p set solve_duration_us=case when m.seat=1 then 1600 else 1900 end, finished_at=p.started_at+case when m.seat=1 then interval '1600 microseconds' else interval '1900 microseconds' end from public.match_members m, public.rounds r where p.member_id=m.id and p.round_id=r.id and r.match_id='${
               uuid(match)
@@ -1651,7 +1649,6 @@ try {
             "repeat finalization leaves revision",
           );
         }
-        // Exact ties share placement without seat tie-breaking.
         await sql(
           `update public.player_rounds p set solve_duration_us=1600, placement=1, finished_at=p.started_at+interval '1600 microseconds' from public.rounds r where p.round_id=r.id and r.match_id='${
             uuid(match)
@@ -1750,7 +1747,6 @@ try {
           }
         }
         const before = await snap();
-        // A held match ensures deletion and same-actor command are separate waiting transactions.
         const barrier = await holdMatchLockBarrier(
           match,
           `gridrace-v3-delete-${crypto.randomUUID()}`,
@@ -1824,8 +1820,6 @@ try {
           );
         }
         if (boundary === "active" || boundary === "final-active") {
-          // Move the synthetic fixture's entire timeline together. The scheduled
-          // job, rather than a snapshot/finalizer request, must finish the round.
           await sql(
             `update public.matches set started_at=started_at-interval '185 seconds' where id='${
               uuid(match)
@@ -2183,7 +2177,6 @@ try {
           ) === "0",
           "no future answers selected",
         );
-        // Acknowledged allocation and original receipts survive operational rollback.
         await sql(
           "update private.live_feature_configuration set allow_new_rematches=false",
         );
@@ -2361,7 +2354,6 @@ try {
       nested(await friendsSnapshot(host, match), "rematch", "generation") === 3,
       "fresh generation after cancel",
     );
-    // Backend boundary fixtures only; native deadline scenarios retain real time.
     await sql(
       `update public.matches set completed_at=transaction_timestamp()-interval '6 minutes' where id='${
         uuid(match)
@@ -2596,8 +2588,6 @@ try {
   await sql(
     "update private.live_feature_configuration set allow_new_rematches=false",
   );
-  // Track successful Create responses even if their caller fails before extracting ID.
-  // Match removal cascades its private answers, guesses and create receipts only.
   for (const match of createdMatches) {
     await sql(`delete from public.matches where id='${uuid(match)}'`);
   }
@@ -2974,7 +2964,6 @@ async function scenario(
   console.log(`PASS ${name} ${Math.round(performance.now() - started)}ms`);
 }
 
-// Keep proof useful without logging private boards, answers, codes or identifiers.
 function captureSummary(label: string, snapshot: Json): void {
   console.log(`FIXTURE ${label} ${
     JSON.stringify({

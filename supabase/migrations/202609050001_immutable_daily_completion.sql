@@ -1,5 +1,3 @@
--- A valid terminal result owns a Daily puzzle permanently. Active progress is a
--- recoverable working snapshot and can neither replace nor block that result.
 
 create or replace function public.sync_daily_progress(
   p_puzzle_id text,

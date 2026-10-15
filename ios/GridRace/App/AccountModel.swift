@@ -34,8 +34,6 @@ final class AccountModel {
     private var started = false
     private var profileTask: Task<Void, Never>?
     private var restorationGeneration = 0
-    // Only the current restore may follow identity-neutral nil notifications.
-    // Explicit Auth intent or a real identity transition leaves this receipt invalid.
     private var restorationSessionGeneration: Int?
     private var sessionGeneration = 0
     private var profileGeneration = 0
@@ -69,10 +67,6 @@ final class AccountModel {
             storedErrorMessage = newValue
         }
     }
-    // Per-error event seam: incremented on every error assignment (even when
-    // the message string repeats, e.g. retryProfile → loadProfile failing
-    // twice with the same text), so `onChange(errorMessage)` coalescing can
-    // never swallow a refocus. Success/clear paths leave it unchanged.
     private(set) var errorEvent = 0
     var displayNameDraft = ""
     var avatarSeedDraft = UUID().uuidString.lowercased()
@@ -124,8 +118,6 @@ final class AccountModel {
         }
         started = true
         let changes = service.authStateChanges
-        // The subscription's initial snapshot predates this restore. Consume it
-        // before a successful restore can install a newer account identity.
         let initialGeneration = sessionGeneration
         await withCheckedContinuation { (initialized: CheckedContinuation<Void, Never>) in
             authObservation = Task { [weak self] in
@@ -349,8 +341,6 @@ final class AccountModel {
         restorationSessionGeneration = nil
         deletingUserID = userID
         do {
-            // Fences are synchronous; a failed intent write must not leave old
-            // account screens/consumers active while preventing remote dispatch.
             let hidesCurrentAccount = session == nil || session?.userID == userID
             if hidesCurrentAccount { clearAccountState() }
             do { if !retryCaptured { try service.prepareAccountDeletion(userID: userID) } }
@@ -369,7 +359,6 @@ final class AccountModel {
             catch { durableConfirmation = false; memoryPendingDaily.insert(userID) }
             memoryPendingDaily.formUnion(cleanupJournal?.dailyUsers ?? [])
             deletedLiveUserIDs.formUnion(cleanupJournal?.liveUsers ?? [])
-            // Remote deletion is already final. Local Auth trouble never skips captured-user cleanup.
             var unknownLocalFailure = false
             do { try await didDeleteAccount(userID); memoryPendingDaily.remove(userID) }
             catch let failure as AccountLocalDeletionFailure {
@@ -379,7 +368,6 @@ final class AccountModel {
             } catch { unknownLocalFailure = true }
             if session == nil || session?.userID == userID { clearAccountState() }
             authRecovery = confirmed.localRecovery
-            // The durable local obligation now owns cleanup independently.
             do {
                 if durableConfirmation {
                     try service.acknowledgeAccountDeletion(userID: userID)
@@ -414,7 +402,7 @@ final class AccountModel {
                 try await retryDeletedDailyCleanup(userID)
                 try cleanupJournal?.completeDaily(userID)
                 memoryPendingDaily.remove(userID)
-            } catch {} // Retain each failed captured account for the next explicit retry.
+            } catch {}
         }
         presentDeletionRecovery(unknownLocalFailure: false)
     }
@@ -442,8 +430,6 @@ final class AccountModel {
             && restorationSessionGeneration == sessionGeneration
         authRecovery = state.recovery
         receive(state.session)
-        // Preserve global session/profile fences. Only this still-current restore
-        // can acknowledge a notification that did not change effective identity.
         if neutralNil, restorationGeneration == restoration,
            restorationSessionGeneration != nil {
             restorationSessionGeneration = sessionGeneration
@@ -482,8 +468,6 @@ final class AccountModel {
             let retainedSignOutGuidance = signOutGuidance
             let retainedDeletionPresentation = showsDeletionRecovery
             clearAccountState()
-            // A repeated signed-out snapshot still fences work and notifies
-            // consumers, but does not dismiss completed-intent guidance.
             if wasSignedOut {
                 storedErrorMessage = retainedMessage
                 signOutGuidance = retainedSignOutGuidance

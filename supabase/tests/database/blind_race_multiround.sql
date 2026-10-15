@@ -3,7 +3,6 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 
--- Synthetic identities; every fixture is rolled back with the test transaction.
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at)
 select ('b4000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
@@ -25,8 +24,6 @@ select ok(not has_function_privilege('authenticated', 'public.start_match(uuid,i
 select ok(not has_table_privilege('authenticated', 'private.round_secrets', 'select'), 'round secrets stay private');
 select ok(not has_table_privilege('authenticated', 'private.create_requests', 'select'), 'configuration receipts stay private');
 
--- Canonical mutation assertions exclude sampled response clocks, while keeping all revisions,
--- selection and rematch state. v3 wall-time freshness is proved separately by deadline races.
 create function pg_temp.canonical_snapshot(p_actor uuid,p_build integer,p_match uuid)
 returns jsonb language plpgsql as $$
 declare response jsonb;
@@ -104,8 +101,6 @@ begin
     return next ok(snapshot #> '{round,players,0,board}'='null'::jsonb and snapshot #> '{round,players,0,solve_duration_ms}'='null'::jsonb, p_count || ': opponent solve hidden ' || n);
     response := public.submit_guess(guest,3,m,n::smallint,extensions.gen_random_uuid(),answer);
     return next is(response #>> '{data,player_state}', 'solved', p_count || ': second solve finalizes ' || n);
-    -- Independent exact-time fixtures: equal displayed milliseconds, unequal SQL ranks;
-    -- floor(sum) differs from sum(floor) across rounds.
     update public.player_rounds p set solve_duration_us=case when member.seat=1 then 1600 else 1900 end,
       finished_at=p.started_at + case when member.seat=1 then interval '1600 microseconds' else interval '1900 microseconds' end
     from public.match_members member where p.round_id=r and member.id=p.member_id;
@@ -148,7 +143,6 @@ select * from pg_temp.exercise(1::smallint);
 select * from pg_temp.exercise(3::smallint);
 select * from pg_temp.exercise(5::smallint);
 
--- Each deletion boundary gets its own identities, so profile removal is real.
 create function pg_temp.deletion_case(p_case integer) returns setof text language plpgsql as $$
 declare
   host uuid := ('b4000000-0000-0000-0000-'||lpad((4+2*p_case)::text,12,'0'))::uuid;
@@ -233,8 +227,6 @@ begin
     snap := pg_temp.canonical_snapshot(host,3,m)->'data';
     return next is(snap #>> '{standings,players,0,efficiency_points}', (7-sequence)::text, 'canonical efficiency at guess '||sequence);
   end loop;
-  -- Ranking prioritizes solved-round count before total efficiency, and efficiency
-  -- before exact time. Reuse finalized real player rows for independent fixtures.
   select id into m from public.matches where round_count=5;
   update public.player_rounds p set state='timed_out',accepted_guess_count=0,solve_duration_us=null,
     efficiency_points=0,finished_at=now() from public.rounds rr where p.round_id=rr.id and rr.match_id=m;
@@ -249,7 +241,6 @@ begin
   snap := pg_temp.canonical_snapshot('b4000000-0000-0000-0000-000000000001',3,m)->'data';
   return next is(snap #>> '{standings,players,1,placement}', '1', 'efficiency outranks shorter exact time with equal solves');
 
-  -- Exhaustion must be an atomic failed Start, not a reset/reuse of an answer.
   delete from private.user_rate_limits;
   m := (public.create_match(host,3,null,extensions.gen_random_uuid(),3::smallint) #>> '{data,match_id}')::uuid;
   perform public.join_match(guest, 3, (select join_code from public.matches where id=m), null, extensions.gen_random_uuid(), null);

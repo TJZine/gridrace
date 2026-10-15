@@ -43,8 +43,6 @@ struct LiveRevealView: View {
                 ScorecardSeal(title: "Answer: \(answer.uppercased())")
                     .accessibilityFocused($focus, equals: .answer)
 
-                // The shared rows retain a readable minimum width. Narrow devices
-                // stack whole boards; wide devices show them beside each other.
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) { revealBoards }
                     VStack(spacing: 12) { revealBoards }

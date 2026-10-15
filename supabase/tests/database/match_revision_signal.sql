@@ -4,10 +4,6 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 
--- GR-06: the timing-bearing matches.updated_at signal is replaced by a
--- timestamp-free monotonic matches.revision signal. This file proves grants,
--- RLS, the Realtime publication projection, revision movement on every
--- canonical mutation, and revision stability on idempotent replay.
 
 insert into auth.users (
   id,
@@ -57,7 +53,6 @@ values
 
 select is((select count(*) from public.profiles), 3::bigint, 'auth trigger creates profiles for the revision fixtures');
 
--- Grants: the exact-action timestamp is unreadable, the revision is readable.
 select ok(
   not has_column_privilege('authenticated', 'public.matches', 'updated_at', 'SELECT'),
   'authenticated role cannot select matches.updated_at'
@@ -71,7 +66,6 @@ select ok(
   'anonymous role cannot select matches.revision'
 );
 
--- Signal shape: timestamp-free and monotonic-ready.
 select is(
   (select data_type from information_schema.columns
    where table_schema = 'public' and table_name = 'matches' and column_name = 'revision'),
@@ -79,8 +73,6 @@ select is(
   'matches.revision is a timestamp-free integer signal'
 );
 
--- Publication: the match row stays published, but the Realtime projection is
--- an explicit timing-free column list.
 select ok(
   exists (
     select 1 from pg_publication_tables
@@ -280,7 +272,6 @@ select is(
   'conflicting reuse leaves the revision untouched'
 );
 
--- Authenticated behavior: rostered members read the signal but not the timing.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -321,7 +312,6 @@ select throws_ok(
 );
 reset role;
 
--- Deadline finalization advances the signal exactly once.
 update public.rounds
 set starts_at = transaction_timestamp() - interval '181 seconds',
     ends_at = transaction_timestamp() - interval '1 second'
@@ -356,8 +346,6 @@ select ok(
   'canonical snapshot still resolves after reveal'
 );
 
--- Authenticated deletion preparation advances the same signal and preserves
--- the survivor snapshot.
 select ok(
   public.delete_account('50000000-0000-0000-0000-000000000001', 1) ? 'data',
   'database deletion preparation succeeds'

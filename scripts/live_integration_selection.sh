@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Pure admission parser: no runtime commands, credentials or fixture mutations.
 integration_scenarios=(deletion-receipt daily product-1 product-3 product-5 mixed-3 cron-1 cron-3 deletion-1 deletion-3 friends-1 friends-3 friends-5 snapshot-1 friends-signal friends-invitation friends-closure friends-3-race backend)
 integration_client_log_basename() {
-  # scenario, count, pair sequence, match phase, round, role, process
   printf '%s-%s-pair%s-%s-round%s-%s-%s.log' "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 }
 integration_selected() {

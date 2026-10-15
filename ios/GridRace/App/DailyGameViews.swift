@@ -1,15 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// U-06 state-to-focus map (one speech owner per transition, never both):
-/// terminal result -> focus result header (announcement off; focus speaks
-/// exactly once). Draft-error focus uses a per-submit generation below.
 enum DailyGameFocus: Hashable {
     case resultHeader
 }
 
-/// State-driven scroll targets: the fresh result panel, or the terminal
-/// error banner when an error owns the completion transition.
 private enum DailyGameScrollTarget: Hashable {
     case result
     case error
@@ -21,15 +16,9 @@ struct DailyGameView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var acceptsHardwareInput: Bool
     @AccessibilityFocusState private var axFocus: DailyGameFocus?
-    // R-01/F1 + F3: every submit mints a fresh error-focus value so an
-    // identical-error resubmit refires, and clearing resolves to nil so no
-    // stale target survives (same-value assignment would never move focus).
     @AccessibilityFocusState private var errorFocus: Int?
     @State private var errorGeneration = 0
     @State private var chromeHeight: CGFloat = 219
-    // Message that already owns focus. Submit-path errors are focused in
-    // noteSubmit; only errors arriving without a submit (save/record
-    // failures) are focused in `onChange` — one owner per transition.
     @State private var lastFocusedError: String?
 
     private func noteSubmit() {
@@ -105,9 +94,6 @@ struct DailyGameView: View {
         .focused($acceptsHardwareInput)
         .onAppear {
             acceptsHardwareInput = true
-            // Reopened completed puzzle: the result seal owns focus, so land
-            // VoiceOver on it. An error still owns focus instead (handled by
-            // the error-focus path), matching the fresh-completion rule.
             if model.game.isComplete, model.errorMessage == nil {
                 axFocus = .resultHeader
             }
@@ -133,9 +119,6 @@ struct DailyGameView: View {
             model.settings.hapticsEnabled ? .success : nil
         }
         .onChange(of: model.errorMessage) { _, message in
-            // Covers only non-submit error sources (save/record failures):
-            // submit errors already own focus via noteSubmit, and an
-            // identical message never re-triggers this handler.
             if message == nil {
                 errorFocus = nil
                 lastFocusedError = nil
@@ -146,14 +129,6 @@ struct DailyGameView: View {
             }
         }
         .onChange(of: model.resultEvent) { _, _ in
-            // A terminal submit can increment `resultEvent` and then set a
-            // persistence error in the same transaction (record succeeds,
-            // history save fails). The error owns the single speech via
-            // noteSubmit/onChange(error); focusing the result as well would
-            // interrupt it. Focus the result only for error-free completion.
-            // Non-submit errors never touch `resultEvent`, and repeated
-            // submits with an error keep `resultEvent` unchanged, so both
-            // paths retain their existing single-owner behavior.
             if model.game.isComplete, model.errorMessage == nil { axFocus = .resultHeader }
         }
     }
@@ -228,9 +203,6 @@ struct DailyGameView: View {
         }
     }
 
-    /// Terminal completion error shown above the result panel. The error
-    /// owns both scroll and VoiceOver focus when present; the result is
-    /// the target only for error-free completion.
     @ViewBuilder
     private var terminalError: some View {
         if let error = model.errorMessage {
@@ -242,10 +214,6 @@ struct DailyGameView: View {
         }
     }
 
-    /// One-line Hard Mode lock reminder pinned immediately above the
-    /// keyboard. Appears only after the first accepted guess; the generic
-    /// status-area line owns the pre-first-guess state instead. An actionable
-    /// error takes this slot until editing clears it and restores the reminder.
     @ViewBuilder
     private var hardModeKeyboardHint: some View {
         if !model.game.isComplete,
@@ -312,9 +280,6 @@ struct DailyGameView: View {
     }
 }
 
-/// Compact six-dot attempts-used indicator for the Daily header.
-/// Filled segments use ink; remaining segments are ink outlines,
-/// so used vs remaining never depends on color alone. One AX element.
 private struct GuessesUsedIndicator: View {
     let used: Int
     let outcome: DailyOutcome?
@@ -372,8 +337,6 @@ struct NextPuzzleLabel: View {
     }
 }
 
-/// Sum the screen's natural header and footer heights before proposing the
-/// remaining board space. Error and Hard Mode copy grow without truncation.
 private struct DailyChromeHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }

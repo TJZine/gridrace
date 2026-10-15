@@ -1,4 +1,3 @@
--- Run on the owned forward-upgraded fixture before any clean reset.
 begin;
 do $$
 declare rec record; response jsonb;

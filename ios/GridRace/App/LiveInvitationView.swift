@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Navigation is saved independently of authentication. Every Join button names
-/// the currently ready profile and code; reopening and signing in grant no consent.
 struct LiveInvitationView: View {
     @Bindable var invitations: LiveInvitationCoordinator
     var app: DailyAccountCoordinator?
@@ -66,7 +64,6 @@ struct LiveInvitationView: View {
                                         Button("Resolve saved race", action: resolveRace).buttonStyle(InkButtonStyle())
                                     } else {
                                         Button(app.live.hasSavedMatch ? "Switch race and join" : "Join \(pending.code)") {
-                                            // Re-read the value and account at the intent boundary. No old-sheet consent survives replacement.
                                             guard invitations.visiblePending == pending, ready, !unresolved else { return }
                                             guard let confirmation, invitations.join(confirmation, app: app) else { return }
                                             joined()

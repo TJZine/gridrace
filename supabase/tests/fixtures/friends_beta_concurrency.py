@@ -1,7 +1,3 @@
-"""Real independent PostgreSQL connections; only a controller-owned disposable local DB.
-Run GRIDRACE_DISPOSABLE_BETA=1 GRIDRACE_BETA_LOCAL_DB_PORT=<lease port> python3 this_file.
-No reset/start/stop is performed. A bounded lock barrier proves both commit orders.
-"""
 import json, os, shutil, subprocess, time, uuid
 
 assert os.environ.get('GRIDRACE_DISPOSABLE_BETA') == '1', 'explicit disposable lease required'
@@ -85,9 +81,7 @@ try:
         sql('select '+command(a,m,'offer',epoch(a)));ea,eb=epoch(a),epoch(b)
         resume=f"public.join_match('{b}',3,(select join_code from public.matches where id='{old}'),null,'{uuid.uuid4()}','{old}')"
         accept=command(b,m,'accept',eb)
-        # Offer captured old as invitee selection; selecting another already-held pointer must actually move.
         sql(f"select public.join_match('{b}',3,(select join_code from public.matches where id='{m}'),null,'{uuid.uuid4()}','{m}');")
-        # Fresh generation after this deliberate departure, with b selected predecessor.
         sql(f"select public.match_snapshot('{a}',3,'{m}'); select "+command(a,m,'offer',epoch(a),2))
         accept=command(b,m,'accept',epoch(b),2)
         x,y=ordered('accept_'+first_action,resume if first_action=='resume' else accept,accept if first_action=='resume' else resume)
@@ -104,13 +98,11 @@ try:
             assert value(f"select state from private.rematch_contexts where predecessor_match_id='{m}'")=='accepted'
             assert value(f"select successor_match_id is not null from private.rematch_contexts where predecessor_match_id='{m}'")=='t'
         results.append('accept/deletion: '+first_action+' commits first')
-    # Lock-wait expiry: queued transaction begins before expiry; wall time after locks denies it.
     a,b,m=match_pair();ea=epoch(a)
     sql(f"select public.match_snapshot('{a}',3,'{m}'); update private.rematch_contexts set deadline=clock_timestamp()+interval '600 milliseconds' where predecessor_match_id='{m}'")
     p,_=begin_first(f"pg_advisory_xact_lock(hashtextextended('{a}',1))")
     q=waiter(command(a,m,'offer',ea),'beta_expiry');blocked('beta_expiry');time.sleep(.7);release(p)
     assert outcome(q)['error']['code']=='rematch_expired';results.append('expiry after actor lock wait')
-    # Snapshot discovers a one-member lobby, waits on host actor, and must restart after a join.
     a,b,m=match_pair(False)
     p,_=begin_first(f"pg_advisory_xact_lock(hashtextextended('{a}',1))")
     q=waiter(f"public.match_snapshot('{a}',3,'{m}')",'beta_roster');blocked('beta_roster')
@@ -118,13 +110,11 @@ try:
     release(p);assert outcome(q,True)=={'retry':'snapshot_roster_changed'}
     assert json.loads(value(f"select public.match_snapshot('{a}',3,'{m}')"))['data']['version']==3
     results.append('roster discovery drift aborts whole snapshot; fresh read converges')
-    # Capacity locks may wait past expiry after eligibility locks have been acquired.
     a,b,m=match_pair();ea=epoch(a)
     sql(f"select public.match_snapshot('{a}',3,'{m}'); update private.rematch_contexts set deadline=clock_timestamp()+interval '600 milliseconds' where predecessor_match_id='{m}'")
     p,_=begin_first("(select word from private.words where is_active and is_answer order by word limit 1 for update)")
     q=waiter(command(a,m,'offer',ea),'beta_pool_expiry');blocked('beta_pool_expiry');time.sleep(.7);release(p)
     assert outcome(q)['error']['code']=='rematch_expired';results.append('expiry after answer pool lock wait')
-    # Snapshot deletion drift must restart even though all surviving actors were discovered.
     a,b,m=match_pair()
     gate=value(f"select x from unnest(array['{a}'::uuid,'{b}'::uuid])x order by hashtextextended(x::text,1) limit 1")
     departing=b if gate==a else a

@@ -1,6 +1,5 @@
 begin;
 
--- Forward-only friends-beta authority. Existing rooms, results and receipts are unchanged.
 do $$ begin
   if exists (select 1 from public.matches m join public.rounds r
     on r.match_id=m.id and r.round_number=m.round_count
@@ -18,7 +17,7 @@ create table private.live_feature_configuration (
 insert into private.live_feature_configuration values (true,false);
 create table private.participation_cursors (
   actor_user_id uuid primary key references public.profiles(id) on delete cascade,
-  selected_match_id uuid, -- Deliberately retains selection identity after lobby deletion.
+  selected_match_id uuid,
   epoch bigint not null default 0 check (epoch between 0 and 9007199254740991)
 );
 create table private.live_command_receipts (
@@ -36,14 +35,14 @@ create table private.rematch_contexts (
   reason text check(reason in ('cancelled','declined','participation_changed','expired','account_deleted','ineligible','feature_disabled')),
   initiator_member_id uuid,
   consenting_member_ids uuid[] not null default '{}',
-  actor_epochs jsonb not null default '{}', -- Keys are anonymizable member IDs, never Auth IDs.
+  actor_epochs jsonb not null default '{}',
   revision bigint not null default 1 check(revision>0),
   deadline timestamptz not null,
-  successor_match_id uuid unique -- Tombstone intentionally has no successor FK.
+  successor_match_id uuid unique
 );
 create table private.rematch_successors (
   match_id uuid primary key references public.matches(id) on delete cascade,
-  predecessor_match_id uuid not null unique, -- Copied facts survive predecessor retention.
+  predecessor_match_id uuid not null unique,
   excluded_answers text[] not null
 );
 create table public.match_rematch_signals (
@@ -373,7 +372,6 @@ begin
 
   select excluded_answers into v_exclusions from private.rematch_successors where match_id=p_match_id;
   if found then
-    -- Ordered share locks prevent concurrent pool deactivation during capacity/selection.
     perform 1 from private.words where is_active and is_answer order by word for share;
     select count(*) into v_capacity from private.words w where is_active and is_answer
       and not(w.word=any(v_exclusions)) and not exists(
@@ -768,7 +766,6 @@ end;
 $$;
 
 
--- The join outcome has a single owner; the public entries add protocol-specific receipt handling.
 create function private.join_live_match(
   p_user_id uuid,p_client_build integer,p_join_code text,p_ip_hash text,p_expected_match_id uuid
 ) returns jsonb language plpgsql volatile security invoker set search_path='' as $$
@@ -860,7 +857,6 @@ begin
 end;
 $$;
 
--- Called only after actor/cursor/match locks. Reads may normalize consent, never selection.
 create function private.normalize_rematch(p_match_id uuid,p_now timestamptz)
 returns void language plpgsql volatile security invoker set search_path='' as $$
 declare v_match public.matches%rowtype; v_context private.rematch_contexts%rowtype;
@@ -887,7 +883,6 @@ begin
       where m.match_id=p_match_id and (v_context.actor_epochs->>m.id::text)::bigint is distinct from c.epoch
   ) then v_reason:='participation_changed';
   end if;
-  -- Deletion/expiry are permanent; service rollback remains unavailable, never auto-reopens.
   if v_reason is not null and (v_context.reason is distinct from v_reason or v_context.state not in ('closed','expired','unavailable')) then
     update private.rematch_contexts set
       state=case when v_reason='expired' then 'expired' when v_reason='participation_changed' then 'closed' else 'unavailable' end,
@@ -987,7 +982,6 @@ begin
     if v_capacity<v_match.round_count then
     return private.error_response('answer_pool_unavailable');
   end if;
-    -- A pool lock may wait too: resample immediately before supplying consent.
     v_now:=clock_timestamp();
     if v_now>=v_ctx.deadline then
       perform private.normalize_rematch(p_match_id,v_now);
@@ -1003,7 +997,6 @@ begin
           from public.match_members m join private.participation_cursors c on c.actor_user_id=m.auth_user_id where m.match_id=p_match_id),
         revision=revision+1 where predecessor_match_id=p_match_id;
     elsif not(v_member=any(v_ctx.consenting_member_ids)) then
-      -- Both consent only while stable actors/profiles/epochs are locked. Fresh roster IDs and profile snapshots.
       perform private.select_live_match(p_actor,p_match_id);
       loop
         v_code:=private.random_join_code();
@@ -1066,8 +1059,6 @@ begin
   end if;
   perform 1 from public.matches where id=p_predecessor_match_id for update;
   select array_agg(auth_user_id order by auth_user_id) into v_current from public.match_members where match_id=p_predecessor_match_id and auth_user_id is not null;
-  -- Deletion can shrink the discovered roster while we wait. All surviving actors
-  -- are already locked; normalize that domain failure rather than retrying forever.
   if exists(select 1 from unnest(v_current) x where not(x=any(coalesce(v_actors,'{}')))) then
     raise exception using errcode='40001',message='rematch_roster_changed';
   end if;
@@ -1110,7 +1101,6 @@ begin
   if p_user_id is null or not exists(select 1 from public.profiles where id=p_user_id) then
     return private.error_response('not_authenticated');
   end if;
-  -- Discovery grants no authority; no match lock is held while acquiring actors.
   if not exists(select 1 from public.match_members where match_id=p_match_id and auth_user_id=p_user_id) then
     return private.error_response('not_a_match_member');
   end if;
@@ -1290,7 +1280,7 @@ end;
 $$;
 
 
--- All new signatures/helpers are service-only. Existing CREATE OR REPLACE ACLs stay unchanged.
+-- Existing CREATE OR REPLACE ACLs stay unchanged.
 revoke all on function private.lock_live_actors(uuid[]),private.select_live_match(uuid,uuid),private.publish_rematch_revision(),
   private.join_live_match(uuid,integer,text,text,uuid),private.normalize_rematch(uuid,timestamptz),private.rematch_projection(uuid,uuid,timestamptz),
   private.rematch_command_result(uuid,uuid,integer,text,bigint),
@@ -1299,7 +1289,6 @@ grant execute on function private.lock_live_actors(uuid[]),private.select_live_m
   private.join_live_match(uuid,integer,text,text,uuid),private.normalize_rematch(uuid,timestamptz),private.rematch_projection(uuid,uuid,timestamptz),
   private.rematch_command_result(uuid,uuid,integer,text,bigint),
   public.join_match(uuid,integer,text,text,uuid,uuid),public.rematch_command(uuid,integer,uuid,uuid,integer,text,bigint) to service_role;
--- No current consumer uses these obsolete non-durable/default-round adapters.
 drop function public.create_match(uuid,integer,text,uuid);
 drop function public.start_match(uuid,integer,uuid);
 drop function public.join_match(uuid,integer,text,text);

@@ -21,10 +21,6 @@ struct AccountView: View {
     @State private var showingConflictSheet = false
     @State private var actionTask: Task<Void, Never>?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    // Account/profile errors: the model mints `errorEvent` per error (even for
-    // a repeated identical string), so focus follows the event, not the
-    // message value. The banner itself never announces: focus is the sole
-    // speech owner.
     @AccessibilityFocusState private var errorFocus: Int?
     #if DEBUG
     @State private var localEmail = ""
@@ -136,8 +132,6 @@ struct AccountView: View {
             )
         }
         .onAppear {
-            // Initial-entry path: an error already present when the screen
-            // appears never triggers `onChange`, so focus it exactly once.
             if model.errorMessage != nil {
                 errorFocus = model.errorEvent
             }
@@ -336,9 +330,6 @@ struct AccountView: View {
         .listRowBackground(Color.card)
     }
 
-    // Exact signed-in reassurance, shared by the viewing, initial-setup,
-    // and editing states (only one state is visible at a time, so the single
-    // definition never duplicates on screen).
     private var privacyReassurance: some View {
         Text("Your email is never shown to other players.")
             .font(StampType.caption)
@@ -359,8 +350,6 @@ struct AccountView: View {
                 .textContentType(.nickname)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityHint("Use 2 to 16 letters, numbers, spaces, apostrophes, or hyphens")
-            // Enabled state and message derive from the single authoritative
-            // `PlayerProfile.normalizedDisplayName` validator; no second ruleset.
             if PlayerProfile.normalizedDisplayName(model.displayNameDraft) == nil {
                 Text("Use 2–16 letters, numbers, spaces, apostrophes, or hyphens.")
                     .font(.callout)
@@ -441,8 +430,6 @@ struct AccountView: View {
 
     private func errorCard(_ message: String) -> some View {
         VStack(spacing: 10) {
-            // Focus target is the model-owned `errorEvent` (set once per
-            // error by the body-level handlers above, never here).
             RaceErrorBanner(message: message)
                 .accessibilityFocused($errorFocus, equals: model.errorEvent)
             Button { model.clearError() } label: {
@@ -615,9 +602,6 @@ private struct ConflictBoardComparison: View {
                 }
             }
         }
-        // The HStack above is vertically fixed to the cards' intrinsic size;
-        // this state only carries that measured result out of GeometryReader
-        // so the following actions are laid out after the taller card.
         .frame(height: measuredHeight)
         .onPreferenceChange(ConflictBoardComparisonHeightKey.self) { height in
             guard height > 0, abs(height - measuredHeight) > 0.5 else { return }

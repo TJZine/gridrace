@@ -33,8 +33,6 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertFalse(cancelled.observe(isSignedIn: false, profileReady: true))
     }
 
-    /// Native target-runtime evidence with the real screen bounds and safe areas.
-    /// AX captures include lower scroll content; OS VoiceOver remains an S4 gate.
     func testDailyNativeScreenCapturesAndAccessibilityScrollContent() async throws {
         let fixture = try Fixture()
         let now = fixture.date(day: fixture.epochDay, seconds: 100)
@@ -113,8 +111,6 @@ final class DailyClassicModelTests: XCTestCase {
             try await GameplayContainmentHost.withHost(GameplayRouteView(.daily) { DailyGameView(model: clueModel) }, landscape: landscape) { hosted in
                 try hosted.assertGameplay(in: self, name: "daily-clue-error", notices: [try XCTUnwrap(clueModel.errorMessage)])
             }
-            // Appearance retries pending completion, so keep storage unavailable
-            // throughout the hosted fixture rather than failing only one write.
             let terminalStore = FailingStore()
             terminalStore.historySaveFailures = 100
             terminalStore.progressSaveFailures = 100
@@ -201,8 +197,6 @@ final class DailyClassicModelTests: XCTestCase {
                 }
             }
             if exit == .initializationCancellation {
-                // A newly visible window proves initialization reached its
-                // first suspension after issuing the scene geometry request.
                 let clock = ContinuousClock()
                 let deadline = clock.now.advanced(by: .seconds(5))
                 while !scene.windows.contains(where: { !priorWindows.contains(ObjectIdentifier($0)) && !$0.isHidden }),
@@ -524,7 +518,6 @@ final class DailyClassicModelTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let guestStore = DailyClassicStore(directory: root)
 
-        // Seed realistic guest Daily files through the production store seam.
         let fixture = try Fixture()
         let guestModel = try DailyClassicModel(
             pack: fixture.pack,
@@ -539,7 +532,6 @@ final class DailyClassicModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: guestProgressURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: guestHistoryURL.path))
 
-        // Seed two account caches with distinct sentinel content.
         let accountIDs = [UUID(), UUID()]
         var sentinelSnapshots: [URL: Data] = [:]
         for userID in accountIDs {
@@ -567,7 +559,6 @@ final class DailyClassicModelTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: url), expected, "Guest reset must preserve \(url.path)")
         }
 
-        // Missing guest files are tolerated so recovery stays idempotent.
         XCTAssertNoThrow(try guestStore.resetGuestDailyData())
     }
 
@@ -743,7 +734,6 @@ final class DailyClassicModelTests: XCTestCase {
             let terminal = try XCTUnwrap(store.savedProgress)
             XCTAssertNotNil(terminal.completion)
             XCTAssertNil(store.savedHistory)
-            // The durable terminal copy survives even if subsequent fallback writes fail.
             store.progressSaveFailures = 100
             now = fixture.date(day: fixture.epochDay + 1 + offset, seconds: 100)
             for _ in 0..<2 {
@@ -969,8 +959,6 @@ private struct DailyScreenLiveService: LiveMatchServicing {
     func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { throw LiveMatchServiceError.unavailable }
 }
 
-/// Shared by the three gameplay fixtures. Frames come from the hosted UIKit
-/// accessibility hierarchy, never from the SwiftUI layout formula under test.
 @MainActor
 final class GameplayContainmentHost {
     static let hardModeReminder = "Hard Mode locked. Keep correct-position letters in place and reuse present letters in another position."
@@ -1016,8 +1004,6 @@ final class GameplayContainmentHost {
         }
     }
 
-    /// The operation owns the entire hosted lifetime, including awaited cleanup
-    /// when assertions throw or its task is cancelled.
     static func withHost<V: View>(_ view: V, landscape: Bool, accessibility: Bool = false,
                                  operation: @MainActor (GameplayContainmentHost) async throws -> Void) async throws {
         let hosted = try await GameplayContainmentHost(view, landscape: landscape, accessibility: accessibility)
@@ -1084,8 +1070,6 @@ final class GameplayContainmentHost {
         previousKeyWindow?.makeKey()
         automation.restore()
         do {
-            // Cleanup must still suspend and finish when the operation's task
-            // is cancelled; cancellation cannot skip restoration.
             try await Self.requestOrientation(previousOrientation, in: scene, checksCancellation: false)
             cleanupState = .closed(.success(()))
         } catch {
@@ -1094,8 +1078,6 @@ final class GameplayContainmentHost {
         }
     }
 
-    /// Capture fixtures call this too: their portrait requirement must not
-    /// depend on which orientation a preceding native test happened to use.
     static func establishOrientation(_ orientation: UIInterfaceOrientation, in scene: UIWindowScene) async throws {
         try Task.checkCancellation()
         let bounds = scene.coordinateSpace.bounds
@@ -1220,7 +1202,6 @@ final class GameplayContainmentHost {
         return clips
     }
 
-    // 0.0001pt accommodates normalized AX-frame roundoff, far below one pixel.
     func isVisible(_ element: Element) -> Bool {
         guard element.frame.width > 0, element.frame.height > 0 else { return false }
         return ([viewport] + element.clips).allSatisfy {
@@ -1265,7 +1246,6 @@ final class GameplayContainmentHost {
         var reachEvidence: [Int: String] = [:]
         func observe() {
             let current = elements()
-            // Semantic occurrence preserves duplicate letters/feedback tiles.
             for (index, expected) in wanted.enumerated() {
                 let occurrence = wanted[..<index].filter { $0.label == expected.label && $0.context == expected.context }.count
                 let matches = current.filter { $0.label == expected.label && $0.context == expected.context }
@@ -1287,9 +1267,6 @@ final class GameplayContainmentHost {
                 let steps = max(1, Int(ceil(maximum / max(1, viewport / 4))))
                 return (0...steps).map { maximum * CGFloat($0) / CGFloat(steps) }
             }
-            // Sweep vertical content densely, then each board/keyboard horizontal
-            // scroll at that position. Each required full frame must be visible
-            // in at least one real scroll position, not just intersect the image.
             for scroll in vertical {
                 let original = scroll.contentOffset
                 let minimum = -scroll.adjustedContentInset.top
@@ -1317,8 +1294,6 @@ final class GameplayContainmentHost {
             XCTAssertTrue(reached.contains(index), "\(name): \(element.label) \(element.frame) outside \(viewport) or clipped by \(element.clips)", file: file, line: line)
         }
         if !accessibility {
-            // D16's tile floor is landscape-only. Portrait empty dashed-shape
-            // AX bounds are not an independently established layout-size oracle.
             for element in requestedLandscape ? tiles : [] {
                 let floor: CGFloat = 48
                 XCTAssertGreaterThanOrEqual(element.frame.width + 0.0001, floor, file: file, line: line)
@@ -1351,10 +1326,6 @@ final class GameplayContainmentHost {
     }
 }
 
-/// UIKit lazily synthesizes SwiftUI's AX tree only for an accessibility client.
-/// Use the system's automation switch in the test process, then restore its prior
-/// value. This private runtime bootstrap is test-only; observations below it use
-/// public UIKit container/label/frame APIs. Unsupported runtimes fail explicitly.
 private final class GameplayAccessibilityAutomation {
     private let handle: UnsafeMutableRawPointer
     private let setEnabled: @convention(c) (Int32) -> Void
@@ -1383,8 +1354,6 @@ private final class GameplayAccessibilityAutomation {
     }
 }
 
-/// Push the same AppRoute as the product so UIKit supplies actual Back chrome;
-/// no synthetic safe-area padding or navigation-height constants are injected.
 struct GameplayRouteView<Content: View>: View {
     let route: AppRoute
     let content: Content

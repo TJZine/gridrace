@@ -1,4 +1,3 @@
-// Match native ingress; no redirect discovery or server preview requests.
 export function parseInvitation(raw, allowedOrigins) {
   try {
     const authority = /^https:\/\/([^/]+)(?:\/|$)/i.exec(raw)?.[1];
