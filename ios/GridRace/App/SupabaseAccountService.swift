@@ -144,27 +144,56 @@ final class SupabaseAccountService: AccountServicing {
         let session: Session
         let expirationDate: Date
     }
-    private func storedUserID() throws -> UUID? {
-        for key in [sessionKey, "supabase.session"] {
-            guard let bytes = try backend.retrieve(key: key) else { continue }
-            let session = (try? JSONDecoder().decode(Session.self, from: bytes))
-                ?? (try? AuthClient.Configuration.jsonDecoder.decode(Session.self, from: bytes))
-                ?? (try? AuthClient.Configuration.jsonDecoder.decode(LegacyStoredSession.self, from: bytes))?.session
-            guard let session else { throw AccountServiceError.invalidResponse }
-            return session.user.id
+    private enum StoredCredentialError: Error { case malformed }
+    private func decodeStoredSession(_ bytes: Data) -> (session: Session, usesDefaultEncoding: Bool)? {
+        if let session = try? JSONDecoder().decode(Session.self, from: bytes) {
+            return (session, true)
+        }
+        if let session = (try? AuthClient.Configuration.jsonDecoder.decode(Session.self, from: bytes))
+            ?? (try? AuthClient.Configuration.jsonDecoder.decode(LegacyStoredSession.self, from: bytes))?.session {
+            return (session, false)
         }
         return nil
     }
-
-    private func validateStoredCredentials() throws {
+    private func storedUserID() throws -> UUID? {
         for key in [sessionKey, "supabase.session"] {
             guard let bytes = try backend.retrieve(key: key) else { continue }
-            let direct = (try? JSONDecoder().decode(Session.self, from: bytes))
-                ?? (try? AuthClient.Configuration.jsonDecoder.decode(Session.self, from: bytes))
-            let envelope = try? AuthClient.Configuration.jsonDecoder.decode(LegacyStoredSession.self, from: bytes)
-            guard direct != nil || envelope != nil else {
-                throw AuthStorageIssue(operation: .read, status: -26275)
-            }
+            guard let decoded = decodeStoredSession(bytes) else { throw AccountServiceError.invalidResponse }
+            return decoded.session.user.id
+        }
+        return nil
+    }
+    private func prepareStoredCredentials() throws {
+        let canonicalBytes: Data?
+        let legacyBytes: Data?
+        do {
+            canonicalBytes = try backend.retrieve(key: sessionKey)
+            legacyBytes = try backend.retrieve(key: "supabase.session")
+        } catch { throw storageIssue(error, operation: .read) }
+        let canonical = canonicalBytes.flatMap { decodeStoredSession($0) }
+        let legacy = legacyBytes.flatMap { decodeStoredSession($0) }
+        guard (canonicalBytes == nil || canonical != nil), (legacyBytes == nil || legacy != nil) else {
+            throw StoredCredentialError.malformed
+        }
+        guard let selected = legacy ?? canonical else { logoutSnapshot = nil; return }
+        logoutSnapshot = selected.session
+        if legacyBytes == nil, selected.usesDefaultEncoding { return }
+        let normalized: Data
+        do {
+            normalized = try JSONEncoder().encode(selected.session)
+            try backend.store(key: sessionKey, value: normalized)
+        } catch { throw storageIssue(error, operation: .store) }
+        let persisted: Data?
+        do { persisted = try backend.retrieve(key: sessionKey) }
+        catch { throw storageIssue(error, operation: .read) }
+        guard persisted == normalized else { throw AuthStorageIssue(operation: .store, status: -2070) }
+        if legacyBytes != nil {
+            do { try backend.remove(key: "supabase.session") }
+            catch { throw storageIssue(error, operation: .remove) }
+            let remaining: Data?
+            do { remaining = try backend.retrieve(key: "supabase.session") }
+            catch { throw storageIssue(error, operation: .read) }
+            guard remaining == nil else { throw AuthStorageIssue(operation: .remove, status: -2070) }
         }
     }
     private func makeLifetime(phase: Phase) -> AuthClientLifetime {
@@ -291,9 +320,19 @@ final class SupabaseAccountService: AccountServicing {
                     publish()
                     return nil
                 }
-                try validateStoredCredentials()
             } catch {
                 recovery = AccountAuthRecovery(action: .cleanup, storageIssue: storageIssue(error, operation: .read))
+                publish()
+                throw error
+            }
+            do { try prepareStoredCredentials() }
+            catch StoredCredentialError.malformed {
+                let issue = AuthStorageIssue(operation: .read, status: -26275)
+                recovery = AccountAuthRecovery(action: .cleanup, storageIssue: issue)
+                publish()
+                throw issue
+            } catch {
+                recovery = AccountAuthRecovery(action: .restore, storageIssue: storageIssue(error, operation: .read))
                 publish()
                 throw error
             }
@@ -464,10 +503,20 @@ final class SupabaseAccountService: AccountServicing {
     }
     func signOut() async -> AccountSignOutOutcome {
         guard let lifetime = current else {
+            var markerIssues: [AuthStorageIssue] = []
+            let retiredUserID: UUID?
+            if recovery?.action == .restore {
+                retiredUserID = logoutSnapshot?.user.id
+                retiredCleanupUserID = retiredUserID
+                do { try backend.store(key: markerKey, value: JSONEncoder().encode(RetirementMarker(version: 1, userID: retiredUserID))) }
+                catch { markerIssues.append(storageIssue(error, operation: .store)) }
+            } else { retiredUserID = nil }
+            logoutSnapshot = nil
             let issues = cleanupCredentials()
+            lastRetirementIssues = markerIssues + issues
             recovery = issues.first.map { AccountAuthRecovery(action: .cleanup, storageIssue: $0) }
             publish()
-            return AccountSignOutOutcome(localRecovery: recovery, remoteLogoutFailed: false)
+            return AccountSignOutOutcome(localRecovery: recovery, remoteLogoutFailed: false, retiredUserID: retiredUserID)
         }
         return await retire(lifetime, snapshot: logoutSnapshot)
     }
