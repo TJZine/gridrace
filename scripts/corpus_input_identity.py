@@ -1,4 +1,3 @@
-"""The approved retained-input checkpoint, independent of extraction-origin claims."""
 
 from __future__ import annotations
 
@@ -46,12 +45,10 @@ def verified_files(directory: Path, pattern: str, expected: dict[str, str], labe
     if set(paths) != set(expected):
         raise ValueError(f"{label} file set mismatch: missing {len(set(expected) - set(paths))}, "
                          f"unexpected {len(set(paths) - set(expected))}")
-    # Verify and parse these same bytes; do not reopen inputs after validation.
     return {name: verified_bytes(paths[name], expected[name], label) for name in sorted(paths)}
 
 
 def verified_database_bodies(database: Path, expected: dict[str, str]) -> dict[str, str]:
-    """Pin logical consumed rows, rather than SQLite file layout or unused pages."""
     bodies = {}
     try:
         with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)) as connection:

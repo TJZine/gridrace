@@ -136,16 +136,16 @@ select is(
   (
     select pronargdefaults
     from pg_proc
-    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+    where oid = 'public.join_match(uuid, integer, text, text, uuid, uuid)'::regprocedure
   ),
-  1::smallint,
-  'join-match keeps only the IP hash argument optional'
+  0::smallint,
+  'durable join requires every argument explicitly'
 );
 select ok(
   not (
     select prosecdef
     from pg_proc
-    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+    where oid = 'public.join_match(uuid, integer, text, text, uuid, uuid)'::regprocedure
   ),
   'join-match remains security invoker'
 );
@@ -153,7 +153,7 @@ select is(
   (
     select proconfig
     from pg_proc
-    where oid = 'public.join_match(uuid,integer,text,text)'::regprocedure
+    where oid = 'public.join_match(uuid, integer, text, text, uuid, uuid)'::regprocedure
   ),
   array['search_path=""']::text[],
   'join-match keeps an empty search path'
@@ -161,7 +161,7 @@ select is(
 select ok(
   has_function_privilege(
     'service_role',
-    'public.join_match(uuid,integer,text,text)',
+    'public.join_match(uuid, integer, text, text, uuid, uuid)',
     'execute'
   ),
   'service role keeps join-match execution'
@@ -169,7 +169,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'authenticated',
-    'public.join_match(uuid,integer,text,text)',
+    'public.join_match(uuid, integer, text, text, uuid, uuid)',
     'execute'
   ),
   'authenticated clients still cannot execute join-match directly'
@@ -250,12 +250,7 @@ create temporary table test_context (
 );
 
 with created as (
-  select public.create_match(
-    '10000000-0000-0000-0000-000000000001',
-    1,
-    repeat('a', 64),
-    '11000000-0000-0000-0000-000000000001'
-  ) as response
+  select public.create_match('10000000-0000-0000-0000-000000000001', 3, repeat('a', 64), '11000000-0000-0000-0000-000000000001', 1::smallint) as response
 )
 insert into test_context (match_id, request_id, first_response)
 select
@@ -290,12 +285,7 @@ select ok(private.consume_rate_limit('10000000-0000-0000-0000-000000000003', nul
 select ok(not private.consume_rate_limit('10000000-0000-0000-0000-000000000003', null, 'create', transaction_timestamp()), 'create rate attempt six denied');
 
 select is(
-  public.join_match(
-    '10000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) #>> '{data,match_id}',
+  public.join_match('10000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) #>> '{data,match_id}',
   (select match_id::text from test_context),
   'second player joins the room'
 );
@@ -306,31 +296,18 @@ from public.match_members as member
 where member.match_id = context.match_id and member.seat = 2;
 
 select is(
-  public.join_match(
-    '10000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) #>> '{data,match_id}',
+  public.join_match('10000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) #>> '{data,match_id}',
   (select match_id::text from test_context),
   'duplicate join returns the existing match'
 );
 
 select is(
-  public.start_match(
-    '10000000-0000-0000-0000-000000000002',
-    1,
-    (select match_id from test_context)
-  ) #>> '{error,code}',
+  public.start_match('10000000-0000-0000-0000-000000000002', 3, (select match_id from test_context), 1::smallint) #>> '{error,code}',
   'not_host',
   'non-host cannot start'
 );
 select ok(
-  public.start_match(
-    '10000000-0000-0000-0000-000000000001',
-    1,
-    (select match_id from test_context)
-  ) ? 'data',
+  public.start_match('10000000-0000-0000-0000-000000000001', 3, (select match_id from test_context), 1::smallint) ? 'data',
   'host starts with two players'
 );
 select is((select count(*) from private.round_secrets), 1::bigint, 'start creates one private secret');
@@ -349,7 +326,7 @@ where round_id = (select round_id from test_context);
 update test_context
 set first_response = public.submit_guess(
   '10000000-0000-0000-0000-000000000001',
-  1,
+  3,
   match_id,
   1::smallint,
   request_id,
@@ -367,7 +344,7 @@ where actor_user_id = '10000000-0000-0000-0000-000000000001'
 select is(
   public.submit_guess(
     '10000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -391,7 +368,7 @@ select is(
 select is(
   public.submit_guess(
     '10000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -405,7 +382,7 @@ select is(
   jsonb_array_length(
     public.match_snapshot(
       '10000000-0000-0000-0000-000000000001',
-      1,
+      3,
       (select match_id from test_context)
     ) #> '{data,round,players,0,board}'
   ),
@@ -415,7 +392,7 @@ select is(
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) #>> '{data,round,players,0,board}',
   null,
@@ -424,7 +401,7 @@ select is(
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) #>> '{data,round,answer}',
   null,
@@ -445,7 +422,7 @@ begin
   foreach v_request_id in array v_request_ids loop
     if not public.submit_guess(
       '10000000-0000-0000-0000-000000000002',
-      1,
+      3,
       (select match_id from test_context),
       1::smallint,
       v_request_id,
@@ -463,7 +440,7 @@ select
   '30000000-0000-0000-0000-000000000006'::uuid as request_id,
   public.submit_guess(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     '30000000-0000-0000-0000-000000000006',
@@ -486,7 +463,7 @@ select is(
     from jsonb_array_elements(
       public.match_snapshot(
         '10000000-0000-0000-0000-000000000002',
-        1,
+        3,
         (select match_id from test_context)
       ) #> '{data,round,players}'
     ) as player
@@ -513,7 +490,7 @@ where actor_user_id = '10000000-0000-0000-0000-000000000002'
 select is(
   public.submit_guess(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from failed_guess_receipt),
@@ -576,7 +553,7 @@ select throws_ok(
   'normal client cannot read private words'
 );
 select throws_ok(
-  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 1, null, ''11000000-0000-0000-0000-000000000002'')',
+  'select public.create_match(''10000000-0000-0000-0000-000000000001'', 3, null, ''11000000-0000-0000-0000-000000000002'', 1::smallint)',
   '42501',
   'permission denied for function create_match',
   'normal client cannot execute service-only RPCs'
@@ -611,7 +588,7 @@ reset role;
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000003',
-    1,
+    3,
     (select match_id from test_context)
   ) #>> '{error,code}',
   'not_a_match_member',
@@ -649,7 +626,7 @@ select is((select count(*) from public.player_rounds where placement is not null
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) #>> '{data,round,answer}',
   'stone',
@@ -659,7 +636,7 @@ select is(
   jsonb_array_length(
     public.match_snapshot(
       '10000000-0000-0000-0000-000000000002',
-      1,
+      3,
       (select match_id from test_context)
     ) #> '{data,round,players,0,board}'
   ),
@@ -697,7 +674,7 @@ select is((select count(*) from public.guesses), 7::bigint, 'survivor-required a
 select is(
   public.match_snapshot(
     '10000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) #>> '{data,members,0,display_name}',
   'Deleted Player',

@@ -195,7 +195,8 @@ Xcode execution. Record unavailable external credentials or hosted behavior exac
 - Run [33959896444](https://github.com/TJZine/gridrace/actions/runs/33959896444)
   was the first hosted execution: `ios` passed, while `backend` failed because Ubuntu
   lacked the checksum-pinned macOS word-pack source; later backend steps were skipped.
-- Follow-up plan `2026-09-05-remaining-adversarial-remediation.md` fixed the portable
+- Follow-up plan `2026-09-05-remaining-adversarial-remediation.md`
+  ([retired record in Git history](../NOW.md#retired-plans-in-git-history)) fixed the portable
   verification boundary and the remaining accepted findings.
 - Run [33962713458](https://github.com/TJZine/gridrace/actions/runs/33962713458)
   passed both `backend` and `ios`. Generated data, shared rules, Edge Functions,

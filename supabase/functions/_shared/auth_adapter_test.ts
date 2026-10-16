@@ -42,7 +42,8 @@ function request(deletion = false): Request {
       },
       body: JSON.stringify(
         deletion ? { client_build: 1 } : {
-          client_build: 1,
+          client_build: 3,
+          round_count: 1,
           request_id: "22222222-2222-4222-8222-222222222222",
         },
       ),
@@ -50,8 +51,6 @@ function request(deletion = false): Request {
   );
 }
 
-// Exercise production environment selection and the actual pinned SDK. The fetch
-// replacement prevents network access; restore both globals even on an assertion failure.
 async function withRuntime(
   respond: (url: string, init?: RequestInit) => Response | Promise<Response>,
   action: () => Promise<void>,

@@ -143,10 +143,6 @@ private struct FeedbackExample: View {
     }
 }
 
-/// Fourth Help example: shared five-tile row for the canonical duplicate vector
-/// `excess-guess-repeat` (answer `grape`, guess `apple`, feedback
-/// `[present, present, absent, absent, correct]`). Fixed literals only —
-/// evaluation and assertions belong in `GameRulesTests`.
 private struct DuplicateLetterExample: View {
     let title: String
     let detail: String
@@ -168,10 +164,6 @@ private struct DuplicateLetterExample: View {
     }
 }
 
-/// Compact summary of `shared/word-packs/ATTRIBUTION.md`. Static notice
-/// text only: snapshot, transform, data terms, software-license
-/// distinction, and the pending release gates. Stock components match
-/// `DailyHelpView` so Dynamic Type and VoiceOver behavior stay native.
 struct DailyAttributionView: View {
     private let copyrightsURL = URL(string: "https://en.wiktionary.org/wiki/Wiktionary:Copyrights")!
     private let licenseDeedURL = URL(string: "https://creativecommons.org/licenses/by-sa/4.0/")!

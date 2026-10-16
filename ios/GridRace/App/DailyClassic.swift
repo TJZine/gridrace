@@ -14,7 +14,6 @@ struct DailyWordPack: Decodable, Equatable, Sendable {
     let scheduleVersion: Int
     let locale: String
     let wordLength: Int
-    /// Whole UTC days since 1970-01-01. The first answer belongs to this day.
     let epochDay: Int
     let acceptedGuesses: [String]
     let answers: [String]
@@ -60,13 +59,6 @@ struct DailyWordPack: Decodable, Equatable, Sendable {
     }
 }
 
-/// Canonical Daily Classic v1 puzzle identity.
-///
-/// Schedule source: shared/word-packs/daily-classic-en-US-v1 (schedule
-/// version 1, epoch day 20696 = 2026-08-31, 725 published answers). Puzzle
-/// days 20696...21420 carry puzzle numbers 1...725, and the puzzle id is the
-/// UTC calendar date of the puzzle day. There is no v2 or generalized
-/// identity framework; a future schedule needs an explicit contract change.
 enum DailyPuzzleIdentity {
     static let wordPackID = "daily-classic-en-US-v1"
     static let scheduleVersion = 1

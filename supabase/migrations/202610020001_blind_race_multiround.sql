@@ -1,7 +1,5 @@
 begin;
 
--- Existing rooms and receipts remain one-round/floor-1. No secret is selected
--- until the creator starts that specific round under the match lock.
 alter table public.matches
   add column terminal_reason text,
   drop constraint matches_round_count_check,
@@ -27,7 +25,6 @@ alter table private.guess_requests drop constraint guess_requests_round_check,
 alter table private.create_requests add column round_count smallint not null default 1,
   add constraint create_requests_round_count_check check (round_count in (1, 3, 5));
 
--- terminal_reason intentionally has no authenticated column grant/publication.
 create or replace function private.error_response(p_code text)
 returns jsonb
 language sql
@@ -99,7 +96,6 @@ begin
     return private.error_response('internal_error');
   end if;
 
-  -- Serialize creation with account deletion and same-actor retries.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(p_user_id::text, 1)
   );
@@ -429,7 +425,6 @@ begin
 end;
 $$;
 
--- The legacy entry always targets round 1 and preserves its completed error.
 create or replace function public.start_match(
   p_user_id uuid, p_client_build integer, p_match_id uuid
 )

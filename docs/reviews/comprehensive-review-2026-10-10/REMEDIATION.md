@@ -78,6 +78,97 @@ Home/account exit/cancellation remain unperformed. Hosted pinned-toolchain CI,
 signed archive/install, staging/provider launch and distribution remain unobserved.
 Local Xcode 27/iOS 26.5 results do not close those gates or corpus release review.
 
-Optional local-only finding report:
-`docs/reviews/comprehensive-review-2026-10-10/REPORT.md`. This checkpoint and its
-tracked companion are understandable without that report or private run artifacts.
+### CI follow-up — 2026-10-13 (UTC)
+
+The earlier local checkpoint and its then-unobserved hosted CI remain historical.
+[PR CI 38343347018](https://github.com/TJZine/gridrace/actions/runs/38343347018)
+checked merge `c1004308178546d80d126eae2ef6b16343476c0d` for head
+`e7db36fb05271a74b5b3246b6286dd03f8554627` and base
+`d9bca9b8bde04cc47850db34e3b00a930c57c066`;
+[push CI 38343345438](https://github.com/TJZine/gridrace/actions/runs/38343345438)
+checked that head directly. Actual checkout and job logs confirm both backend jobs
+and native Test/clean Debug builds passed on Xcode 26.6. Both native logs record
+379 tests, three explicit integration skips, zero failures and remaining warnings;
+the declared clipped-board negative control remains. Backend jobs passed generated
+checks, corpus 12 tests with one real-input skip, four shared-rule tests, 131 Edge
+tests and 776 database assertions.
+
+The skipped deletion-receipt, Daily two-client sync/deletion and orchestrated Live
+paths do not establish full-matrix acceptance or the then-pending PR guidance/skip-guard
+repairs. Historical local results remain scoped to their recorded sources. The
+[October 12 maintainability checkpoint](../../plans/2026-10-12-maintainability-remediation.md#final-checkpoint--2026-10-12)
+records omitted full/Cron/mixed/survivor coverage. Cold persisted Auth, device,
+provider/locked-Keychain, signed archive/install, staging, distribution/corpus
+clearance and Stamped S4/A9 limits above remain open. This addendum records inspected
+CI evidence; it does not claim a new local execution or CI for later fixes.
+
+### PR #2 correction checkpoint — 2026-10-13
+
+The human approved the three adjudicated corrections, planned verification,
+independent auth review and proper local commits. Import-sheet copy stays deferred.
+Verification below was originally run in an isolated checkout from `e7db36f`.
+The corrections were then integrated onto the requested `dev/classic-mode` working
+branch above friends-beta checkpoint `55c4856`, preserving those commits and local
+edits. Auth is now `7f4a1ad`; harness correction is `e1cb417`, with its test fixture
+adapted to the newer cleanup owner. The original verification commits below retain
+their source provenance. No publication, hosted action or bot run.
+
+- `605baf0` retains unresolved signed-out guidance without bypassing profile/session
+  fences or Daily/Live callbacks. Credential and captured-user Live notices evaluate
+  current cleanup eligibility; dismissal/new intent/identity clears presentation.
+  Three new subscribed lifecycle cases and two extended coordinator cases cover
+  post-intent nil/duplicate-nil delivery, pending dismissal, recovery updates,
+  replacement identity, cleanup resolution and successful silence. Existing stale
+  restore/profile cases remain. Independent read-only auth review's correctness and
+  coverage findings were repaired; targeted rereview reported no material finding.
+- `c924295` enforces no-skip inspection status: match rejects, only no-match continues,
+  scanner error rejects. Positive/Auth/caller proof markers and owned cleanup remain.
+  Existing Python machinery executes the actual checking/EXIT cleanup functions with
+  dummy external operations: passed-only, pass-plus-skip, missing-positive and scanner
+  error controls pass. Five Python tests, Bash syntax, existing credential-scan controls
+  and `git diff --check` passed. These controls are simulated proof, not real clients.
+- Fresh ordinary native suite: original exit 0, 624.827 seconds, **382 tests: 378
+  ordinary passes, three explicit opt-in integration skips, one expected clipped-board
+  negative control, zero unexpected failures**. Clean Debug build passed. Discovered
+  iPhone 17 Pro/iOS 26.5; a new owned simulator was used and removed. Local Xcode 27.0
+  differs from hosted 26.6. Both commands used the runbook's frozen package flags and
+  unique DerivedData; Test additionally used an inventoried copied package cache,
+  `-resultBundlePath` and `-parallel-testing-enabled NO` for owned evidence/resources.
+  Native source manifest SHA256:
+  `e0e3c800fd082a1d346d4f9fd3d1da9816721586124096d2aec5fe4a79f1ecc5`.
+- Fresh **full-default integration passed**, original exit 0: **62 native invocations,
+  62 passes, zero skips/failures**, all xcresults inspected. The real backend passed
+  429 requests/142 snapshots, including exact standings and deletion races. Product
+  1/3/5, mixed solved/nonzero, original-deadline Cron with both clients stopped and
+  completed/incomplete survivor relaunch all passed; real Realtime fault markers
+  and both client-container credential scans passed. No scenario selectors were
+  supplied. Controller used the documented libpq PATH, explicit opt-in, a newly
+  created inventoried exclusively owned unlinked loopback stack and copied frozen
+  eight-package cache. Source/diff identity remained exact through final acceptance.
+- Driver cleanup reported `cleanup_failed=0`; Auth/matches/Daily/import rows returned
+  to zero, words 100 and active Cron one. Two deletion receipts remain as
+  retained contract evidence. The controller then stopped only the owned gateway
+  and stack, retaining its volume/proof, and removed only the three new simulators.
+  Original container/device identities and states, original checkout files and
+  working status were preserved. Private logs, xcresults, inventories and source
+  receipts remain in task-owned proof directories; no broader restoration is claimed.
+
+Working-branch integration proof: all eight harness tests and Bash syntax/diff
+checks passed. Fresh frozen-resolution native checks on an owned iPhone 17 Pro/iOS
+26.5 simulator passed **80 tests, zero skips/failures**: AccountModel 26, Daily/account
+coordinator 30, and friends-beta composition 24, including layout captures. The owned
+simulator was removed with existing device identities/states unchanged. This focused
+combined-source proof does not re-execute the earlier full native/integration matrix.
+The temporary checkout was removed; its original commits remain recoverable. Existing
+reviewer-preset and research edits remain outside the correction commits.
+
+The dated CI addendum above remains evidence for `e7db36f`, not these new fixes.
+Physical/provider/locked-Keychain, persisted-Auth, signed-release/staging,
+distribution/corpus and Stamped S4/A9 limits remain open.
+
+Archived optional local-only finding report (original repository-relative path):
+`docs/reviews/comprehensive-review-2026-10-10/REPORT.md`. Its exact local copy was
+archived outside the project on 2026-10-13 before removal; see the
+[archive location and manifest](../../NOW.md#archived-local-only-artifacts).
+This checkpoint and its tracked companion are understandable without that report
+or private run artifacts.

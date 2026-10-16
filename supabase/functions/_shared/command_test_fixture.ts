@@ -22,7 +22,6 @@ interface Invoked {
   authenticateCalls: number;
 }
 
-// Bind each command explicitly; every invocation gets fresh spies and an RPC queue.
 export function createCommandInvoker(
   makeHandler: (
     dependencies: Dependencies,

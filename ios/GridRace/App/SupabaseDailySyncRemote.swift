@@ -68,7 +68,7 @@ actor SupabaseDailySyncRemote: DailySyncRemote {
         fetchResultsPage: @escaping @Sendable (DailyImportedResultsCursor?, Int) async throws -> [DailyImportedResultDTO]
     ) {
         precondition(pageSize > 0, "Imported-results page size must be positive")
-        self.lease = nil // Explicit synthetic fetch seam used by pagination tests.
+        self.lease = nil
         self.client = client
         self.pageSize = pageSize
         self.fetchProgress = fetchProgress

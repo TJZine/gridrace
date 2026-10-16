@@ -86,7 +86,7 @@ final class LiveMatchViewTests: XCTestCase {
                 return XCTFail("Create must persist its selected configuration before dispatch")
             }
             XCTAssertEqual(count, selected)
-            XCTAssertEqual(build, 2)
+            XCTAssertEqual(build, 3)
             XCTAssertEqual(routes, [.live])
             for _ in 0..<100 where session.isCommandInFlight { try await Task.sleep(for: .milliseconds(10)) }
             let saved = try store.load().pendingIntent
@@ -111,11 +111,11 @@ final class LiveMatchViewTests: XCTestCase {
         let snapshot = try Phase4LiveFixtures.snapshot("3-round-2-playing")
         let request = UUID()
         let current = LivePendingIntent.guess(matchID: snapshot.match.id, requestID: request,
-                                              word: "STONE", roundNumber: 2, clientBuild: 2)
+                                              word: "STONE", roundNumber: 2, clientBuild: 3)
         let old = LivePendingIntent.guess(matchID: snapshot.match.id, requestID: request,
-                                          word: "CRANE", roundNumber: 1, clientBuild: 2)
+                                          word: "CRANE", roundNumber: 1, clientBuild: 3)
         let other = LivePendingIntent.guess(matchID: UUID(), requestID: request,
-                                            word: "ADORE", roundNumber: 2, clientBuild: 2)
+                                            word: "ADORE", roundNumber: 2, clientBuild: 3)
         XCTAssertEqual(LiveMatchPresentation.initialDraft(snapshot: snapshot, pending: current, draft: ""), "STONE")
         XCTAssertEqual(LiveMatchPresentation.initialDraft(snapshot: snapshot, pending: old, draft: "CRANE"), "")
         XCTAssertEqual(LiveMatchPresentation.initialDraft(snapshot: snapshot, pending: other, draft: "ADORE"), "")
@@ -265,7 +265,6 @@ final class LiveMatchViewTests: XCTestCase {
                     add(attachment)
                 }
                 attach()
-                // Only vertical scrolls: the board and keyboard own horizontal AX scrolling.
                 let scrolls = descendants(host.view).compactMap { $0 as? UIScrollView }
                 for (index, scroll) in scrolls.enumerated() where scroll.contentSize.height > scroll.bounds.height + 1 {
                     scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height), animated: false)
@@ -330,7 +329,7 @@ final class LiveMatchViewTests: XCTestCase {
         state.phase = .ready
         state.hasPendingStart = true
         state.canRetry = false
-        state.pendingIntent = .create(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        state.pendingIntent = .create(requestID: UUID(), roundCount: 3, clientBuild: 3)
         state.error = .server(.requestConflict)
         let start = LiveMatchPresentation.map(state)
         XCTAssertNil(start.topNotice)
@@ -345,7 +344,7 @@ final class LiveMatchViewTests: XCTestCase {
         state.joinCode = "ABC234"
         let entry = LiveMatchPresentation.map(state)
         XCTAssertTrue(entry.permits(.resume))
-        XCTAssertTrue(entry.permits(.join), "Join preserves its existing presentation gate; the session still owns intent safety")
+        XCTAssertFalse(entry.permits(.join), "Resolve the saved request before confirming another Join")
         XCTAssertFalse(entry.permits(.create))
         state.isCommandInFlight = true
         XCTAssertFalse(LiveMatchPresentation.map(state).permits(.join))
@@ -527,7 +526,7 @@ final class LiveMatchViewTests: XCTestCase {
         let service = RenderService(snapshot)
         let empty = [.signedOut, .entry, .entryPendingCreate, .failedCreate, .failedCreateDecision].contains(scenario)
         let pending: LivePendingIntent? = scenario == .savedRequestDecision || scenario == .finalSavedDecision
-            ? .guess(matchID: snapshot.match.id, requestID: UUID(), word: "CRANE", roundNumber: 1, clientBuild: 2) : nil
+            ? .guess(matchID: snapshot.match.id, requestID: UUID(), word: "CRANE", roundNumber: 1, clientBuild: 3) : nil
         let store = PresentationRecoveryStore(LiveRecoveryState(matchID: empty ? nil : snapshot.match.id, pendingIntent: pending))
         let realtime = RenderRealtime()
         let (session, sessionTransport) = makeLiveSessionFixture(service: service, realtime: realtime, storeFactory: { _ in
@@ -605,7 +604,7 @@ final class LiveMatchViewTests: XCTestCase {
         members: [LiveMatchMember]? = nil, round: LiveRound? = nil) -> LiveMatchSnapshot {
         LiveMatchSnapshot(serverTime: time ?? snapshot.serverTime, match: snapshot.match,
             members: members ?? snapshot.members, round: round ?? snapshot.round, revision: snapshot.revision,
-            revealedRounds: snapshot.revealedRounds, standings: snapshot.standings)
+            revealedRounds: snapshot.revealedRounds, standings: snapshot.standings, selection: snapshot.selection, rematch: snapshot.rematch)
     }
 
     @MainActor
@@ -652,7 +651,7 @@ final class LiveMatchViewTests: XCTestCase {
                 creatorMemberID: first.id,
                 status: status,
                 expiresAt: now.addingTimeInterval(60),
-                minimumClientBuild: 1
+                minimumClientBuild: 3
             ),
             members: [first, second],
             round: LiveRound(
@@ -665,7 +664,7 @@ final class LiveMatchViewTests: XCTestCase {
                     player(member: first, rows: firstRows, placement: 1),
                     player(member: second, rows: secondRows, placement: 2),
                 ] : []
-            )
+            ), selection: .init(epoch: 1, isSelected: true)
         )
     }
 
@@ -720,14 +719,13 @@ private struct PresentationService: LiveMatchServicing {
     init(_ value: LiveMatchSnapshot) { self.value = value }
     func snapshot(matchID: UUID) async throws -> LiveMatchSnapshot { value }
     func createMatch(requestID: UUID, roundCount: Int, clientBuild: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
-    func joinMatch(code: String) async throws -> UUID { value.match.id }
+    func joinMatch(_ command: LiveJoinCommand) async throws -> UUID { value.match.id }
+    func rematch(_ command: LiveRematchCommand) async throws -> LiveRematchReceipt { throw LiveMatchServiceError.unavailable }
     func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
     func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String,
                      clientBuild: Int) async throws -> LiveGuessReceipt { throw LiveMatchServiceError.server(.requestConflict) }
 }
 
-/// Deterministic in-process command/snapshot transport for faithful native screens.
-/// Delays are cancellable so each fixture releases every session task.
 private actor RenderService: LiveMatchServicing {
     let value: LiveMatchSnapshot
     var snapshotError: LiveMatchServiceError?
@@ -755,7 +753,8 @@ private actor RenderService: LiveMatchServicing {
         while commandDelay { try await Task.sleep(for: .milliseconds(20)) }
         throw createError
     }
-    func joinMatch(code: String) async throws -> UUID { throw LiveMatchServiceError.server(.roomFull) }
+    func joinMatch(_ command: LiveJoinCommand) async throws -> UUID { throw LiveMatchServiceError.server(.roomFull) }
+    func rematch(_ command: LiveRematchCommand) async throws -> LiveRematchReceipt { throw LiveMatchServiceError.unavailable }
     func startMatch(id: UUID, roundNumber: Int) async throws -> UUID { throw LiveMatchServiceError.unavailable }
     func submitGuess(matchID: UUID, roundNumber: Int, requestID: UUID, guess: String,
         clientBuild: Int) async throws -> LiveGuessReceipt {

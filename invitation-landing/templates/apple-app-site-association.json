@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [{
+      "appIDs": ["<APPLE_TEAM_ID>.<ENVIRONMENT_BUNDLE_ID>"],
+      "components": [
+        {"/": "/join/*", "?": "?*", "exclude": true, "comment": "Reject nonempty queries; native parser also rejects an empty query"},
+        {"/": "/join/*", "#": "?*", "exclude": true, "comment": "Reject nonempty fragments; native parser also rejects an empty fragment"},
+        {"/": "/join/??????", "comment": "Native parser validates code alphabet and exact configured origin"}
+      ]
+    }]
+  }
+}

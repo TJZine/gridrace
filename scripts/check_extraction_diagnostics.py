@@ -52,8 +52,6 @@ import re
 from collections import Counter
 from pathlib import Path
 
-# Same term lists as scripts/analyze_validation.py::classify_error, kept
-# side by side so neither list shadows the other.
 NON_MEMBERSHIP_TERMS = (
     "translation", "etymolog", "cite-", "#invoke('quote", "pronunciation",
     "audio", "rhym", "#invoke('string/templates", "#invoke('number list",
@@ -73,7 +71,6 @@ AMBIGUOUS_OVERLAP = "ambiguous_overlap"
 
 
 def classify(line: str) -> str:
-    """Order-free bucket: any line matching both lists is ambiguous."""
     lowered = line.lower()
     has_non = any(term in lowered for term in NON_MEMBERSHIP_TERMS)
     has_mem = any(term in lowered for term in MEMBERSHIP_TERMS)
@@ -87,7 +84,6 @@ def classify(line: str) -> str:
 
 
 def classify_legacy(line: str) -> str:
-    """Legacy order-dependent bucket (non-membership checked first)."""
     lowered = line.lower()
     if any(term in lowered for term in NON_MEMBERSHIP_TERMS):
         return NON_MEMBERSHIP_FIELD
@@ -97,12 +93,10 @@ def classify_legacy(line: str) -> str:
 
 
 def extract_title(line: str) -> str:
-    """Page title by the same rule as analyze_validation (pre-slash head)."""
     return line.split("/", 1)[0].split(":", 1)[0]
 
 
 def signature(line: str) -> str:
-    """Group key: failing invoke module + parent template (or error kind)."""
     if "Template nesting error" in line:
         return "Template-nesting: inflection-templates | be-conjugation"
     if "Unimplemented unsupported title" in line:
@@ -118,11 +112,6 @@ def signature(line: str) -> str:
 
 
 def iter_error_lines(consoles: Path):
-    """Yield (console_name, line) for ERROR lines in gated console files.
-
-    The sibling gate (console counts only when chunk-*.jsonl or
-    chunk-*.failed exists) replicates analyze_validation.py.
-    """
     for path in sorted(consoles.glob("chunk-*.console")):
         if not path.with_suffix(".jsonl").exists() and not path.with_suffix(".failed").exists():
             continue

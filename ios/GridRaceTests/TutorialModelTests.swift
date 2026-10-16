@@ -197,7 +197,6 @@ final class TutorialModelTests: XCTestCase {
             model.refreshFromClock()
             for letter in "stone" { model.typeLetter(letter) }
 
-            // No timer tick occurs between the clock jump and Submit.
             clock = base.addingTimeInterval(elapsed)
             clockReads = 0
             XCTAssertEqual(model.phase, .playing)
@@ -263,7 +262,6 @@ final class TutorialModelTests: XCTestCase {
         model.replay()
         XCTAssertEqual(model.phase, .introduction)
         model.startTutorial()
-        // A background jump can skip the entire countdown and round.
         clock = clock.addingTimeInterval(1_000)
         model.submitGuess()
         XCTAssertEqual(model.phase, .reveal)

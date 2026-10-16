@@ -48,6 +48,7 @@ final class AppStartupModel {
         }
     }
 
+    let invitations: LiveInvitationCoordinator
     private(set) var appModel: DailyAccountCoordinator?
     private(set) var loadFailure: LoadFailure?
     private let loadPacks: () throws -> (tutorial: WordPack, daily: DailyWordPack)
@@ -59,13 +60,15 @@ final class AppStartupModel {
             (try WordPack.load(bundle: .main), try DailyWordPack.load(bundle: .main))
         },
         makeStore: @escaping () throws -> DailyClassicStore = { try DailyClassicStore.applicationSupport() },
-        makeApp: @escaping (DailyWordPack, WordPack, DailyClassicStore) throws -> DailyAccountCoordinator = {
-            try DailyAccountCoordinator(dailyPack: $0, tutorialPack: $1, guestStore: $2)
-        }
+        makeApp: ((DailyWordPack, WordPack, DailyClassicStore) throws -> DailyAccountCoordinator)? = nil,
+        invitations: LiveInvitationCoordinator? = nil
     ) {
         self.loadPacks = loadPacks
         self.makeStore = makeStore
-        self.makeApp = makeApp
+        let invitations = invitations ?? LiveInvitationCoordinator.applicationSupport()
+        self.invitations = invitations
+        self.makeApp = makeApp ?? { try DailyAccountCoordinator(dailyPack: $0, tutorialPack: $1, guestStore: $2,
+                                                               cleanupJournal: invitations.cleanupJournal) }
     }
 
     func loadApp() {
@@ -88,6 +91,7 @@ final class AppStartupModel {
 
         do {
             appModel = try makeApp(packs.daily, packs.tutorial, store)
+            appModel?.invitations = invitations
         } catch DailyClassicError.puzzleUnavailable {
             loadFailure = .bundledData
         } catch {
@@ -154,13 +158,25 @@ private struct AppRootView: View {
     var body: some View {
         Group {
             if let appModel = startup.appModel {
-                DailyAppView(app: appModel)
+                DailyAppView(app: appModel, invitations: startup.invitations)
             } else if let loadFailure = startup.loadFailure {
                 StartupRecoveryView(loadFailure: loadFailure, perform: startup.perform)
             } else {
                 ProgressView("Loading GridRace")
                     .task { startup.loadApp() }
             }
+        }
+        .onOpenURL { startup.invitations.receive($0) }
+        .safeAreaInset(edge: .top) {
+            if startup.appModel == nil, startup.invitations.pending != nil || startup.invitations.needsAttention {
+                Button { startup.invitations.isPresented = true } label: {
+                    Text("Open invitation").padding().frame(minHeight: 44)
+                }
+            }
+        }
+        .sheet(isPresented: Binding(get: { startup.appModel == nil && startup.invitations.isPresented },
+                                   set: { startup.invitations.isPresented = $0 })) {
+            LiveInvitationView(invitations: startup.invitations, app: nil, resolveRace: {}, joined: {})
         }
     }
 }

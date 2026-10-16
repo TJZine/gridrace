@@ -224,7 +224,7 @@ function assertEquals(actual: unknown, expected: unknown): void {
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
 
-Deno.test("forwards immutable supported round targets and legacy round one entry", async () => {
+Deno.test("forwards immutable supported round targets", async () => {
   for (const target of [1, 2, 3, 4, 5]) {
     const invoked = await invoke({
       request: post({ ...validBody(), round_number: target }),
@@ -233,12 +233,6 @@ Deno.test("forwards immutable supported round targets and legacy round one entry
     assertEquals(invoked.response.status, 200);
     assertEquals(invoked.rpcCalls[0].parameters.p_round_number, target);
   }
-  const legacy = await invoke({
-    request: post({ client_build: 1, match_id: MATCH_ID }),
-    rpcResults: [ok({ match_id: MATCH_ID })],
-  });
-  assertEquals(legacy.response.status, 200);
-  assertEquals(legacy.rpcCalls[0].parameters.p_round_number, undefined);
 });
 
 Deno.test("rejects absent, extra and invalid captured targets", async () => {
@@ -252,8 +246,8 @@ Deno.test("rejects absent, extra and invalid captured targets", async () => {
   }
   for (
     const body of [
-      { client_build: 2, match_id: MATCH_ID },
-      { client_build: 1, match_id: MATCH_ID, round_number: 1 },
+      { client_build: 3, match_id: MATCH_ID },
+      { client_build: 3, match_id: MATCH_ID, round_number: 1, extra: true },
     ]
   ) {
     const invoked = await invoke({ request: post(body) });

@@ -31,7 +31,6 @@ DUMP_SHA256 = "0b7f554b1884e52e1c06de74cecab5e370c6b9f765711cedb0759f6d14c5e719"
 
 
 def verify_dump(source) -> None:
-    """Verify all compressed bytes, including the tail after an early XML hit."""
     digest = hashlib.sha256()
     for block in iter(lambda: source.read(1024 * 1024), b""):
         digest.update(block)

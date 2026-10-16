@@ -1,7 +1,5 @@
 begin;
 
--- Serialize a user's submissions with account deletion and with receipt reuse
--- across different matches. The account lock must precede match/rate-row locks.
 create or replace function public.submit_guess(
   p_user_id uuid,
   p_client_build integer,

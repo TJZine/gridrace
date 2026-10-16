@@ -13,6 +13,7 @@ enum AppRoute: Hashable {
 
 struct DailyAppView: View {
     @Bindable var app: DailyAccountCoordinator
+    @Bindable var invitations: LiveInvitationCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @State private var path: [AppRoute] = []
     @State private var showsAccount = false
@@ -42,8 +43,10 @@ struct DailyAppView: View {
                             session: app.live,
                             hapticsEnabled: app.daily.settings.hapticsEnabled,
                             highContrast: app.daily.settings.highContrastEnabled,
-                            isSignedIn: app.account.isSignedIn,
-                            openAccount: presentAccount
+                            isSignedIn: app.account.isSignedIn && app.account.profile != nil && !app.account.needsProfileSetup && !app.account.isLoadingProfile,
+                            openAccount: presentAccount,
+                            accountName: app.account.profile?.displayName,
+                            accountID: app.account.session?.userID
                         )
                     case .statistics: DailyStatisticsView(model: app.daily)
                     case .account: Color.page
@@ -61,6 +64,35 @@ struct DailyAppView: View {
                     }
                 }
         }
+        .safeAreaInset(edge: .top) {
+            if path.isEmpty || (path.last == .live && app.live.snapshot == nil) {
+            if invitations.pending != nil || invitations.needsAttention {
+                Button { invitations.isPresented = true } label: {
+                    Text(invitations.needsAttention ? "Invitation needs attention" : "Open invitation \(invitations.pending?.code ?? "")")
+                        .font(StampType.caption).frame(maxWidth: .infinity, minHeight: 44)
+                }.background(Color.card)
+            }
+            }
+        }
+        .sheet(isPresented: $invitations.isPresented) {
+            LiveInvitationView(invitations: invitations, app: app, resolveRace: {
+                invitations.isPresented = false
+                app.live.resumeSavedMatch()
+                invitations.fenceForLiveEntry()
+                path = [.live]
+            }, joined: { path = [.live] })
+        }
+        .onChange(of: app.live.completedInvitationGeneration, initial: true) { _, generation in
+            if let generation, let owner = app.live.completedInvitationAccountID {
+                invitations.admitted(generation: generation, userID: owner)
+            }
+        }
+        .onChange(of: app.live.completedInvitationAccountID) { _, owner in
+            if let owner, let generation = app.live.completedInvitationGeneration {
+                invitations.admitted(generation: generation, userID: owner)
+            }
+        }
+        .onChange(of: app.live.phase) { _, _ in invitations.bind(app.live, userID: app.account.session?.userID) }
         .sheet(isPresented: $showsAccount) {
             NavigationStack {
                 accountDestination
@@ -73,13 +105,6 @@ struct DailyAppView: View {
             .foregroundStyle(Color.ink)
             .tint(Color.ink)
             .environment(\.highContrastFeedback, app.daily.settings.highContrastEnabled)
-        }
-        .onChange(of: path) { _, routes in
-            // Older value-based Account links use the same sheet route.
-            if routes.last == .account {
-                path.removeLast()
-                presentAccount()
-            }
         }
         .onChange(of: app.account.isSignedIn) { _, _ in updateAccountSheet() }
         .onChange(of: app.account.needsProfileSetup) { _, _ in updateAccountSheet() }
@@ -106,7 +131,13 @@ struct DailyAppView: View {
 
     private func openRoute(_ route: AppRoute) {
         if route == .account { presentAccount() }
-        else { path.append(route) }
+        else {
+            if route == .live {
+                invitations.bind(app.live, userID: app.account.session?.userID)
+                invitations.fenceForLiveEntry()
+            }
+            path.append(route)
+        }
     }
 
     private func presentAccount() {
@@ -138,8 +169,6 @@ struct DailyAppView: View {
     }
 }
 
-/// Dismiss only a sign-in begun while this sheet was open. Profile setup can
-/// finish after authentication; an already signed-in expired session stays open.
 struct AccountSheetState {
     private var wasSignedIn: Bool
     private var awaitsProfile = false

@@ -19,16 +19,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20.20.2
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: 2.9.5
       - run: npm ci
+      - name: Install regression test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep postgresql-client
+      - name: Verify integration tooling
+        run: |
+          bash -n scripts/run_live_match_integration.sh
+          bash -n scripts/live_integration_selection.sh
+          bash -n scripts/scan_client_credentials.sh
+          bash -n scripts/test_client_credential_scan.sh
+          deno cache --frozen-lockfile --config supabase/functions/deno.json supabase/tests/integration/live_slice_test.ts
+          python3 -B scripts/test_live_integration_selection.py
+          deno test --allow-read supabase/tests/integration/scenario_selection_test.ts
+          bash scripts/test_client_credential_scan.sh
+      - name: Verify invitation landing
+        run: node --test invitation-landing/tests/landing.test.mjs
       - name: Verify generated data
         run: |
           python3 scripts/check_word_pack.py --checked-in-only
@@ -47,10 +63,13 @@ jobs:
           deno check --config supabase/functions/deno.json \
             supabase/functions/_shared/command.ts \
             supabase/functions/_shared/command_test.ts \
+            supabase/functions/_shared/live_protocol_test.ts \
             supabase/functions/create-match/index.ts \
             supabase/functions/create-match/index_test.ts \
             supabase/functions/join-match/index.ts \
             supabase/functions/join-match/index_test.ts \
+            supabase/functions/rematch-command/index.ts \
+            supabase/functions/rematch-command/index_test.ts \
             supabase/functions/start-match/index.ts \
             supabase/functions/start-match/index_test.ts \
             supabase/functions/submit-guess/index.ts \
@@ -60,10 +79,42 @@ jobs:
             supabase/functions/delete-account/index.ts \
             supabase/functions/delete-account/index_test.ts
           deno test --config supabase/functions/deno.json supabase/functions/
-      - name: Verify database
+      - name: Verify forward preservation and clean database
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 54322
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGPASSWORD: postgres
         run: |
+          test ! -e supabase/.temp/project-ref
+          test ! -e .supabase/project-ref
           npx --no-install supabase start
-          npx --no-install supabase db reset
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ begin
+            if exists(select 1 from auth.users) or exists(select 1 from public.matches) then
+              raise exception 'expected empty disposable CI database';
+            end if;
+          end $$;
+          SQL
+          npx --no-install supabase db reset --local --version 202610130001
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ declare job bigint; begin
+            if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610130001'
+              or (select count(*) from cron.job where jobname='gridrace-finalize-rounds'
+                and username=current_user and active) <> 1 then
+              raise exception 'expected friends-beta baseline with one owned finalizer';
+            end if;
+            select jobid into strict job from cron.job
+              where jobname='gridrace-finalize-rounds' and username=current_user and active;
+            perform cron.alter_job(job, active:=false);
+          end $$;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -f supabase/fixtures/sql_contracts_forward_before.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/fixtures/sql_contracts_forward_capture.sql
+          npx --no-install supabase migration up --local
+          psql -X -v ON_ERROR_STOP=1 -f supabase/fixtures/sql_contracts_forward_after.sql
+          npx --no-install supabase db reset --local
           npx --no-install supabase test db
           npx --no-install supabase db lint --local --schema public,private,app_rls --level warning --fail-on error
 
@@ -71,7 +122,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Select Xcode 26.6

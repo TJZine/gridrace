@@ -11,7 +11,7 @@ function assert(value: unknown): asserts value {
 Deno.test("default backend selection preserves all registered independent scenarios", () => {
   const selected = parseBackendSelection([]);
   assert(selected.action === "run" && !selected.focused);
-  assert(selected.names.length === 16);
+  assert(selected.names.length === 21);
   assert(new Set(selected.names).size === selected.names.length);
   assert(selected.names.join(",") === backendScenarios.join(","));
 });
@@ -19,7 +19,7 @@ Deno.test("default backend selection preserves all registered independent scenar
 Deno.test("focused backend selection, harmless help and list", () => {
   const selected = parseBackendSelection([
     "--scenarios",
-    "auth-create,v2-rounds-standings",
+    "auth-create,current-rounds-standings",
   ]);
   assert(selected.focused && selected.names.length === 2);
   assert(parseBackendSelection(["--help"]).action === "help");
@@ -34,7 +34,7 @@ Deno.test("empty unknown duplicate and malformed backend arguments refuse", () =
       ["--scenarios", ""],
       ["--scenarios", "auth-create,"],
       ["--scenarios", ",auth-create"],
-      ["--scenarios", "auth-create,,v2-cron"],
+      ["--scenarios", "auth-create,,current-cron"],
       ["--scenarios", "auth-create,unknown"],
       ["--scenarios", "auth-create,auth-create"],
       ["--scenarios", "auth-create\nunknown"],

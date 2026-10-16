@@ -27,14 +27,16 @@ export function makeHandler(dependencies?: Dependencies) {
         ])
       ) return errorResponse("internal_error", 400);
       const build = clientBuild(body.client_build);
-      if (build === null) return errorResponse("client_update_required");
+      if (build === null || build < 3) {
+        return errorResponse("client_update_required");
+      }
       if (!isUuid(body.match_id) || !isUuid(body.request_id)) {
         return errorResponse("internal_error", 400);
       }
       if (
         typeof body.round_number !== "number" ||
         !Number.isInteger(body.round_number) ||
-        body.round_number < 1 || body.round_number > (build === 1 ? 1 : 5)
+        body.round_number < 1 || body.round_number > 5
       ) {
         return errorResponse("round_not_active");
       }

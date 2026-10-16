@@ -47,7 +47,6 @@ begin
     return private.error_response('internal_error');
   end if;
 
-  -- Serialize creation with account deletion and same-actor retries.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(p_user_id::text, 1)
   );

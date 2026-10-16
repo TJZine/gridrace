@@ -42,7 +42,12 @@ function get(): Request {
 }
 
 function validBody(): JsonObject {
-  return { client_build: 7, join_code: "abc234" };
+  return {
+    client_build: 7,
+    request_id: "30000000-0000-0000-0000-000000000001",
+    join_code: "abc234",
+    expected_match_id: null,
+  };
 }
 
 function ok(data: JsonObject): DatabaseResult {
@@ -81,6 +86,8 @@ Deno.test("joins a match through the join_match RPC", async () => {
     p_client_build: 7,
     p_join_code: "ABC234",
     p_ip_hash: null,
+    p_request_id: "30000000-0000-0000-0000-000000000001",
+    p_expected_match_id: null,
   });
   assertEquals(invoked.authenticateCalls, 1);
 });
@@ -231,3 +238,29 @@ function assertEquals(actual: unknown, expected: unknown): void {
   const right = JSON.stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
+
+for (const client_build of [1, 2]) {
+  Deno.test(`obsolete build ${client_build} join cannot dispatch`, async () => {
+    const invoked = await invoke({
+      request: post({ client_build, join_code: "ABC234" }),
+    });
+    assertEquals(invoked.response.status, 426);
+    assertEquals(invoked.rpcCalls.length, 0);
+    assertEquals(invoked.authenticateCalls, 0);
+  });
+}
+Deno.test("pinned v3 member join passes the expected identity exactly", async () => {
+  const invoked = await invoke({
+    request: post({ ...validBody(), expected_match_id: MATCH_ID }),
+    rpcResults: [ok({ match_id: MATCH_ID })],
+  });
+  assertEquals(invoked.response.status, 200);
+  assertEquals(invoked.rpcCalls[0].parameters.p_expected_match_id, MATCH_ID);
+});
+Deno.test("v3 rejects absent selection identity rather than falling back", async () => {
+  const invoked = await invoke({
+    request: post({ client_build: 3, join_code: "ABC234" }),
+  });
+  assertEquals(invoked.response.status, 400);
+  assertEquals(invoked.rpcCalls.length, 0);
+});

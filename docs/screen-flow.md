@@ -146,6 +146,13 @@ durably clear live recovery, former-account Daily/account data stays hidden and 
 shows the Live row's “Resolve” action, which opens Live for retry or confirmed
 discard.
 
+Duplicate signed-out notifications retain completed sign-out/deletion guidance
+until explicit dismissal, a new account intent or replacement identity, or resolution
+of its cleanup obligation. They still invalidate obsolete profile/session work and
+notify Daily/Live consumers. Deletion guidance evaluates current Auth, Daily and
+Live cleanup obligations; resolved work is no longer advertised. Successful cleanup
+does not present a failure notice, and dismissal is not undone by another nil event.
+
 Uncertain account deletion exposes Retry account deletion and a local sign-out
 escape. A validated authentication rejection exposes Check pending account deletion
 and explains how to sign in to the same account before explicitly choosing Delete
@@ -195,12 +202,27 @@ Live entry owns native 1/3/5-round Create selection (3 selected), a single nativ
 six-character Join field, and Resume for saved recovery. The round selector uses
 a menu at accessibility sizes. Create is disabled during an in-flight command or
 pending intent; Join preserves its existing six-character/in-flight gate. Session
-ownership of durable pointers and immutable request identities is unchanged.
+ownership of durable pointers and immutable request identities remains with Live.
 Create durably replaces the previous selected match pointer before dispatch; a
 failed save retains that pointer and blocks the request. Join retains the saved
-pointer until its result is saved. An uncertain create remains resumable. A failed Join preserves its error and
-saved pointer but offers no generic Retry that would reopen the old room.
-Explicit Back to race and Resume select recovery instead.
+pointer until canonical admission and pointer persistence complete. An uncertain
+create or confirmed Join remains resumable with its exact original request.
+Retry resolves that request before changing the pointer; it never creates another
+Join or silently opens the prior room instead.
+
+Friends-beta invitation/rematch composition is implemented and independently
+reviewed locally; its [plan](plans/2026-10-12-friends-beta-implementation.md) records
+software evidence and outstanding human device/release acceptance.
+Strict configured HTTPS ingress saves one unconfirmed invitation before presentation,
+including during startup/sign-in/profile work. Join confirmation names the room code
+and current account, and explicitly asks to switch when another race is saved.
+Keep current/Replace handles a different invitation; duplicates do nothing. Invalid
+links preserve saved state. Unavailable storage offers Retry/Discard. Account changes
+require new confirmation; opening or signing in never joins. Pending commands must
+resolve before switching. Explicit stale-pointer Resume first reads canonical state;
+an unselected target requires pinned member-Join confirmation rather than passive
+selection. A canonical accepted successor may be the named confirmation target,
+while the prior durable pointer remains until confirmation succeeds.
 
 Storage-unavailable, expired sign-in, failed commands, saved Start/request
 decisions, and connection failures have distinct subject/title/body notices.
@@ -210,12 +232,16 @@ native confirmation dialog before removing saved local data; Cancel preserves it
 Retry saved Start uses its original session-owned target, including after
 Home/Resume. No fresh intent substitutes for an unresolved request.
 
-Lobby shows the room code in a seal, code-only Copy and Share, the two-seat roster,
+Ordinary lobby shows the room code in a seal, Copy and Share, the two-seat roster,
 this client's connection status, and creator-only Start. Start is hidden until
 two players are present and retains all existing command/recovery/expiry gates.
 The guest waits for the named host; ordinary creator absence waits without auto
 advance. Expired rooms show a closed-room notice.
 No readiness, public discovery, chat, opponent presence, or late joining is added.
+Configured invitation sharing uses HTTPS with the code as fallback. Rematch lobbies
+suppress invitation sharing because both seats belong to the consenting pair;
+deletion does not open a replacement seat. Installation guidance/code fallback and
+real app/domain association have separate external acceptance.
 
 The started round finishes after account deletion. If unstarted rounds remain,
 the match shows incomplete with anonymized reveals and partial standings;
@@ -316,8 +342,19 @@ exact comparators in `game-rules.md`. A nonfinal reveal waits for creator Start
 next; final and incomplete results offer Home and preserved prior reveals.
 Standings display the supplied placement, rounds solved, efficiency points and
 milliseconds without recalculating ranks. Winner and tied results use claret seals;
-incomplete uses an ink seal. Incomplete standings remain partial. Rematch is
-later work: it will create a new match rather than reopen or mutate the completed one.
+incomplete uses an ink seal. Incomplete standings remain partial.
+
+The approved friends-beta result flow adds Offer, waiting/Cancel, incoming
+Accept/Decline, closed/Offer again, expired, unavailable and accepted/loading-lobby
+states within the existing Stamped components. Server state owns eligibility and
+the five-minute window; local deadline display only requests refresh. A valid
+acceptance before expiry remains recoverable afterward. The pair reaches a new
+lobby, with the same original creator/count and explicit creator Start; completed
+results are not reopened. Home or a newer persisted invitation fences late automatic
+follow without declining. Explicit Resume remains available. Meaningful state
+transitions announce once and focus moves to the notice/lobby, without announcing
+every countdown tick. Long copy and all actions remain reachable at accessibility
+sizes; OS-assisted acceptance remains with its documented human owner.
 
 Competitive history remains later; Daily statistics/history stay available. Phase 2/3
 Profile manages display name, generated avatar,

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Both flows supply already-public progress and their existing spoken summary.
-/// The leaf owns neither roster ordering nor connectivity or gameplay policy.
 struct OpponentLine<Avatar: View>: View {
     let name: String
     let count: String
@@ -65,11 +63,6 @@ struct OpponentStrip: View {
     }
 }
 
-/// The proposed height participates in sizing as well as width. Scroll views
-/// propose no height; there the natural six-row size is used. A caller can
-/// reserve a keyboard slot and propose the remaining height without a second
-/// board implementation. If too little room remains, the minimum readable
-/// size overflows for the owning scroll container instead of clipping text.
 private struct BoardRowsLayout: Layout {
     let minimumTileSize: CGFloat
     let preferredTileSize: CGFloat
@@ -102,8 +95,6 @@ struct BoardView: View {
     let draft: String
     let isPlaying: Bool
     var highContrast = false
-    /// Short, wide game layouts keep a readable 48pt floor by reducing gaps,
-    /// rather than reducing the tile or its feedback glyphs.
     var compactLayout = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title2) private var minimumTileSize: CGFloat = 44
@@ -145,8 +136,6 @@ struct BoardView: View {
     }
 }
 
-/// Shared shape grammar for full tiles and the small history board.
-/// Empty rings are decorative at default; strengthened rings use secondary ink.
 struct FeedbackSeal: View {
     let feedback: Feedback?
     var isDraft = false

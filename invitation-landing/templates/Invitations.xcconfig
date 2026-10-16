@@ -1,0 +1,3 @@
+// xcconfig URLs require the empty expansion to preserve //.
+GRIDRACE_INVITATION_ORIGINS = https:/$()/$(GRIDRACE_INVITATION_HOST)
+GRIDRACE_ASSOCIATED_DOMAIN = applinks:$(GRIDRACE_INVITATION_HOST)

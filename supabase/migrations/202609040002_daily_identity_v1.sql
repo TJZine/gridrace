@@ -1,18 +1,5 @@
 begin;
 
--- GR-08: enforce the canonical Daily Classic v1 identity tuple.
---
--- Schedule source: shared/word-packs/daily-classic-en-US-v1 (schedule
--- version 1, epoch day 20696 = 2026-08-31, 725 published answers, so puzzle
--- days 20696..21420 carry puzzle numbers 1..725). The previous check
--- accepted each field in isolation, so a structurally valid tuple could mix
--- an inconsistent puzzle id/number/day/word-pack/schedule combination or an
--- out-of-range day.
---
--- The ordered CASE fails closed on null or out-of-range days before any date
--- arithmetic or linkage comparison runs, so extreme integer input is rejected
--- instead of raising a date/arithmetic overflow. Existing CHECK constraints
--- and both daily RPC guards call this function, so no other surface changes.
 create or replace function private.valid_daily_identity(
   p_puzzle_id text,
   p_puzzle_number integer,

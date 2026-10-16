@@ -74,6 +74,23 @@ clearance. Local native used Xcode 27.0/iPhone 17 Pro/iOS 26.5. Stamped S4/A9 an
 earlier human deferrals remain untouched. Usage savings are expected from reduced
 retrieval/duplication and focused checks; no measured token/currency saving is claimed.
 
+### CI follow-up — 2026-10-13 (UTC)
+
+Later hosted evidence is recorded in the
+[dated remediation addendum](../reviews/comprehensive-review-2026-10-10/REMEDIATION.md#ci-follow-up--2026-10-13-utc):
+PR run `38343347018` tested merge `c1004308178546d80d126eae2ef6b16343476c0d`
+for head `e7db36fb05271a74b5b3246b6286dd03f8554627` and base
+`d9bca9b8bde04cc47850db34e3b00a930c57c066`; push run `38343345438` tested the
+head directly. Both backend jobs and native Test/clean Debug builds passed on
+Xcode 26.6; both native logs show 379 tests, three integration skips, zero failures
+and remaining warnings. The October 12 local observations above remain unchanged.
+This does not close omitted full/Cron/mixed/survivor coverage, actual device/provider,
+signed-release/staging, distribution or S4/A9 acceptance, or verify later PR fixes.
+
+Subsequent fresh local proof for the corrected source belongs to the
+[PR #2 correction checkpoint](../reviews/comprehensive-review-2026-10-10/REMEDIATION.md#pr-2-correction-checkpoint--2026-10-13).
+It records the later full-default matrix without redating October 12 observations.
+
 ## Authorization and safety contract
 
 ### Commit closeout — 2026-10-12

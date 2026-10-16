@@ -15,9 +15,6 @@ values (
   transaction_timestamp(), transaction_timestamp(), transaction_timestamp()
 );
 
--- Canonical v1 schedule: pack daily-classic-en-US-v1, schedule version 1,
--- epoch day 20696 (2026-08-31), 725 published answers, so days 20696..21420
--- carry numbers 1..725.
 
 select is(
   private.valid_daily_identity(
@@ -116,9 +113,6 @@ select is(
   'null puzzle number is rejected'
 );
 
--- Exercise the populated forward-upgrade path: once an old constraint is
--- absent, a row accepted by the former loose identity predicate must prevent
--- the stricter constraint from being recreated as validated.
 alter table public.daily_progress
   drop constraint daily_progress_identity_check;
 insert into public.daily_progress (
@@ -241,8 +235,6 @@ select is(
 );
 reset role;
 
--- The table CHECK constraints enforce the same contract for privileged
--- writes that bypass the RPC guards.
 set local role service_role;
 select throws_ok(
   $$insert into public.daily_progress (

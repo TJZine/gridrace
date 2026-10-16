@@ -4,8 +4,6 @@ import XCTest
 
 @MainActor
 final class LocalIntegrationAdmissionTests: XCTestCase {
-    // Exact in both Foundation epochs and JSON seconds. A subsecond Date() can
-    // round-trip just ahead of itself and spuriously fail the future-time guard.
     private let fixtureTime = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testUnsafeEntriesNeverReachTransport() async throws {
@@ -64,8 +62,6 @@ final class LocalIntegrationAdmissionTests: XCTestCase {
             for invalid in cases {
                 do {
                     let admission = try LocalIntegrationAdmission.admit(environment: invalid, purpose: purpose, now: now, receiptDirectory: directory)
-                    // Deliberately send through a counting URLProtocol if a guard ever admits.
-                    // The sentinel returns locally and cannot contact the configured endpoint.
                     _ = try await session.data(from: admission.configuration.projectURL)
                     XCTFail("Unsafe integration entry was admitted")
                 } catch is XCTSkip { } catch is LocalIntegrationAdmission.Refusal { }
@@ -121,7 +117,6 @@ final class LocalIntegrationAdmissionTests: XCTestCase {
             "GRIDRACE_LOCAL_SUPABASE_KEY": "sb_publishable_test_fixture_key",
             "GRIDRACE_FIXTURE_RUN_ID": run.uuidString, "GRIDRACE_FIXTURE_RECEIPT": filename,
             "GRIDRACE_LOCAL_SYNC_EMAIL": receipt.email, "GRIDRACE_LOCAL_SYNC_PASSWORD": "test-password"]
-        // Model the data moving while the host's old physical path disappears.
         try FileManager.default.moveItem(at: original, to: current.appendingPathComponent(filename))
         let admitted = try LocalIntegrationAdmission.admit(environment: environment, purpose: .daily,
             now: now, receiptDirectory: current)

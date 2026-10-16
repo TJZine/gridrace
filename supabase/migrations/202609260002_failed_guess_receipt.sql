@@ -1,7 +1,5 @@
 begin;
 
--- Keep failed-player storage at zero while command receipts follow the wire
--- contract: duration and efficiency are present only for solved submissions.
 create or replace function public.submit_guess(
   p_user_id uuid,
   p_client_build integer,

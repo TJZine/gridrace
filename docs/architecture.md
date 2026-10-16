@@ -195,10 +195,34 @@ Phase 2/3 responsibilities are intentionally narrow:
 | APNs (later) | Deliver optional, clue-free notification prompts. A notification causes a snapshot refresh; it is not game state. Device tokens remain server-only. |
 
 The local Phase 2 backend and Phase 3 client integration above are implemented.
-APNs, reports/blocks and opponent presence remain later. The exact six-command and
+APNs, reports/blocks and opponent presence remain later. The exact command and
 versioned snapshot shapes live in [`live-api-contract.md`](live-api-contract.md).
-The client uses only create, join, creator start, guess submission, snapshot, and
-account deletion commands; profile updates remain owner-scoped RLS writes.
+The client uses create, join, creator start, guess submission, snapshot, rematch
+and account deletion commands; profile updates remain owner-scoped RLS writes.
+The [friends-beta implementation plan](plans/2026-10-12-friends-beta-implementation.md)
+owns current implementation evidence and acceptance.
+
+External invitation ingress is app-owned navigation, separate from account-owned
+commands. A strict configured-origin parser and protected single-value store retain
+only origin, code and replacement UUID. Opening a URL never joins. Confirmation
+waits for profile readiness and pending-command resolution; the Live session saves
+an account-bound original Join payload before sending it. Matching-generation clear
+cannot erase a newer invitation. Account switching supplies no transferable consent.
+
+Post-match rematch allocation belongs to PostgreSQL. A private predecessor context
+owns mutual consent, the immutable completion-based deadline and one successor;
+private account selection cursors invalidate stale consent across devices. Passive
+snapshot recovery never selects a race. Explicit stale-pointer Resume uses a durable
+member Join pinned to the known match. A successor has fresh members, the original
+creator/count, private pair-only admission and copied predecessor-answer exclusions;
+its creator starts each round explicitly. Completed result rows remain immutable.
+
+V3 snapshots enter through actor locks before cursor/match locks even when a read
+finalizes an active round. Roster discovery drift aborts the whole transaction for
+bounded Edge read retry. The safe rematch revision stream requests refresh without
+changing gameplay revision; canonical recovery compares gameplay revision, rematch
+revision and viewer selection epoch independently. Receipts settle original actions,
+while canonical snapshots and persisted pointer replacement govern successor follow.
 
 Public rows contain no answer. The secret-bearing `private` schema has no grant for
 anonymous or authenticated roles. A separate narrowly executable RLS-helper schema

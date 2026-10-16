@@ -55,9 +55,6 @@ struct DailyClassicStore: DailyClassicStoring, Sendable {
         try PersistenceFile.removeIfPresent(at: progressURL)
     }
 
-    /// Explicit reset removes only the two owned guest entries, including malformed directories.
-    /// Never removes the containing directory, so sibling `Accounts/<uuid>`
-    /// caches sharing the GridRace root are preserved.
     func resetGuestDailyData() throws {
         for url in [progressURL, historyURL] {
             do { try FileManager.default.removeItem(at: url) }
@@ -154,8 +151,6 @@ final class DailyClassicModel {
             needsProgressRepair = true
             saved = nil
         }
-        // Settle the single slot's terminal fallback before selecting another day.
-        // Validate against its canonical scheduled puzzle before recording history.
         if let saved, saved.completion != nil,
            history.result(for: saved.puzzleID) == nil {
             do {
@@ -219,8 +214,6 @@ final class DailyClassicModel {
         if persistenceStartup == .active { activatePersistence(at: initialDate) }
     }
 
-    /// Reading a provisional guest board does not acquire its persistence ownership.
-    /// Activation retains this model's accepted state and deferred recovery work.
     @discardableResult
     func activatePersistence() -> Bool {
         if !isPersistenceActive { activatePersistence(at: now()) }
@@ -258,9 +251,6 @@ final class DailyClassicModel {
         )
     }
 
-    /// Displayed streak immediately before today's result, derived from
-    /// completed results before the current puzzle day with the existing
-    /// `DailyStatistics` rules. No new persistence; valid on reopen.
     var previousDisplayedStreak: Int {
         let prior = history.completedResults.filter { $0.puzzleDay < puzzle.day }
         let priorStatistics = DailyStatistics.calculate(from: prior)
@@ -383,14 +373,12 @@ final class DailyClassicModel {
         acceptedStateChanged?()
     }
 
-    /// Explicit saving intent may activate a provisional guest owner.
     @discardableResult
     func retryPersistence() -> Bool {
         if !isPersistenceActive { return activatePersistence() }
         return flushAcceptedState()
     }
 
-    /// Passive reconciliation cannot activate or claim a prepared owner is durable.
     @discardableResult
     func flushAcceptedState() -> Bool {
         guard isPersistenceActive else { return false }
@@ -399,7 +387,6 @@ final class DailyClassicModel {
         return pendingTerminalResult == nil && !hasUnsavedProgress
     }
 
-    /// Adopt durable reconciliation without replacing this accepted-state owner.
     func reloadReconciledState() throws {
         guard flushAcceptedState() else { return }
         let loadedHistory = try store.loadHistory()
@@ -413,7 +400,6 @@ final class DailyClassicModel {
         refreshForCurrentDay()
     }
 
-    /// An immutable remote completion can settle a dirty active attempt.
     func adoptAuthoritativeCompletion(_ result: DailyCompletedResult) throws {
         guard isPersistenceActive, result.puzzleID == puzzle.id, history.result(for: puzzle.id) == nil else { return }
         let restored = try DailyClassicGame(puzzle: puzzle, acceptedWords: Set(pack.acceptedGuesses),
@@ -452,7 +438,6 @@ final class DailyClassicModel {
         do {
             try store.save(history)
             pendingTerminalResult = nil
-            // History is sufficient durability for a terminal game.
             hasUnsavedProgress = false
             storageMessage = nil
         } catch {
@@ -471,8 +456,6 @@ final class DailyClassicModel {
 
 }
 
-/// Absence is established by a throwing filesystem operation, never Boolean inspection.
-/// Access, protection and path-type failures retain the caller's recovery obligation.
 enum PersistenceFile {
     static func readIfPresent(at url: URL) throws -> Data? {
         do { return try Data(contentsOf: url) }
@@ -500,7 +483,6 @@ enum PersistenceFile {
         if error.domain == NSCocoaErrorDomain {
             guard error.code == CocoaError.fileReadNoSuchFile.rawValue
                 || error.code == CocoaError.fileNoSuchFile.rawValue else { return false }
-            // A wrapped POSIX access/type failure must never become absence.
             if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
                 return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(ENOENT)
             }

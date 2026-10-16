@@ -1,8 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// System text styles preserve Dynamic Type while giving the scorecard its
-/// printed headings and precise figures. Tile and key letters always stay bold.
 enum StampType {
     static let display = Font.system(.largeTitle, design: .serif, weight: .bold)
     static let title = Font.system(.title, design: .serif)
@@ -46,7 +44,6 @@ extension Color {
     static let secondaryInk = paperDynamic(
         light: 0x6B6352, dark: 0x9C937F, increasedDark: 0xA39A86
     )
-    // Quiet lines are decorative. Controls and action notices use ink borders.
     static let line = paperDynamic(
         light: 0xD8CFBC, dark: 0x3A352D,
         increasedLight: 0x6B6352, increasedDark: 0xA39A86
@@ -130,7 +127,6 @@ extension View {
     }
 }
 
-/// A ceremonial mark, never a control. Its text remains the accessible meaning.
 struct ScorecardSeal: View {
     let title: String
     var symbol: String? = nil
@@ -157,8 +153,6 @@ enum NoticeKind {
     case information
 }
 
-/// Focus and timing belong to the screen. This leaf does not announce or
-/// manufacture actions; the caller supplies exactly its permitted controls.
 struct NoticeCard<Actions: View>: View {
     var subject: String? = nil
     var title: String? = nil
@@ -190,8 +184,6 @@ struct NoticeCard<Actions: View>: View {
     }
 }
 
-/// At standard sizes the slot reserves keyboard space. At accessibility sizes
-/// content grows naturally; feature containers own scrolling and focus.
 struct KeyboardSlot<Content: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ViewBuilder var content: () -> Content
@@ -204,7 +196,6 @@ struct KeyboardSlot<Content: View>: View {
     }
 }
 
-/// Single-speech behavior: the owning screen moves focus here; no announcement.
 struct RaceErrorBanner: View {
     let message: String
     var retry: (() -> Void)?
@@ -233,8 +224,6 @@ struct RaceKeyPressStyle: ButtonStyle {
     }
 }
 
-/// Explicit per-index avatar background swatch. Fixed sRGB values keep white
-/// symbols at >=3:1 in both appearances.
 struct AvatarSwatch: Equatable, Sendable {
     let red: Double
     let green: Double
@@ -249,14 +238,11 @@ struct PlayerAvatarView: View {
     let seed: String
     var size: CGFloat = 56
 
-    /// Frozen seed-to-symbol mapping. Do not reorder or remove entries:
-    /// persisted seeds must resolve to the same symbol.
     static let avatarSymbols = [
         "hare.fill", "tortoise.fill", "bird.fill", "fish.fill",
         "ladybug.fill", "pawprint.fill", "leaf.fill", "bolt.fill"
     ]
 
-    /// Explicit per-index backgrounds, each >=3:1 against white.
     static let avatarSwatches = [
         AvatarSwatch(red: 0.239, green: 0.200, blue: 0.580),
         AvatarSwatch(red: 0.051, green: 0.420, blue: 0.470),

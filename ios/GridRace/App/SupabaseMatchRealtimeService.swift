@@ -25,6 +25,10 @@ struct SupabaseMatchRealtimeService: LiveMatchRealtimeServicing, Sendable {
                 let channel = registration.channel
                 let updates = channel.postgresChange(UpdateAction.self, schema: "public", table: "matches",
                                                       filter: .eq("id", value: matchID))
+                let rematchInserts = channel.postgresChange(InsertAction.self, schema: "public",
+                    table: "match_rematch_signals", filter: .eq("predecessor_match_id", value: matchID))
+                let rematchUpdates = channel.postgresChange(UpdateAction.self, schema: "public",
+                    table: "match_rematch_signals", filter: .eq("predecessor_match_id", value: matchID))
                 let statuses = channel.statusChange
                 let task = Task {
                     do {
@@ -46,6 +50,20 @@ struct SupabaseMatchRealtimeService: LiveMatchRealtimeServicing, Sendable {
                             }
                             group.addTask {
                                 for await _ in updates {
+                                    try Task.checkCancellation()
+                                    try lease.check()
+                                    continuation.yield(.signal)
+                                }
+                            }
+                            group.addTask {
+                                for await _ in rematchInserts {
+                                    try Task.checkCancellation()
+                                    try lease.check()
+                                    continuation.yield(.signal)
+                                }
+                            }
+                            group.addTask {
+                                for await _ in rematchUpdates {
                                     try Task.checkCancellation()
                                     try lease.check()
                                     continuation.yield(.signal)

@@ -4,10 +4,6 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 
--- GR-06: the timing-bearing matches.updated_at signal is replaced by a
--- timestamp-free monotonic matches.revision signal. This file proves grants,
--- RLS, the Realtime publication projection, revision movement on every
--- canonical mutation, and revision stability on idempotent replay.
 
 insert into auth.users (
   id,
@@ -57,7 +53,6 @@ values
 
 select is((select count(*) from public.profiles), 3::bigint, 'auth trigger creates profiles for the revision fixtures');
 
--- Grants: the exact-action timestamp is unreadable, the revision is readable.
 select ok(
   not has_column_privilege('authenticated', 'public.matches', 'updated_at', 'SELECT'),
   'authenticated role cannot select matches.updated_at'
@@ -71,7 +66,6 @@ select ok(
   'anonymous role cannot select matches.revision'
 );
 
--- Signal shape: timestamp-free and monotonic-ready.
 select is(
   (select data_type from information_schema.columns
    where table_schema = 'public' and table_name = 'matches' and column_name = 'revision'),
@@ -79,8 +73,6 @@ select is(
   'matches.revision is a timestamp-free integer signal'
 );
 
--- Publication: the match row stays published, but the Realtime projection is
--- an explicit timing-free column list.
 select ok(
   exists (
     select 1 from pg_publication_tables
@@ -131,12 +123,7 @@ create temporary table test_context (
 );
 
 with created as (
-  select public.create_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    repeat('b', 64),
-    '51000000-0000-0000-0000-000000000001'
-  ) as response
+  select public.create_match('50000000-0000-0000-0000-000000000001', 3, repeat('b', 64), '51000000-0000-0000-0000-000000000001', 1::smallint) as response
 )
 insert into test_context (match_id, request_id, first_response)
 select
@@ -161,12 +148,7 @@ select is(
 );
 
 select ok(
-  public.join_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) ? 'data',
+  public.join_match('50000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) ? 'data',
   'second player joins the room'
 );
 select is(
@@ -181,12 +163,7 @@ from public.match_members as member
 where member.match_id = context.match_id and member.seat = 2;
 
 select is(
-  public.join_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select join_code from public.matches where id = (select match_id from test_context)),
-    null
-  ) #>> '{data,match_id}',
+  public.join_match('50000000-0000-0000-0000-000000000002', 3, (select join_code from public.matches where id = (select match_id from test_context)), null, extensions.gen_random_uuid(), null) #>> '{data,match_id}',
   (select match_id::text from test_context),
   'duplicate join returns the existing match'
 );
@@ -197,11 +174,7 @@ select is(
 );
 
 select is(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000002',
-    1,
-    (select match_id from test_context)
-  ) #>> '{error,code}',
+  public.start_match('50000000-0000-0000-0000-000000000002', 3, (select match_id from test_context), 1::smallint) #>> '{error,code}',
   'not_host',
   'non-host cannot start'
 );
@@ -212,11 +185,7 @@ select is(
 );
 
 select ok(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    (select match_id from test_context)
-  ) ? 'data',
+  public.start_match('50000000-0000-0000-0000-000000000001', 3, (select match_id from test_context), 1::smallint) ? 'data',
   'host starts with two players'
 );
 select is(
@@ -226,11 +195,7 @@ select is(
 );
 
 select ok(
-  public.start_match(
-    '50000000-0000-0000-0000-000000000001',
-    1,
-    (select match_id from test_context)
-  ) ? 'data',
+  public.start_match('50000000-0000-0000-0000-000000000001', 3, (select match_id from test_context), 1::smallint) ? 'data',
   'redundant start still succeeds'
 );
 select is(
@@ -253,7 +218,7 @@ where round_id = (select round_id from test_context);
 update test_context
 set first_response = public.submit_guess(
   '50000000-0000-0000-0000-000000000001',
-  1,
+  3,
   match_id,
   1::smallint,
   request_id,
@@ -271,7 +236,7 @@ select is(
 select is(
   public.submit_guess(
     '50000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -291,7 +256,7 @@ select is(
 select is(
   public.submit_guess(
     '50000000-0000-0000-0000-000000000001',
-    1,
+    3,
     (select match_id from test_context),
     1::smallint,
     (select request_id from test_context),
@@ -307,7 +272,6 @@ select is(
   'conflicting reuse leaves the revision untouched'
 );
 
--- Authenticated behavior: rostered members read the signal but not the timing.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -348,7 +312,6 @@ select throws_ok(
 );
 reset role;
 
--- Deadline finalization advances the signal exactly once.
 update public.rounds
 set starts_at = transaction_timestamp() - interval '181 seconds',
     ends_at = transaction_timestamp() - interval '1 second'
@@ -377,14 +340,12 @@ select is(
 select ok(
   public.match_snapshot(
     '50000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) ? 'data',
   'canonical snapshot still resolves after reveal'
 );
 
--- Authenticated deletion preparation advances the same signal and preserves
--- the survivor snapshot.
 select ok(
   public.delete_account('50000000-0000-0000-0000-000000000001', 1) ? 'data',
   'database deletion preparation succeeds'
@@ -402,7 +363,7 @@ select is(
 select ok(
   public.match_snapshot(
     '50000000-0000-0000-0000-000000000002',
-    1,
+    3,
     (select match_id from test_context)
   ) ? 'data',
   'survivor snapshot still resolves after deletion preparation'

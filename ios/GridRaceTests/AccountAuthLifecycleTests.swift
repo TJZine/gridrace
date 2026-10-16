@@ -10,34 +10,71 @@ private final class AuthMemoryStorage: AuthLocalStorage, @unchecked Sendable {
     private var values: [String: Data] = [:]
     private var failures: [String: AuthStorageIssue] = [:]
     private var removals: [String] = []
+    private var writes: [String] = []
+    private var skippedFailures: [String: Int] = [:]
+    private var droppedRemovals: Set<String> = []
     private var replacements: [String: Data] = [:]
     private var droppedWrites: Set<String> = []
+    func dropRemovals(key: String) { lock.withLock { _ = droppedRemovals.insert(key) } }
+    func writeCount(_ key: String) -> Int { lock.withLock { writes.filter { $0 == key }.count } }
     func dropWrites(key: String) { lock.withLock { _ = droppedWrites.insert(key) } }
     func replaceWrites(key: String, with bytes: Data) { lock.withLock { replacements[key] = bytes } }
-    func fail(_ operation: AuthStorageIssue.Operation, key: String, status: Int32 = errSecInteractionNotAllowed) {
-        lock.withLock { failures["\(operation)-\(key)"] = AuthStorageIssue(operation: operation, status: status) }
+    func fail(_ operation: AuthStorageIssue.Operation, key: String, status: Int32 = errSecInteractionNotAllowed,
+              afterSuccessfulCalls: Int = 0) {
+        lock.withLock {
+            let target = "\(operation)-\(key)"
+            failures[target] = AuthStorageIssue(operation: operation, status: status)
+            skippedFailures[target] = afterSuccessfulCalls
+        }
     }
-    func recover() { lock.withLock { failures.removeAll() } }
+    func recover() {
+        lock.withLock {
+            failures.removeAll()
+            skippedFailures.removeAll()
+            droppedWrites.removeAll()
+            replacements.removeAll()
+            droppedRemovals.removeAll()
+        }
+    }
+    private func checkFailure(_ operation: AuthStorageIssue.Operation, key: String) throws {
+        let target = "\(operation)-\(key)"
+        guard let issue = failures[target] else { return }
+        if let remaining = skippedFailures[target], remaining > 0 { skippedFailures[target] = remaining - 1 }
+        else { throw issue }
+    }
     func removed(_ key: String) -> Bool { lock.withLock { removals.contains(key) } }
     func store(key: String, value: Data) throws {
         try lock.withLock {
-            if let issue = failures["store-\(key)"] { throw issue }
+            writes.append(key)
+            try checkFailure(.store, key: key)
             if !droppedWrites.contains(key) { values[key] = replacements[key] ?? value }
         }
     }
     func retrieve(key: String) throws -> Data? {
         try lock.withLock {
-            if let issue = failures["read-\(key)"] { throw issue }
+            try checkFailure(.read, key: key)
             return values[key]
         }
     }
     func remove(key: String) throws {
         try lock.withLock {
             removals.append(key)
-            if let issue = failures["remove-\(key)"] { throw issue }
-            values[key] = nil
+            try checkFailure(.remove, key: key)
+            if !droppedRemovals.contains(key) { values[key] = nil }
         }
     }
+}
+
+private final class AuthClientConstructionProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var constructions = 0
+    var count: Int { lock.withLock { constructions } }
+    func record() { lock.withLock { constructions += 1 } }
+}
+
+private struct AuthLegacyEnvelope: Encodable {
+    let session: Session
+    let expirationDate: Date
 }
 
 private actor AuthHTTPFixture {
@@ -176,11 +213,13 @@ final class AccountAuthLifecycleTests: XCTestCase {
                          host: String? = nil, clock: @escaping @Sendable () -> Date = Date.init,
                          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                          notificationCenter: NotificationCenter = NotificationCenter(),
-                         beforeChannelRemoval: @escaping @Sendable () async -> Void = {}) -> SupabaseAccountService {
+                         beforeChannelRemoval: @escaping @Sendable () async -> Void = {},
+                         constructionProbe: AuthClientConstructionProbe? = nil) -> SupabaseAccountService {
         let host = host ?? "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
         AuthFixtureProtocol.install(fixture, host: host)
         return SupabaseAccountService(configuration: .init(urlString: "https://\(host)", publishableKey: "synthetic-public")!,
             storage: storage, network: {
+                constructionProbe?.record()
                 let config = URLSessionConfiguration.ephemeral
                 config.protocolClasses = [AuthFixtureProtocol.self]
                 return URLSession(configuration: config)
@@ -194,6 +233,12 @@ final class AccountAuthLifecycleTests: XCTestCase {
     }
     private func login(_ service: SupabaseAccountService) async throws -> AccountSession {
         try await service.signInForLocalTesting(email: "fixture@example.invalid", password: "synthetic")
+    }
+    private func savedSession() -> Session {
+        let now = Date()
+        return Session(accessToken: "synthetic-saved-access", tokenType: "bearer", expiresIn: 3600,
+            expiresAt: now.addingTimeInterval(3600).timeIntervalSince1970, refreshToken: "synthetic-saved-refresh",
+            user: User(id: UUID(), appMetadata: [:], userMetadata: [:], aud: "authenticated", createdAt: now, updatedAt: now))
     }
 
     func testProfileServiceRequiresExplicitBooleanForLoadAndSaveResponses() async throws {
@@ -260,7 +305,6 @@ final class AccountAuthLifecycleTests: XCTestCase {
         let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertTrue(query?.contains { $0.name == "id" && $0.value?.lowercased() == "eq.\(signedIn.userID.uuidString.lowercased())" } == true)
 
-        // A fresh production owner restores the same SDK session and reloads the server profile.
         let restoredService = service(http, storage: storage, host: host)
         let restored = AccountModel(service: restoredService)
         await restored.start()
@@ -392,7 +436,7 @@ final class AccountAuthLifecycleTests: XCTestCase {
         let next = UUID()
         await http.setUser(next)
         await http.release("refresh")
-        _ = try await login(service) // Still foreground: no second UIKit event is required.
+        _ = try await login(service)
         try await wait { await http.count("refresh") >= 2 }
         XCTAssertEqual(try service.activeBinding().userID, next)
         XCTAssertNil(old.lifetime.client.auth.currentSession)
@@ -476,22 +520,275 @@ extension AccountAuthLifecycleTests {
         }
     }
     func testExactLegacyEnvelopeMigratesAtRealSDKBoundary() async throws {
-        struct Envelope: Encodable { let session: Session; let expirationDate: Date }
-        let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
+        let originalStorage = AuthMemoryStorage(), http = AuthHTTPFixture()
         let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
-        let first = service(http, storage: storage, host: host)
+        let first = service(http, storage: originalStorage, host: host)
         let account = try await login(first)
-        let saved = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: first.sessionKey)))
-        try storage.remove(key: first.sessionKey)
-        let legacy = try AuthClient.Configuration.jsonEncoder.encode(Envelope(session: saved,
+        let saved = try JSONDecoder().decode(Session.self, from: XCTUnwrap(originalStorage.retrieve(key: first.sessionKey)))
+        let retirement = await first.signOut()
+        XCTAssertNil(retirement.localRecovery)
+        XCTAssertNil(try originalStorage.retrieve(key: first.sessionKey))
+        let storage = AuthMemoryStorage()
+        let legacy = try AuthClient.Configuration.jsonEncoder.encode(AuthLegacyEnvelope(session: saved,
             expirationDate: Date(timeIntervalSince1970: saved.expiresAt)))
         try storage.store(key: "supabase.session", value: legacy)
         let restored = service(http, storage: storage, host: host)
         let result = try await restored.restoreSession()
         XCTAssertEqual(result?.userID, account.userID)
         XCTAssertNil(try storage.retrieve(key: "supabase.session"))
-        XCTAssertNotNil(try storage.retrieve(key: restored.sessionKey))
+        let canonical = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: restored.sessionKey)))
+        XCTAssertEqual(canonical.user.id, saved.user.id)
+        XCTAssertEqual(canonical.accessToken, saved.accessToken)
+        XCTAssertEqual(canonical.refreshToken, saved.refreshToken)
+        XCTAssertEqual(canonical.expiresAt, saved.expiresAt)
         _ = await restored.signOut()
+    }
+    func testDefaultCanonicalRestorePreservesExactBytesWithoutWriting() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), restored = service(http, storage: storage)
+        let saved = savedSession()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let bytes = try encoder.encode(saved)
+        try storage.store(key: restored.sessionKey, value: bytes)
+        storage.fail(.store, key: restored.sessionKey)
+        let result = try await restored.restoreSession()
+        XCTAssertEqual(result?.userID, saved.user.id)
+        XCTAssertEqual(try storage.retrieve(key: restored.sessionKey), bytes)
+        XCTAssertEqual(storage.writeCount(restored.sessionKey), 1)
+        storage.recover()
+        _ = await restored.signOut()
+    }
+    func testSupportedStoredFormatsNormalizeWithLegacyKeyPrecedence() async throws {
+        for format in ["canonicalWire", "canonicalEnvelope", "legacyDefault", "legacyWire", "bothValid"] {
+            let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), restored = service(http, storage: storage)
+            let selected = savedSession()
+            let wire = try AuthClient.Configuration.jsonEncoder.encode(selected)
+            switch format {
+            case "canonicalWire": try storage.store(key: restored.sessionKey, value: wire)
+            case "canonicalEnvelope":
+                let envelope = AuthLegacyEnvelope(session: selected, expirationDate: Date(timeIntervalSince1970: selected.expiresAt))
+                try storage.store(key: restored.sessionKey, value: AuthClient.Configuration.jsonEncoder.encode(envelope))
+            case "legacyDefault": try storage.store(key: "supabase.session", value: JSONEncoder().encode(selected))
+            case "legacyWire": try storage.store(key: "supabase.session", value: wire)
+            default:
+                try storage.store(key: restored.sessionKey, value: JSONEncoder().encode(savedSession()))
+                try storage.store(key: "supabase.session", value: wire)
+            }
+            let result = try await restored.restoreSession()
+            XCTAssertEqual(result?.userID, selected.user.id, format)
+            let canonical = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: restored.sessionKey)))
+            XCTAssertEqual(canonical.user.id, selected.user.id, format)
+            XCTAssertEqual(canonical.accessToken, selected.accessToken, format)
+            XCTAssertEqual(canonical.refreshToken, selected.refreshToken, format)
+            XCTAssertEqual(canonical.expiresAt, selected.expiresAt, format)
+            XCTAssertNil(try storage.retrieve(key: "supabase.session"), format)
+            _ = await restored.signOut()
+        }
+    }
+    func testBothCredentialBlobsAreValidatedBeforeAnyMigrationOrClient() async throws {
+        for malformedCanonical in [false, true] {
+            let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+            let restored = service(http, storage: storage, constructionProbe: probe)
+            let valid = try AuthClient.Configuration.jsonEncoder.encode(savedSession())
+            let malformed = Data("{not a session}".utf8)
+            let canonical = malformedCanonical ? malformed : valid
+            let legacy = malformedCanonical ? valid : malformed
+            try storage.store(key: restored.sessionKey, value: canonical)
+            try storage.store(key: "supabase.session", value: legacy)
+            var states = restored.authStateChanges.makeAsyncIterator()
+            _ = await states.next(isolation: MainActor.shared)
+            do { _ = try await restored.restoreSession(); XCTFail("Malformed shadow credentials accepted") }
+            catch { XCTAssertEqual(error as? AuthStorageIssue, AuthStorageIssue(operation: .read, status: errSecDecode)) }
+            let blocked = await states.next(isolation: MainActor.shared)
+            XCTAssertEqual(blocked?.recovery?.action, .cleanup)
+            XCTAssertEqual(probe.count, 0)
+            XCTAssertEqual(try storage.retrieve(key: restored.sessionKey), canonical)
+            XCTAssertEqual(try storage.retrieve(key: "supabase.session"), legacy)
+            XCTAssertEqual(storage.writeCount(restored.sessionKey), 1)
+            XCTAssertEqual(storage.writeCount("supabase.session"), 1)
+            XCTAssertFalse(storage.removed("supabase.session"))
+            XCTAssertThrowsError(try restored.activeBinding())
+        }
+    }
+    func testLegacyPreparationStorageFailuresRetainCredentialsAndRetryBeforeCreatingClient() async throws {
+        for failure in ["initialRead", "store", "droppedWrite", "replacedWrite", "readback", "remove", "droppedRemoval", "removalReadback"] {
+            let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+            let restored = service(http, storage: storage, constructionProbe: probe)
+            let saved = savedSession()
+            let envelope = AuthLegacyEnvelope(session: saved, expirationDate: Date(timeIntervalSince1970: saved.expiresAt))
+            let legacy = try AuthClient.Configuration.jsonEncoder.encode(envelope)
+            try storage.store(key: "supabase.session", value: legacy)
+            let expected: AuthStorageIssue
+            switch failure {
+            case "initialRead":
+                storage.fail(.read, key: "supabase.session", status: errSecAuthFailed)
+                expected = AuthStorageIssue(operation: .read, status: errSecAuthFailed)
+            case "store":
+                storage.fail(.store, key: restored.sessionKey, status: errSecAuthFailed)
+                expected = AuthStorageIssue(operation: .store, status: errSecAuthFailed)
+            case "droppedWrite":
+                storage.dropWrites(key: restored.sessionKey)
+                expected = AuthStorageIssue(operation: .store, status: errSecInternalComponent)
+            case "replacedWrite":
+                storage.replaceWrites(key: restored.sessionKey, with: try JSONEncoder().encode(savedSession()))
+                expected = AuthStorageIssue(operation: .store, status: errSecInternalComponent)
+            case "readback":
+                storage.fail(.read, key: restored.sessionKey, status: errSecAuthFailed, afterSuccessfulCalls: 1)
+                expected = AuthStorageIssue(operation: .read, status: errSecAuthFailed)
+            case "remove":
+                storage.fail(.remove, key: "supabase.session", status: errSecAuthFailed)
+                expected = AuthStorageIssue(operation: .remove, status: errSecAuthFailed)
+            case "droppedRemoval":
+                storage.dropRemovals(key: "supabase.session")
+                expected = AuthStorageIssue(operation: .remove, status: errSecInternalComponent)
+            default:
+                storage.fail(.read, key: "supabase.session", status: errSecAuthFailed, afterSuccessfulCalls: 1)
+                expected = AuthStorageIssue(operation: .read, status: errSecAuthFailed)
+            }
+            var states = restored.authStateChanges.makeAsyncIterator()
+            _ = await states.next(isolation: MainActor.shared)
+            do { _ = try await restored.restoreSession(); XCTFail("Unverified migration accepted: \(failure)") }
+            catch { XCTAssertEqual(error as? AuthStorageIssue, expected, failure) }
+            let blocked = await states.next(isolation: MainActor.shared)
+            XCTAssertEqual(blocked?.recovery, AccountAuthRecovery(action: .restore, storageIssue: expected), failure)
+            XCTAssertNil(blocked?.session, failure)
+            XCTAssertThrowsError(try restored.activeBinding())
+            XCTAssertEqual(probe.count, 0, failure)
+            storage.recover()
+            if failure != "removalReadback" {
+                XCTAssertEqual(try storage.retrieve(key: "supabase.session"), legacy, failure)
+            } else {
+                let canonical = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: restored.sessionKey)))
+                XCTAssertEqual(canonical.user.id, saved.user.id)
+            }
+            let result = try await restored.restoreSession()
+            XCTAssertEqual(result?.userID, saved.user.id, failure)
+            XCTAssertEqual(probe.count, 1, failure)
+            XCTAssertNil(try storage.retrieve(key: "supabase.session"), failure)
+            _ = await restored.signOut()
+        }
+    }
+    func testPreparationRecoverySignOutFencesColdRestoreAndRetainsKnownCleanupScope() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let restored = service(http, storage: storage, host: host, constructionProbe: probe)
+        let saved = savedSession()
+        let legacy = AuthLegacyEnvelope(session: saved, expirationDate: Date(timeIntervalSince1970: saved.expiresAt))
+        try storage.store(key: "supabase.session", value: AuthClient.Configuration.jsonEncoder.encode(legacy))
+        storage.fail(.remove, key: "supabase.session")
+        do { _ = try await restored.restoreSession(); XCTFail("Preparation removal should fail") } catch {}
+        storage.fail(.remove, key: restored.sessionKey)
+        let outcome = await restored.signOut()
+        XCTAssertEqual(outcome.retiredUserID, saved.user.id)
+        XCTAssertEqual(restored.retiredCleanupUserID, saved.user.id)
+        XCTAssertEqual(outcome.localRecovery?.action, .cleanup)
+        XCTAssertEqual(probe.count, 0)
+        storage.recover()
+        XCTAssertNotNil(try storage.retrieve(key: restored.sessionKey))
+        XCTAssertNotNil(try storage.retrieve(key: "supabase.session"))
+        let markerBytes = try XCTUnwrap(storage.retrieve(key: restored.sessionKey + "-gridrace-retired-v1"))
+        let marker = try XCTUnwrap(JSONSerialization.jsonObject(with: markerBytes) as? [String: Any])
+        XCTAssertEqual(marker["userID"] as? String, saved.user.id.uuidString)
+        let cold = service(http, storage: storage, host: host, constructionProbe: probe)
+        var states = cold.authStateChanges.makeAsyncIterator()
+        _ = await states.next(isolation: MainActor.shared)
+        let result = try await cold.restoreSession()
+        XCTAssertNil(result)
+        let blocked = await states.next(isolation: MainActor.shared)
+        XCTAssertEqual(blocked?.recovery?.action, .cleanup)
+        XCTAssertEqual(cold.retiredCleanupUserID, saved.user.id)
+        XCTAssertThrowsError(try cold.activeBinding())
+        XCTAssertEqual(probe.count, 0)
+        let cleanup = await cold.retrySignedOutCleanup()
+        XCTAssertNil(cleanup.recovery)
+        XCTAssertNil(try storage.retrieve(key: cold.sessionKey))
+        XCTAssertNil(try storage.retrieve(key: "supabase.session"))
+    }
+    func testPreparationRecoverySignOutHandsValidatedScopeToAccountModelCleanup() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+        let restored = service(http, storage: storage, constructionProbe: probe)
+        let saved = savedSession()
+        try storage.store(key: "supabase.session", value: AuthClient.Configuration.jsonEncoder.encode(saved))
+        storage.fail(.store, key: restored.sessionKey)
+        let root = FileManager.default.temporaryDirectory.appending(path: "AuthRecoveryInvitation-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let invitationStore = PendingLiveInvitationStore(directory: root)
+        let invitations = LiveInvitationCoordinator(
+            configuration: .init(origins: [URL(string: "https://invite.test")!]),
+            cleanupJournal: AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root)),
+            makeStore: { invitationStore })
+        invitations.receive(URL(string: "https://invite.test/join/ABC234")!)
+        XCTAssertNotNil(try invitationStore.load())
+        var departureOwners: [UUID?] = []
+        var cleaned: [UUID] = []
+        let model = AccountModel(service: restored, willDepartAccount: { userID in
+            departureOwners.append(userID)
+            XCTAssertFalse(storage.removed("supabase.session"), "Navigation cleanup precedes credential retirement")
+            try invitations.prepareForAccountDeparture(userID)
+        }, didSignOut: { cleaned.append($0); return true })
+        await model.start()
+        try await wait { model.authRecovery?.action == .restore }
+        XCTAssertNil(model.session)
+        await model.signOut()
+        XCTAssertEqual(departureOwners, [nil], "The service's hidden identity is not a consumer identity")
+        XCTAssertNil(try invitationStore.load())
+        XCTAssertNil(invitations.pending)
+        XCTAssertTrue(invitations.cleanupJournal.records.isEmpty)
+        XCTAssertEqual(cleaned, [saved.user.id])
+        XCTAssertEqual(restored.retiredCleanupUserID, saved.user.id)
+        XCTAssertNil(model.authRecovery)
+        XCTAssertEqual(probe.count, 0)
+        XCTAssertNil(try storage.retrieve(key: restored.sessionKey))
+        XCTAssertNil(try storage.retrieve(key: "supabase.session"))
+        XCTAssertNotNil(try storage.retrieve(key: restored.sessionKey + "-gridrace-retired-v1"))
+    }
+    func testUnreadablePreparationIdentityUsesGenericSignOutFenceWithoutGuessing() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+        let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
+        let restored = service(http, storage: storage, host: host, constructionProbe: probe)
+        try storage.store(key: "supabase.session", value: AuthClient.Configuration.jsonEncoder.encode(savedSession()))
+        storage.fail(.read, key: restored.sessionKey)
+        do { _ = try await restored.restoreSession(); XCTFail("Preparation read should fail") } catch {}
+        for key in [restored.sessionKey, "supabase.session"] { storage.fail(.remove, key: key) }
+        let outcome = await restored.signOut()
+        XCTAssertNil(outcome.retiredUserID)
+        XCTAssertNil(restored.retiredCleanupUserID)
+        XCTAssertEqual(outcome.localRecovery?.action, .cleanup)
+        storage.recover()
+        let markerBytes = try XCTUnwrap(storage.retrieve(key: restored.sessionKey + "-gridrace-retired-v1"))
+        let marker = try XCTUnwrap(JSONSerialization.jsonObject(with: markerBytes) as? [String: Any])
+        XCTAssertNil(marker["userID"])
+        let cold = service(http, storage: storage, host: host, constructionProbe: probe)
+        let result = try await cold.restoreSession()
+        XCTAssertNil(result)
+        XCTAssertNil(cold.retiredCleanupUserID)
+        XCTAssertThrowsError(try cold.activeBinding())
+        XCTAssertEqual(probe.count, 0)
+        _ = await cold.retrySignedOutCleanup()
+    }
+    func testPreparationSignOutReportsFailureWhenMarkerAndCredentialCleanupCannotPersist() async throws {
+        let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), probe = AuthClientConstructionProbe()
+        let restored = service(http, storage: storage, constructionProbe: probe)
+        let saved = savedSession()
+        let legacy = try AuthClient.Configuration.jsonEncoder.encode(saved)
+        try storage.store(key: "supabase.session", value: legacy)
+        storage.fail(.store, key: restored.sessionKey)
+        do { _ = try await restored.restoreSession(); XCTFail("Preparation store should fail") } catch {}
+        let marker = restored.sessionKey + "-gridrace-retired-v1"
+        storage.fail(.store, key: marker)
+        for key in [restored.sessionKey, "supabase.session", restored.sessionKey + "-code-verifier"] {
+            storage.fail(.remove, key: key)
+        }
+        let outcome = await restored.signOut()
+        XCTAssertEqual(outcome.retiredUserID, saved.user.id)
+        XCTAssertEqual(outcome.localRecovery?.action, .cleanup)
+        XCTAssertTrue(restored.lastRetirementIssues.contains(AuthStorageIssue(operation: .store, status: errSecInteractionNotAllowed)))
+        XCTAssertTrue(restored.lastRetirementIssues.contains(AuthStorageIssue(operation: .remove, status: errSecInteractionNotAllowed)))
+        XCTAssertEqual(probe.count, 0)
+        storage.recover()
+        XCTAssertNil(try storage.retrieve(key: marker))
+        XCTAssertEqual(try storage.retrieve(key: "supabase.session"), legacy)
+        _ = await restored.retrySignedOutCleanup()
     }
     func testExistingOfflineRestoreCanBeDeliberatelyRetiredWithoutGuessedUIIdentity() async throws {
         let storage = AuthMemoryStorage(), http = AuthHTTPFixture()
@@ -641,7 +938,7 @@ extension AccountAuthLifecycleTests {
         try await wait { await sleeper.count() == 1 }
         let refreshCount1 = await http.count("refresh")
         XCTAssertEqual(refreshCount1, 0)
-        clock.advance(3500) // SDK's integer tick policy includes the <=3-tick window.
+        clock.advance(3500)
         await http.failRefreshWithoutRetry(true)
         await sleeper.release()
         try await wait {
@@ -735,7 +1032,7 @@ extension AccountAuthLifecycleTests {
         let restoration = Task { try await service.restoreSession() }
         await Task.yield()
         let saved = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: service.sessionKey)))
-        service.receive(.tokenRefreshed, session: saved, from: old.lifetime) // Simulated queued SDK payload.
+        service.receive(.tokenRefreshed, session: saved, from: old.lifetime)
         XCTAssertThrowsError(try service.activeBinding(), "Neither explicit restore nor event can bypass the owned drain")
         XCTAssertThrowsError(try old.check())
         await removal.release()
@@ -758,7 +1055,7 @@ extension AccountAuthLifecycleTests {
         let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
         let original = try await login(service), binding = try service.activeBinding()
         let older = try JSONDecoder().decode(Session.self, from: XCTUnwrap(storage.retrieve(key: service.sessionKey)))
-        service.receive(.initialSession, session: nil, from: binding.lifetime) // Explicit simulated late initial tuple.
+        service.receive(.initialSession, session: nil, from: binding.lifetime)
         XCTAssertEqual(try service.activeBinding().userID, original.userID)
         let refreshed = try await service.refreshSession()
         let renewedBytes = try XCTUnwrap(storage.retrieve(key: service.sessionKey))
@@ -816,10 +1113,10 @@ extension AccountAuthLifecycleTests {
     func testRealLiveCommandCapturedLeaseRejectsHeldResponseAndCannotBorrowNextAccount() async throws {
         let storage = AuthMemoryStorage(), http = AuthHTTPFixture(), service = service(http, storage: storage)
         let original = try await login(service), remote = try service.makeLiveMatchService()
-        let initialMatch = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        let initialMatch = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3)
         XCTAssertEqual(initialMatch, original.userID)
         await http.hold("create-match")
-        let creating = Task { try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2) }
+        let creating = Task { try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3) }
         try await wait { await http.suspended("create-match") }
         _ = await service.signOut()
         let next = UUID(); await http.setUser(next)
@@ -828,11 +1125,11 @@ extension AccountAuthLifecycleTests {
         do { _ = try await creating.value; XCTFail("Old Live response must fail its immutable binding") }
         catch { XCTAssertTrue(error is CancellationError) }
         let count = await http.count("create-match")
-        do { _ = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2); XCTFail("Retired service cannot dispatch") } catch {}
+        do { _ = try await remote.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3); XCTFail("Retired service cannot dispatch") } catch {}
         let unchanged = await http.count("create-match")
         XCTAssertEqual(unchanged, count)
         let newer = try service.makeLiveMatchService()
-        let freshMatch = try await newer.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 2)
+        let freshMatch = try await newer.createMatch(requestID: UUID(), roundCount: 3, clientBuild: 3)
         XCTAssertEqual(freshMatch, next)
         _ = await service.signOut()
     }
@@ -863,7 +1160,7 @@ extension AccountAuthLifecycleTests {
             XCTAssertNotNil(try storage.retrieve(key: service.sessionKey))
             XCTAssertEqual(model.authRecovery?.action, .deletion)
             XCTAssertTrue(model.errorMessage?.contains("deletion needs attention") == true)
-            await model.retryAuthRecovery() // A second invalid response stays uncertain.
+            await model.retryAuthRecovery()
             XCTAssertTrue(deleted.isEmpty)
             let cold = self.service(http, storage: storage, host: host)
             let coldModel = AccountModel(service: cold, didDeleteAccount: { deleted.append($0) })
@@ -872,7 +1169,7 @@ extension AccountAuthLifecycleTests {
             XCTAssertNil(coldModel.session)
             XCTAssertThrowsError(try cold.activeBinding())
             XCTAssertEqual(coldModel.authRecovery?.action, .deletion)
-            await coldModel.retryAuthRecovery() // Invalid confirmation survives cold restoration.
+            await coldModel.retryAuthRecovery()
             XCTAssertTrue(deleted.isEmpty)
             let retained = try XCTUnwrap(storage.retrieve(key: cold.deletionKey))
             let retainedObject = try JSONSerialization.jsonObject(with: retained)
@@ -1119,7 +1416,6 @@ extension AccountAuthLifecycleTests {
         let confirmed = try await deleting.value
         XCTAssertEqual(confirmed.localRecovery?.action, .deletion)
         storage.recover()
-        // In-memory confirmation retires securely without another remote request.
         _ = try await first.deleteAccount()
         let count = await http.count("delete-account")
         XCTAssertEqual(count, 1)
@@ -1169,7 +1465,7 @@ extension AccountAuthLifecycleTests {
         let first = service(http, storage: storage, host: host)
         let original = try await login(first)
         let sdkSession = try XCTUnwrap(try first.activeBinding().lifetime.client.auth.currentSession)
-        await http.loseNextDeletionResponse() // Synthetic no-delivery uncertainty, no receipt.
+        await http.loseNextDeletionResponse()
         do { _ = try await first.deleteAccount(); XCTFail("Expected uncertainty") } catch {}
         let expired = Session(accessToken: sdkSession.accessToken, tokenType: sdkSession.tokenType,
             expiresIn: sdkSession.expiresIn, expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970,
@@ -1253,7 +1549,7 @@ extension AccountAuthLifecycleTests {
         let cold = service(http, storage: storage, host: host)
         let restored = try await cold.restoreSession()
         XCTAssertNil(restored)
-        _ = try await cold.deleteAccount() // Success receipt is authoritative before Auth expiry.
+        _ = try await cold.deleteAccount()
         let headers = await http.deletionAuthorizations()
         XCTAssertEqual(headers.count, 2)
         XCTAssertTrue(headers[0] == headers[1])
@@ -1343,9 +1639,9 @@ extension AccountAuthLifecycleTests {
         XCTAssertNil(try storage.retrieve(key: cold.deletionKey))
         let headers = await http.deletionAuthorizations()
         XCTAssertEqual(headers.count, 4)
-        XCTAssertTrue(headers[0] != headers[1]) // B's own authorization.
-        XCTAssertTrue(headers[0] == headers[2]) // Original A receipt lookup.
-        XCTAssertTrue(headers[0] != headers[3]) // Explicit fresh same-A operation.
+        XCTAssertTrue(headers[0] != headers[1])
+        XCTAssertTrue(headers[0] == headers[2])
+        XCTAssertTrue(headers[0] != headers[3])
     }
 
     func testHeldADeletionNeverSuppliesBConfirmationOrLosesEitherSecureRecord() async throws {
@@ -1398,8 +1694,6 @@ extension AccountAuthLifecycleTests {
         let host = "auth-fixture-\(UUID().uuidString.lowercased()).invalid"
         let first = service(http, storage: storage, host: host)
         let original = try await login(first)
-        // Synthetic accepted-but-not-yet-committed predecessor. The controller's
-        // independent real backend lock race establishes that server premise.
         await http.loseNextDeletionResponse()
         do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Expected lost response") } catch {}
         await http.setDeletionResponse(Data(#"{"error":{"code":"not_authenticated","message":"Sign in and try again."}}"#.utf8), status: 401)
@@ -1408,8 +1702,6 @@ extension AccountAuthLifecycleTests {
         await http.setUser(original.userID)
         _ = try await login(first)
         try first.prepareAccountDeletion(userID: original.userID)
-        // The old accepted request now commits; the successor has no receipt and
-        // its Auth identity is already deleted, so only the predecessor can recover.
         do { _ = try await first.deleteAccount(userID: original.userID); XCTFail("Successor should lack Auth") } catch {}
         let later = UUID()
         await http.setUser(later)
@@ -1451,7 +1743,7 @@ extension AccountAuthLifecycleTests {
         await model.deleteAccount()
         XCTAssertEqual(model.authRecovery?.action, .deletionReauthentication)
         await http.setDeletionResponse(Data(#"{"data":{"deleted":true}}"#.utf8), status: 200)
-        await model.retryAuthRecovery() // The predecessor committed after rejection.
+        await model.retryAuthRecovery()
         XCTAssertEqual(cleaned, [user.userID])
         let signIns = await http.count("token")
         XCTAssertEqual(signIns, 1)
@@ -1474,7 +1766,7 @@ extension AccountAuthLifecycleTests {
         _ = try await second.value
         let count = await http.count("delete-account")
         XCTAssertEqual(count, 1)
-        _ = try await service.deleteAccount() // Confirmed local retry performs no network mutation.
+        _ = try await service.deleteAccount()
         let after = await http.count("delete-account")
         XCTAssertEqual(after, 1)
         storage.fail(.remove, key: service.deletionKey)
@@ -1484,8 +1776,6 @@ extension AccountAuthLifecycleTests {
     }
 }
 
-/// Real local upstream responses, with only response delivery under test control.
-/// Neither credentials nor headers enter diagnostic output or ordinary files.
 private actor DeletionReceiptProxy {
     private let upstream = URLSession(configuration: .ephemeral)
     private var refreshContinuation: CheckedContinuation<Void, Never>?
@@ -1581,8 +1871,6 @@ extension AccountAuthLifecycleTests {
         let proxy = DeletionReceiptProxy()
         DeletionReceiptProtocol.install(origin: admission.configuration.projectURL.absoluteString, proxy: proxy)
         defer { DeletionReceiptProtocol.uninstall() }
-        // Memory here deliberately isolates this admitted disposable user's secrets
-        // from the simulator's persistent Keychain. Production uses SecureAuthStorage.
         let service = SupabaseAccountService(configuration: admission.configuration, storage: AuthMemoryStorage(), network: {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [DeletionReceiptProtocol.self]
@@ -1591,8 +1879,6 @@ extension AccountAuthLifecycleTests {
         let user = try await service.signInForLocalTesting(email: admission.email, password: admission.password)
         do { try admission.validateIdentity(user.userID) }
         catch { _ = await service.signOut(); throw error }
-        // Auth may mint identical JWT claims within one second. Require a truly
-        // distinct already-issued credential for this receipt-identity proof.
         try await Task.sleep(for: .seconds(1.1))
         let refresh = Task { try await service.refreshSession() }
         do {

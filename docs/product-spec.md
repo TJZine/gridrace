@@ -102,14 +102,36 @@ started round and freeze unstarted remaining rounds as
 incomplete. Ordinary creator absence waits; no transfer or automatic advance.
 This mode uses independent random private answers, never the shared Daily answer.
 
+The approved two-player friends-beta extension adds configured HTTPS invitations
+and mutual post-match rematch. Its current implementation and acceptance evidence
+belong to the [friends-beta plan](plans/2026-10-12-friends-beta-implementation.md).
+Opening a link saves unconfirmed navigation through sign-in/profile setup and
+relaunch; explicit Join names the code/account and preserves an existing race until
+the admitted room and new pointer are saved. A different pending invitation requires
+Keep current or Replace; unresolved commands settle before a confirmed switch.
+The no-app page supplies installation guidance and the code; the player reopens
+the invitation after installation. Manual code entry remains available.
+
+Rematch requires both eligible participants' explicit consent on a completed
+result, within five minutes of authoritative completion. Both reach one fresh
+pair-only lobby with the same round count and original creator, who starts
+explicitly. Previous results remain immutable. Cancel/decline closes a consent
+generation; an explicit re-offer uses fresh consent inside the original window.
+Home/backgrounding do not decline. Recovery can discover a successor accepted
+before expiry afterward. Another explicit race selection invalidates an open offer;
+passive reads never change selection. Every predecessor answer and repeats within
+the successor are excluded. No future answer is selected before its round starts.
+Incomplete/deleted-participant results cannot allocate a rematch; an accepted
+successor cannot be replaced if later deletion makes its lobby unavailable.
+There is no Home last-opponent shortcut, inbox, group expansion or friends graph.
+
 Initial validation with the owner and friends uses free services. No paid commitment
 or automatic upgrade is authorized without a maintainer decision. Free hosting does
 not imply free native distribution; membership, provider setup and hosted release
 prerequisites are separate later gates. Local slice completion is not beta exit.
 
 Later production phases expand the proved slice to the complete Blind Race MVP:
-2–8 players, 1/3/5 rounds, invite links and room codes, full results and rematch,
-history, notifications where useful, report/block moderation, broader retention, and
+2–8 players, competitive history, notifications where useful, report/block moderation, broader retention, and
 production identity/deletion hardening. Those are planned product responsibilities,
 not Phase 3 behavior.
 
@@ -119,12 +141,12 @@ not Phase 3 behavior.
 | --- | --- | --- |
 | Onboarding/tutorial | Explain Blind Race privacy, teach input and feedback, and let the player complete a local race before authentication. | Implemented locally |
 | Home | Play Daily Classic immediately and reach the optional account/profile experience. | Daily Classic, accounts, live create/join and Resume implemented |
-| Create/join | Create the fixed live slice or enter a manual six-character room code. | Phase 4 native 1/3/5 selector and manual-code flow implemented; links later |
-| Lobby | Show the private roster; only the creator starts, with no readiness state. | Fixed Phase 3 slice implemented |
+| Create/join | Create a 1/3/5-round race or explicitly confirm a configured invitation/manual code. | Phase 4 selector/manual entry implemented; friends-beta invitation composition implemented locally; device/release acceptance remains in its plan |
+| Lobby | Show the private roster; only the creator starts, with no readiness state. | Ordinary and pair-only rematch lobbies implemented locally |
 | Round | Show countdown, local board/keyboard, deadline, and clue-free opponent progress. | Phase 1 tutorial and fixed Phase 3 server-backed slice implemented |
 | Reveal | Disclose the answer and boards in deterministic row order, with a complete nonanimated path. | Phase 1 tutorial and fixed Phase 3 shared reveal implemented |
 | Results | Show exact round/match placement and summary. | Round placement implemented; Phase 4 canonical match standings and final/incomplete presentation implemented |
-| Rematch | Create a new private match from the prior group without mutating the completed result. | Future |
+| Rematch | Both participants consent to a new pair-only lobby with the same creator/count, preserving completed results. | Implemented locally and independently reviewed; release acceptance remains in its plan |
 | History | Derive personal Daily statistics from synchronized immutable imported results. | Implemented for Daily Classic; competitive history later |
 | Profile | Manage display name, generated avatar, synchronization, sign out, and account deletion. Email is never exposed. | Implemented; blocks later |
 

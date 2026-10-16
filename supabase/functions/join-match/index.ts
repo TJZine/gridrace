@@ -5,6 +5,7 @@ import {
   type Dependencies,
   errorResponse,
   exactKeys,
+  isUuid,
   joinCode,
   readRequest,
   safely,
@@ -16,11 +17,22 @@ export function makeHandler(dependencies?: Dependencies) {
       const parsed = await readRequest(request);
       if (!parsed.ok) return parsed.response;
       const { body, token } = parsed.value;
-      if (!exactKeys(body, ["client_build", "join_code"])) {
+      const build = clientBuild(body.client_build);
+      if (build === null || build < 3) {
+        return errorResponse("client_update_required");
+      }
+      if (
+        !exactKeys(body, [
+          "client_build",
+          "request_id",
+          "join_code",
+          "expected_match_id",
+        ]) ||
+        !isUuid(body.request_id) ||
+        (body.expected_match_id !== null && !isUuid(body.expected_match_id))
+      ) {
         return errorResponse("internal_error", 400);
       }
-      const build = clientBuild(body.client_build);
-      if (build === null) return errorResponse("client_update_required");
       const code = joinCode(body.join_code);
       if (code === null) return errorResponse("match_not_joinable");
       const authorized = await authorize(token, dependencies);
@@ -31,6 +43,8 @@ export function makeHandler(dependencies?: Dependencies) {
           p_client_build: build,
           p_join_code: code,
           p_ip_hash: null,
+          p_request_id: body.request_id,
+          p_expected_match_id: body.expected_match_id,
         }),
       );
     });
