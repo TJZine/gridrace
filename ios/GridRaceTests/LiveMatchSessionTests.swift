@@ -3341,17 +3341,118 @@ extension LiveMatchSessionTests {
     func testAcceptedSuccessorDiscoveryPrecedesPinnedPredecessorSelection() async throws {
         let predecessor = try FriendsBetaFixtures.snapshot("accepted")
         let successor = try FriendsBetaFixtures.snapshot("successor_lobby")
-        let reads = LockedValues<UUID>(), joins = LockedCounter()
+        let reads = LockedValues<UUID>(), joins = LockedCounter(), waiting = LockedCounter(), gate = AsyncGate()
         let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: predecessor.match.id))
         let (session, transport) = makeSession(service: LiveServiceMock(snapshot: { id in
             reads.append(id)
+            if id == successor.match.id { waiting.increment(); await gate.wait() }
             return id == predecessor.match.id ? predecessor : successor
         }, joinDurable: { _ in joins.increment(); return successor.match.id }), realtime: nil, store: store)
         bindLiveAccount(session, transport: transport(UUID()))
+        await eventually { waiting.value == 1 }
+        XCTAssertEqual(session.savedMatchID, predecessor.match.id)
+        XCTAssertFalse(session.requiresResumeConfirmation)
+        session.confirmResumeSavedMatch()
+        XCTAssertNil(session.pendingIntent, "A delayed lookup cannot turn Resume into a predecessor selection")
+        XCTAssertEqual(joins.value, 0)
+        await gate.open()
         await eventually { session.savedMatchID == successor.match.id && session.phase == .ready }
         XCTAssertEqual(Array(reads.values.prefix(2)), [predecessor.match.id, successor.match.id])
         XCTAssertEqual(joins.value, 0)
         session.leaveToHome()
+    }
+
+    func testPassiveSuccessorDisappearancePreservesPredecessorAndUsesBoundedRetry() async throws {
+        let predecessor = try FriendsBetaFixtures.snapshot("accepted")
+        let unavailable = try FriendsBetaFixtures.snapshot("accepted_unavailable")
+        let successorID = try XCTUnwrap(predecessor.rematch?.successorMatchID)
+        for denial in [LiveMatchServerError.notAMatchMember, .roomExpired] {
+            let original = LiveRecoveryState(matchID: predecessor.match.id, completedInvitationGeneration: UUID())
+            let store = MemoryLiveRecoveryStore(original), reads = LockedValues<UUID>(), predecessorReads = LockedCounter()
+            let delays = LockedValues<Duration>()
+            let (session, transport) = makeSession(service: LiveServiceMock(snapshot: { id in
+                reads.append(id)
+                if id == predecessor.match.id {
+                    return predecessorReads.increment() == 1 ? predecessor : unavailable
+                }
+                XCTAssertEqual(id, successorID)
+                throw LiveMatchServiceError.server(denial)
+            }), realtime: nil, store: store,
+                timing: .init(requestTimeout: .seconds(10), staleAfter: .seconds(60), retryBackoff: [.seconds(50)]),
+                sleep: { delay in delays.append(delay); try await Task.sleep(for: delay) })
+            bindLiveAccount(session, transport: transport(UUID()))
+            await eventually { session.lastError == .unavailable && delays.values.contains(.seconds(50)) }
+            XCTAssertEqual(session.savedMatchID, predecessor.match.id)
+            XCTAssertEqual(session.snapshot?.round, predecessor.round)
+            XCTAssertEqual(store.storedState, original)
+            XCTAssertTrue(session.canRetry)
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertEqual(reads.values, [predecessor.match.id, successorID], "A stale accepted snapshot must not trigger an immediate retry loop")
+
+            session.retry()
+            await eventually { session.phase == .ready && session.snapshot?.rematch?.successorAvailable == false }
+            XCTAssertEqual(reads.values, [predecessor.match.id, successorID, predecessor.match.id])
+            XCTAssertEqual(store.storedState, original, "The result pointer and invitation completion marker remain intact")
+            XCTAssertNil(session.pendingIntent)
+            session.leaveToHome()
+        }
+    }
+
+    func testDiscardedJoinReturnsToEntryAndKeepsPreviousPointerForExplicitResume() async throws {
+        let sources: [UUID?] = [nil, UUID()]
+        for source in sources {
+            for restored in [false, true] {
+                let command = LiveJoinCommand(requestID: UUID(), code: "ABC234", expectedMatchID: nil, clientBuild: 3)
+                let intent = LivePendingIntent.join(command: command, sourceMatchID: source,
+                    navigationGeneration: UUID(), invitationGeneration: nil)
+                let marker = UUID()
+                let store = MemoryLiveRecoveryStore(LiveRecoveryState(matchID: source,
+                    pendingIntent: restored ? intent : nil, completedInvitationGeneration: marker))
+                let calls = LockedValues<LiveJoinCommand>(), reads = LockedValues<UUID>()
+                let (session, transport) = makeSession(service: LiveServiceMock(snapshot: { id in
+                    reads.append(id)
+                    return Self.snapshot(matchID: id, status: .lobby, round: .pending)
+                }, joinDurable: { value in
+                    calls.append(value)
+                    throw LiveMatchServiceError.server(.requestConflict)
+                }), realtime: nil, store: store,
+                    timing: .init(requestTimeout: .seconds(10), staleAfter: .seconds(50), retryBackoff: [.seconds(50)]))
+                if restored {
+                    bindLiveAccount(session, transport: transport(UUID()))
+                } else {
+                    session.backgrounded(); bindLiveAccount(session, transport: transport(UUID()))
+                    session.leaveToHome(); session.foregrounded(); session.joinMatch(code: "ABC234")
+                }
+                await eventually {
+                    !session.isCommandInFlight && session.lastError == .server(.requestConflict)
+                        && (!restored || source == nil || session.snapshot != nil)
+                }
+                let priorReads = reads.values
+                session.discardPendingSelection()
+                XCTAssertEqual(session.phase, .inactive)
+                XCTAssertNil(session.snapshot)
+                XCTAssertNil(session.pendingIntent)
+                XCTAssertEqual(store.storedState.matchID, source)
+                XCTAssertEqual(store.storedState.completedInvitationGeneration, marker)
+                XCTAssertFalse(store.storedState.successorFollowAllowed)
+                let presentation = LiveMatchPresentation.map(.init(session: session, joinCode: "ABC234"))
+                XCTAssertEqual(presentation.surface, .entry)
+                XCTAssertTrue(presentation.permits(.create))
+                XCTAssertTrue(presentation.permits(.join))
+                XCTAssertEqual(presentation.permits(.resume), source != nil)
+                session.backgrounded(); session.foregrounded()
+                for _ in 0..<8 { await Task.yield() }
+                XCTAssertEqual(reads.values, priorReads)
+                XCTAssertEqual(calls.values.count, 1)
+                if restored { XCTAssertEqual(calls.values, [command]) }
+                if let source {
+                    session.resumeSavedMatch()
+                    await eventually { session.snapshot?.match.id == source && session.phase == .ready }
+                    XCTAssertEqual(calls.values.count, 1, "Resuming the old race must not replay the discarded Join")
+                }
+                session.leaveToHome()
+            }
+        }
     }
 
     func testRematchReceiptFirstRecoveryRetainsPredecessorUntilCanonicalSuccessorAndAtomicSave() async throws {

@@ -134,6 +134,43 @@ final class FriendsBetaCompositionTests: XCTestCase {
         XCTAssertEqual(service.signOutCount, 1)
         XCTAssertNil(file.bytes)
     }
+    func testSignOutWithoutVisibleIdentityRequiresInvitationClearBeforeRetirement() async throws {
+        let file = InvitationFaultFile(), journal = InvitationJournalFile()
+        let unrelated = AccountCleanupRecord(userID: UUID(), daily: .required, live: true)
+        journal.records = [unrelated]
+        let invitations = owner(file, journal: journal)
+        invitations.receive(url())
+        let original = try XCTUnwrap(file.bytes)
+        let service = AccountServiceMock()
+        let model = AccountModel(service: service, willDepartAccount: invitations.prepareForAccountDeparture)
+        await model.start()
+        service.emitState(AccountAuthState(session: nil, recovery: .init(action: .restore, storageIssue: nil)))
+        for _ in 0..<100 where model.authRecovery?.action != .restore { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.authRecovery?.action, .restore)
+        XCTAssertNil(model.session)
+        XCTAssertNil(service.pendingDeletionUserID)
+
+        file.rejectRemove = true
+        await model.signOut()
+        XCTAssertEqual(service.signOutCount, 0, "A failed unscoped clear cannot retire credentials")
+        XCTAssertEqual(model.authRecovery?.action, .restore)
+        XCTAssertFalse(model.isWorking)
+        XCTAssertTrue(model.errorMessage?.contains("retry sign out") == true)
+        XCTAssertEqual(file.bytes, original)
+        XCTAssertTrue(invitations.storageFailed)
+        XCTAssertEqual(journal.records, [unrelated], "An unavailable identity must not create a guessed account obligation")
+
+        file.rejectRemove = false
+        await model.signOut()
+        XCTAssertEqual(service.signOutCount, 1)
+        XCTAssertNil(model.authRecovery)
+        XCTAssertNil(file.bytes)
+        XCTAssertNil(invitations.pending)
+        XCTAssertNil(owner(file).pending, "A cold owner must observe the completed clear")
+        XCTAssertFalse(invitations.storageFailed)
+        XCTAssertFalse(invitations.isPresented)
+        XCTAssertEqual(journal.records, [unrelated])
+    }
     func testStartupFailureStillCapturesAndPersistsInvitationBeforeRecovery() {
         let file = InvitationFaultFile(), invitations = owner(file)
         let startup = AppStartupModel(loadPacks: { throw DailyClassicError.missingWordPack }, invitations: invitations)

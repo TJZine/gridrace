@@ -148,7 +148,16 @@ final class LiveInvitationCoordinator {
             storageFailed = false
         } catch { storageFailed = true }
     }
-    func prepareForAccountDeparture(_ userID: UUID) throws {
+    func prepareForAccountDeparture(_ userID: UUID?) throws {
+        guard let userID else {
+            // Restoration can hide the account identity. Clear app-owned navigation
+            // before retirement rather than inventing a scoped cleanup obligation.
+            do { try storage().clear() }
+            catch { storageFailed = true; throw error }
+            pending = nil; replacement = nil; unsaved = nil
+            storageFailed = false; invalidLink = false; isPresented = false
+            return
+        }
         let value = try? storage().load()
         try cleanupJournal.captureInvitation(userID, generation: value?.replacementGeneration, replacingCapturedValue: true)
         isPresented = false

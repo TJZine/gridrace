@@ -19,7 +19,7 @@ final class AccountModel {
     private let service: (any AccountServicing)?
     private let cleanupJournal: AccountCleanupJournal?
     private let didChangeSession: @MainActor (UUID?) -> Void
-    private let willDepartAccount: @MainActor (UUID) throws -> Void
+    private let willDepartAccount: @MainActor (UUID?) throws -> Void
     private let didSignOut: @MainActor (UUID) async -> Bool
     private let didDeleteAccount: @MainActor (UUID) async throws -> Void
     private let retryDeletedDailyCleanup: (@MainActor (UUID) async throws -> Void)?
@@ -83,7 +83,7 @@ final class AccountModel {
         didChangeSession: @escaping @MainActor (UUID?) -> Void = { _ in },
         didFinishRestoration: @escaping @MainActor (RestorationOutcome) -> Void = { _ in },
         didCompleteSignedOutIntent: @escaping @MainActor () -> Void = {},
-        willDepartAccount: @escaping @MainActor (UUID) throws -> Void = { _ in },
+        willDepartAccount: @escaping @MainActor (UUID?) throws -> Void = { _ in },
         didSignOut: @escaping @MainActor (UUID) async -> Bool = { _ in true },
         didDeleteAccount: @escaping @MainActor (UUID) async throws -> Void = { _ in },
         retryDeletedDailyCleanup: (@MainActor (UUID) async throws -> Void)? = nil,
@@ -279,8 +279,8 @@ final class AccountModel {
         guard let service, session != nil || authRecovery != nil, beginWork() else { return }
         let effectiveUserID = session?.userID ?? service.pendingDeletionUserID
         defer { isWorking = false }
-        do { if let effectiveUserID { try willDepartAccount(effectiveUserID) } }
-        catch { presentError("Saved invitation cleanup could not be recorded. Restore storage access and retry sign out."); return }
+        do { try willDepartAccount(effectiveUserID) }
+        catch { presentError("Saved invitation cleanup could not be completed. Restore storage access and retry sign out."); return }
         restorationSessionGeneration = nil
         clearAccountState()
         didChangeSession(nil)

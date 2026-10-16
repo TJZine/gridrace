@@ -83,6 +83,47 @@ begin
  return next is((select count(distinct x.answer) from private.round_secrets x join public.rounds y on y.id=x.round_id where y.match_id=s),p_count::bigint,p_count||': no successor repeat');
  return next is(public.match_snapshot(a,3,s)#>>'{data,rematch,state}','eligible',p_count||': successor can rematch');
 end $$;
+create function pg_temp.snapshot_clock_boundaries() returns setof text language plpgsql as $$
+declare a uuid:='f3000000-0000-0000-0000-000000000001'; b uuid:='f3000000-0000-0000-0000-000000000002';
+ m uuid; r uuid; boundary timestamptz; snap jsonb;
+begin
+ delete from private.user_rate_limits;
+ m:=(public.create_match(a,3,null,extensions.gen_random_uuid(),1::smallint)#>>'{data,match_id}')::uuid;
+ perform public.join_match(b,3,(select join_code from public.matches where id=m),null,extensions.gen_random_uuid(),null);
+ perform public.start_match(a,3,m,1::smallint);
+ select id into r from public.rounds where match_id=m;
+ -- Cross a deadline inside this transaction without a three-minute fixture wait.
+ boundary:=transaction_timestamp()+interval '1 millisecond';
+ perform pg_sleep(0.002);
+ return next ok(transaction_timestamp()<boundary and clock_timestamp()>boundary,'clock fixture straddles transaction and wall time');
+ update public.matches set started_at=boundary-interval '3 seconds' where id=m;
+ update public.rounds set starts_at=boundary,ends_at=boundary+interval '180 seconds' where id=r;
+ update public.player_rounds set started_at=boundary where round_id=r;
+ snap:=public.match_snapshot(a,3,m);
+ return next is(snap#>>'{data,round,state}','countdown','countdown uses its snapshot evaluation time');
+ return next ok((snap#>>'{data,server_time}')::timestamptz<(snap#>>'{data,round,starts_at}')::timestamptz,
+   'countdown timestamp remains before start after wall clock crosses start');
+ update public.matches set started_at=boundary-interval '183 seconds' where id=m;
+ update public.rounds set starts_at=boundary-interval '180 seconds',ends_at=boundary where id=r;
+ update public.player_rounds set started_at=boundary-interval '180 seconds' where round_id=r;
+ snap:=public.match_snapshot(a,3,m);
+ return next is(snap#>>'{data,round,state}','playing','playing uses its snapshot evaluation time');
+ return next ok((snap#>>'{data,server_time}')::timestamptz>=(snap#>>'{data,round,starts_at}')::timestamptz
+   and (snap#>>'{data,server_time}')::timestamptz<(snap#>>'{data,round,ends_at}')::timestamptz,
+   'playing timestamp remains inside round after wall clock crosses end');
+ update public.rounds set starts_at=boundary-interval '8 minutes',ends_at=boundary-interval '5 minutes' where id=r;
+ return next ok(private.finalize_round(r),'completed clock fixture finalizes');
+ update public.matches set started_at=boundary-interval '8 minutes 3 seconds',completed_at=boundary-interval '5 minutes' where id=m;
+ update public.rounds set completed_at=boundary-interval '5 minutes' where id=r;
+ update public.player_rounds set started_at=boundary-interval '8 minutes',finished_at=boundary-interval '5 minutes' where round_id=r;
+ snap:=public.match_snapshot(a,3,m);
+ return next is(snap#>>'{data,rematch,state}','expired','completed rematch uses wall deadline even when transaction time precedes it');
+ return next ok((snap#>>'{data,rematch,evaluated_at}')::timestamptz>=(snap#>>'{data,rematch,deadline}')::timestamptz,
+   'rematch expiration is evaluated at or after its original deadline');
+ return next ok((snap#>>'{data,rematch,evaluated_at}')::timestamptz<=(snap#>>'{data,server_time}')::timestamptz,
+   'completed snapshot covers its rematch evaluation time');
+end $$;
+select * from pg_temp.snapshot_clock_boundaries();
 select * from pg_temp.exercise(1::smallint);
 select * from pg_temp.exercise(3::smallint);
 select * from pg_temp.exercise(5::smallint);
@@ -98,6 +139,58 @@ begin
  perform public.match_snapshot(a,3,m);
  return m;
 end $$;
+create function pg_temp.missing_rematch_configuration() returns setof text language plpgsql as $$
+declare a uuid:='f3000000-0000-0000-0000-000000000001'; b uuid:='f3000000-0000-0000-0000-000000000002';
+ accepted_match uuid; eligible_match uuid; offered_match uuid; offer_request uuid:=extensions.gen_random_uuid();
+ accept_request uuid:=extensions.gen_random_uuid(); blocked_request uuid:=extensions.gen_random_uuid();
+ offer_epoch bigint; accept_epoch bigint; current_epoch bigint; successor_count bigint;
+ offer_response jsonb; accept_response jsonb; blocked_response jsonb; snap jsonb; cursor_rows jsonb;
+begin
+ accepted_match:=pg_temp.completed_pair();
+ current_epoch:=(public.match_snapshot(a,3,accepted_match)#>>'{data,selection,epoch}')::bigint;
+ perform public.rematch_command(a,3,extensions.gen_random_uuid(),accepted_match,1,'offer',current_epoch);
+ accept_epoch:=(public.match_snapshot(b,3,accepted_match)#>>'{data,selection,epoch}')::bigint;
+ accept_response:=public.rematch_command(b,3,accept_request,accepted_match,1,'accept',accept_epoch);
+ return next is(accept_response#>>'{data,state}','accepted','enabled configuration permits acceptance');
+ eligible_match:=pg_temp.completed_pair();
+ offered_match:=pg_temp.completed_pair();
+ offer_epoch:=(public.match_snapshot(a,3,offered_match)#>>'{data,selection,epoch}')::bigint;
+ offer_response:=public.rematch_command(a,3,offer_request,offered_match,1,'offer',offer_epoch);
+ return next is(offer_response#>>'{data,state}','offered','enabled configuration permits an offer');
+ return next is(public.match_snapshot(a,3,eligible_match)#>>'{data,rematch,state}','eligible','enabled configuration retains eligibility');
+ select count(*) into successor_count from private.rematch_successors;
+ select jsonb_agg(to_jsonb(c) order by actor_user_id) into cursor_rows from private.participation_cursors c where actor_user_id in(a,b);
+ delete from private.live_feature_configuration;
+ snap:=public.match_snapshot(a,3,eligible_match);
+ return next is(snap#>>'{data,rematch,state}','unavailable','missing configuration disables eligible rematch');
+ return next is(snap#>>'{data,rematch,reason}','feature_disabled','missing configuration has the disabled reason');
+ snap:=public.match_snapshot(a,3,offered_match);
+ return next is(snap#>>'{data,rematch,state}','unavailable','missing configuration closes open offer');
+ return next is(jsonb_array_length(snap#>'{data,rematch,consenting_member_ids}'),0,'missing configuration clears open consent');
+ current_epoch:=(public.match_snapshot(b,3,offered_match)#>>'{data,selection,epoch}')::bigint;
+ return next is(public.rematch_command(b,3,extensions.gen_random_uuid(),offered_match,1,'accept',current_epoch)#>>'{error,code}',
+   'rematch_unavailable','missing configuration denies new acceptance');
+ current_epoch:=(public.match_snapshot(a,3,eligible_match)#>>'{data,selection,epoch}')::bigint;
+ blocked_response:=public.rematch_command(a,3,blocked_request,eligible_match,1,'offer',current_epoch);
+ return next is(blocked_response#>>'{error,code}','rematch_unavailable','missing configuration denies new offer');
+ return next is(public.rematch_command(a,3,offer_request,offered_match,1,'offer',offer_epoch),offer_response,
+   'missing configuration preserves original offer receipt');
+ return next is(public.match_snapshot(a,3,offered_match)#>>'{data,rematch,state}','unavailable','offer replay does not restore consent');
+ return next is(public.rematch_command(b,3,accept_request,accepted_match,1,'accept',accept_epoch),accept_response,
+   'missing configuration preserves original acceptance receipt');
+ snap:=public.match_snapshot(a,3,accepted_match);
+ return next is(snap#>>'{data,rematch,state}','accepted','missing configuration retains accepted tombstone');
+ return next is(snap#>>'{data,rematch,successor_available}','true','missing configuration retains accepted successor recovery');
+ return next is(public.rematch_command(a,3,extensions.gen_random_uuid(),offered_match,1,'cancel',offer_epoch)#>>'{data,state}',
+   'unavailable','missing configuration permits cancel acknowledgment');
+ return next is((select count(*) from private.rematch_successors),successor_count,'missing configuration allocates no successor');
+ return next is((select jsonb_agg(to_jsonb(c) order by actor_user_id) from private.participation_cursors c where actor_user_id in(a,b)),
+   cursor_rows,'disabled commands and original replays preserve participation');
+ insert into private.live_feature_configuration(singleton,allow_new_rematches) values(true,true);
+ return next is(public.rematch_command(a,3,blocked_request,eligible_match,1,'offer',current_epoch),blocked_response,
+   'restored configuration preserves definitive failure receipt');
+end $$;
+select * from pg_temp.missing_rematch_configuration();
 create function pg_temp.states() returns setof text language plpgsql as $$
 declare a uuid:='f3000000-0000-0000-0000-000000000001'; b uuid:='f3000000-0000-0000-0000-000000000002';
  c uuid:='f3000000-0000-0000-0000-000000000003'; m uuid; s uuid; other uuid; req uuid; req2 uuid;

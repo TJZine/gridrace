@@ -99,6 +99,9 @@ No unplayed round receives a result/answer. Snapshot may finalize elapsed play;
 canonical snapshot revision reflects that transition. Replayed/duplicate commands
 and repeated finalizers do not mutate gameplay revision. Every v3 snapshot follows
 the actor-first read/roster-restart contract below and never selects a match.
+Unfinished matches use the same transaction time for gameplay phase and
+`server_time`. Completed matches use wall time for `server_time` and rematch
+evaluation, so a lock wait cannot extend the rematch deadline.
 
 ## Stable errors
 
@@ -209,6 +212,7 @@ New safe errors (existing error/status meanings remain):
 Domain denial is definitive and receipted for bounded authenticated new join/rematch
 commands. Unauthorized actors receive no eligibility/roster/pool detail. Explicit
 retry after domain failure uses a fresh UUID after refresh; uncertain failures retain
-UUID. `allow_new_rematches` is service-only and defaults off. Disabling it closes
+UUID. `allow_new_rematches` is service-only and defaults off; a missing configuration
+row also disables new rematches. Disabling it closes
 unaccepted offers as unavailable; receipts, accepted recovery, cancel/decline,
 deletions and ordinary gameplay remain available. No down migration or purge.

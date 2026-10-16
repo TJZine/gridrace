@@ -393,3 +393,42 @@ clean local reset. Then run the current database tests and lint, the deletion
 receipt race, and the friends-beta concurrency fixture. Keep the latter two
 serialized on the owned database. The focused `friends-3-race` native scenario
 adds independent Auth/Edge/DB/Realtime/client evidence after those checks.
+
+## Live snapshot recovery-boundary repair
+
+`202610160001_live_snapshot_recovery_boundaries.sql` replaces the current snapshot
+and rematch-normalization function bodies. It preserves their identities, grants,
+stored rows and original command receipts. Active-round phase and `server_time`
+keep the same transactional observation time; completed-match rematch eligibility
+uses wall time. Missing feature configuration disables new rematches while
+accepted successors and receipt replay remain recoverable.
+
+The backend CI job now runs the existing private-contract forward fixtures from
+baseline `202610130001` through the current migrations before resetting its empty,
+unlinked, disposable runner database for the ordinary pgTAP and lint gates. It
+pauses that database's finalizer during preservation and uses the existing
+full-row, receipt, helper-identity and ACL comparisons. This is cumulative
+`202610130001`-to-current upgrade evidence, not an independent-client run or a
+claim about an already deployed database. The earlier friends-beta forward
+recipe above remains a distinct pre-v3 upgrade check.
+
+For an isolated `202610140001`-to-`202610160001` check, use the same exclusively
+owned disposable stack and private-proof precautions. Initially copy migrations
+only through `202610140001` into that stack; prepare the existing private-contract
+fixtures at baseline `202610130001`, apply `202610140001`, and run its after
+assertions. Refresh the fixture baseline with:
+
+```sql
+update private.sql_contracts_forward_evidence
+set response = private.sql_contracts_forward_snapshot()
+where label = 'captured_rows';
+```
+
+Then copy the new repair migration into the owned stack, apply it with
+`supabase migration up --local`, and run `sql_contracts_forward_after.sql` again.
+Record the applied versions and command outcomes. Only after preservation
+succeeds, reset the owned synthetic database and run current database tests and
+lint. The new cases in `friends_beta_rematch.sql` exercise both active-clock
+boundaries, completed-rematch wall-clock expiry, absent configuration and
+preserved accepted/replayed operations. Their controlled fixture timestamps do
+not replace the independent-client suite's original-deadline checks.

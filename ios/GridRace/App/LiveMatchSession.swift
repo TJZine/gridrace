@@ -369,8 +369,11 @@ final class LiveMatchSession {
     }
 
     var requiresResumeConfirmation: Bool {
-        isOpen && recovery.pendingIntent == nil
-            && (resumeConfirmationTarget != nil || snapshot?.selection.isSelected == false)
+        guard isOpen, recovery.pendingIntent == nil else { return false }
+        if resumeConfirmationTarget != nil { return true }
+        guard let snapshot, !snapshot.selection.isSelected else { return false }
+        // Resolve an accepted successor before offering to select the old result.
+        return snapshot.rematch?.state != .accepted || snapshot.rematch?.successorAvailable != true
     }
 
     func confirmResumeSavedMatch() {
@@ -440,8 +443,15 @@ final class LiveMatchSession {
         }
         let previous = recovery
         recovery.pendingIntent = nil
+        if case .join = intent { recovery.successorFollowAllowed = false }
         guard saveRecovery() else { recovery = previous; return }
         lastError = nil
+        if case .join = intent {
+            // The retained source stays available through explicit Resume.
+            leaveToHome()
+            if serviceNeedsUpdate { phase = .unavailable }
+            return
+        }
         if serviceNeedsUpdate { phase = .unavailable; return }
         phase = snapshot == nil ? .recovering : .ready
         requestRefresh()
@@ -938,7 +948,14 @@ final class LiveMatchSession {
                rematch.state == .accepted, rematch.successorAvailable,
                let successorID = rematch.successorMatchID {
                 let navigation = navigationGeneration
-                let successor = try await request { try await service.snapshot(matchID: successorID) }
+                let successor: LiveMatchSnapshot
+                do {
+                    successor = try await request { try await service.snapshot(matchID: successorID) }
+                } catch LiveMatchServiceError.server(.notAMatchMember), LiveMatchServiceError.server(.roomExpired) {
+                    // Losing the successor does not invalidate the saved predecessor.
+                    // Normal backoff refreshes its canonical availability without a hot loop.
+                    throw LiveMatchServiceError.unavailable
+                }
                 guard isCurrent(accountGeneration), presentation == presentationGeneration, isOpen,
                       phase != .storageUnavailable, responseEpoch == commandEpoch,
                       recovery.matchID == matchID, recovery.pendingIntent == nil,

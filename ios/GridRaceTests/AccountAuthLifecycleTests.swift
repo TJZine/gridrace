@@ -710,12 +710,30 @@ extension AccountAuthLifecycleTests {
         let saved = savedSession()
         try storage.store(key: "supabase.session", value: AuthClient.Configuration.jsonEncoder.encode(saved))
         storage.fail(.store, key: restored.sessionKey)
+        let root = FileManager.default.temporaryDirectory.appending(path: "AuthRecoveryInvitation-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let invitationStore = PendingLiveInvitationStore(directory: root)
+        let invitations = LiveInvitationCoordinator(
+            configuration: .init(origins: [URL(string: "https://invite.test")!]),
+            cleanupJournal: AccountCleanupJournal(storage: AccountCleanupJournalFile(directory: root)),
+            makeStore: { invitationStore })
+        invitations.receive(URL(string: "https://invite.test/join/ABC234")!)
+        XCTAssertNotNil(try invitationStore.load())
+        var departureOwners: [UUID?] = []
         var cleaned: [UUID] = []
-        let model = AccountModel(service: restored, didSignOut: { cleaned.append($0); return true })
+        let model = AccountModel(service: restored, willDepartAccount: { userID in
+            departureOwners.append(userID)
+            XCTAssertFalse(storage.removed("supabase.session"), "Navigation cleanup precedes credential retirement")
+            try invitations.prepareForAccountDeparture(userID)
+        }, didSignOut: { cleaned.append($0); return true })
         await model.start()
         try await wait { model.authRecovery?.action == .restore }
         XCTAssertNil(model.session)
         await model.signOut()
+        XCTAssertEqual(departureOwners, [nil], "The service's hidden identity is not a consumer identity")
+        XCTAssertNil(try invitationStore.load())
+        XCTAssertNil(invitations.pending)
+        XCTAssertTrue(invitations.cleanupJournal.records.isEmpty)
         XCTAssertEqual(cleaned, [saved.user.id])
         XCTAssertEqual(restored.retiredCleanupUserID, saved.user.id)
         XCTAssertNil(model.authRecovery)
